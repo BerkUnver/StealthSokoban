@@ -1,4 +1,3 @@
-// @TODO: :Assert Working assert.
 // In debug builds, this should just be a break with a stacktrace.
 // In release builds, it should pop up a window and tell the user how to report the bug.
 // @TODO: Find out how to disable Runtime_Support
@@ -22,8 +21,10 @@ windows: struct {
     stdout: HANDLE;
 }
 
+
 main :: () {
-    windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE); // :Assert make sure this does not return INVALID_HANDLE_VALUE
+    windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    assert(windows.stdout != INVALID_HANDLE_VALUE);
     log("\n\n"); // Some blank lines to separate us from the compile messages
 
     module_handle := GetModuleHandleA(null);
@@ -47,8 +48,8 @@ main :: () {
         lpszClassName = "Window Class", // Jai string literals are zero-terminated for backwards-compatability.
     };
 
-    RegisterClassExA(*window_class); // :Assert
-    
+    assert(RegisterClassExA(*window_class) != 0);
+
     window := CreateWindowExA(
         0,
         "Window Class",
@@ -63,7 +64,7 @@ main :: () {
         module_handle,
         null
     );
-    // :Assert make sure this succeeds
+    assert(window != null);
 
     ShowWindow(window, SW_SHOW);
 
@@ -85,7 +86,7 @@ main :: () {
         lpszClassName = "Dummy GL Window Class"
     };
 
-    RegisterClassExA(*dummy_window_class); // :Assert
+    assert(RegisterClassExA(*dummy_window_class) != 0);
 
     dummy_window := CreateWindowExA(
         0,
@@ -101,7 +102,7 @@ main :: () {
         module_handle,
         null
     );
-    // :Assert make sure this succeeds
+    assert(dummy_window != null);
 
     dummy_dc := GetDC(dummy_window);
 
@@ -114,9 +115,8 @@ main :: () {
     };
 
     dummy_pixel_format := ChoosePixelFormat(dummy_dc, *dummy_pixel_format_descriptor);
-    // :Assert Make sure this is nonzero
-    SetPixelFormat(dummy_dc, dummy_pixel_format, *dummy_pixel_format_descriptor);
-    // :Assert Make sure this is nonzero
+    assert(dummy_pixel_format != 0);
+    assert(SetPixelFormat(dummy_dc, dummy_pixel_format, *dummy_pixel_format_descriptor) != 0);
 
     // The reason we need a dummy window is because wglCreateContext is legacy.
     // There is new pixel format information we need to set with
@@ -126,23 +126,24 @@ main :: () {
     // Bruh.
 
     dummy_context := wglCreateContext(dummy_dc);
-    wglMakeCurrent(dummy_dc, dummy_context);
-    // :Assert
+    assert(wglMakeCurrent(dummy_dc, dummy_context) != 0);
 
-    // :Assert make sure all three of these are not null.
     wglCreateContextAttribsARB: (dc: HDC, hShareContext: HGLRC, attribList: *s32) -> HGLRC #c_call = xx wglGetProcAddress("wglCreateContextAttribsARB");
+    assert(wglCreateContextAttribsARB != null);
 
     wglChoosePixelFormatARB: (dc: HDC, piAttribIList: *s32, pfAttribFList: *float, nMaxFormats: u32, piFormats: *s32, nNumFormats: *u32) -> BOOL #c_call = wglGetProcAddress("wglChoosePixelFormatARB");
+    assert(wglChoosePixelFormatARB != null);
 
     // wglGetPixelFormatAttribivARB: (dc: HDC, iPixelFormat: s32, iLayerPlane: s32, nAttributes: u32, piAttributes: *s32, piValues: *s32) -> BOOL #c_call = xx wglGetProcAddress("wglGetPixelFormatAttribivARB");
+    // assert(wglGetPixelFormatAttribivARB != null);
     // @TODO :MSAA This is used for MSAA. We probably want that in the future.
     
     // According to the example I'm following, once we have the extension functions,
     // we can delete all of the dummy stuff.
-    wglMakeCurrent(null, null);
-    wglDeleteContext(dummy_context);
-    UnregisterClassA(dummy_window_class.lpszClassName, dummy_window_class.hInstance);
-    DestroyWindow(dummy_window);
+    assert(wglMakeCurrent(null, null) != 0);
+    assert(wglDeleteContext(dummy_context) != 0);
+    assert(DestroyWindow(dummy_window) != 0);
+    assert(UnregisterClassA(dummy_window_class.lpszClassName, dummy_window_class.hInstance) != 0);
 
 
 
@@ -174,7 +175,7 @@ main :: () {
     
     // We're done with the dummy window. Now, free everything associated with it.
     dc := GetDC(window);
-    wglChoosePixelFormatARB(
+    assert(wglChoosePixelFormatARB(
         dc, 
         piAttribIList = pixel_format_attributes.data,
         // pixel format attributes that are integers
@@ -191,14 +192,13 @@ main :: () {
 
         nNumFormats = *pixel_format_count
         // We only ask for one pixel format so this value should only ever be one.
-    ); // :Assert make sure this succeeds
-
-    // :Assert make sure pixel_format is not -1, meaning it is invalid.
+    ) != 0);
+    assert(pixel_format != -1);
 
     pixel_format_descriptor: PIXELFORMATDESCRIPTOR;
-    DescribePixelFormat(dc, pixel_format, size_of(PIXELFORMATDESCRIPTOR), *pixel_format_descriptor); // :Assert nonzero
+    assert(DescribePixelFormat(dc, pixel_format, size_of(PIXELFORMATDESCRIPTOR), *pixel_format_descriptor) != 0);
     
-    SetPixelFormat(dc, pixel_format, *pixel_format_descriptor); // :Assert nonzero
+    assert(SetPixelFormat(dc, pixel_format, *pixel_format_descriptor) != 0);
 
     attributes := s32.[
         xx WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
@@ -209,7 +209,7 @@ main :: () {
     ];
 
     opengl_context := wglCreateContextAttribsARB(dc, null, attributes.data);
-    wglMakeCurrent(dc, opengl_context); // :Assert nonzero
+    assert(wglMakeCurrent(dc, opengl_context) != 0);
 
 
     //
@@ -247,7 +247,7 @@ main :: () {
                     case GL_DEBUG_SOURCE_THIRD_PARTY;       source_str = "THIRD_PARTY";
                     case GL_DEBUG_SOURCE_APPLICATION;       source_str = "APPLICATION";
                     case GL_DEBUG_SOURCE_OTHER;             source_str = "OTHER";
-                    case; // :Assert we shouldn't get these.
+                    case; assert(false);
                 }
                 
                 type_str: string;
@@ -261,7 +261,7 @@ main :: () {
                     case GL_DEBUG_TYPE_PUSH_GROUP;          type_str = "PUSH_GROUP";
                     case GL_DEBUG_TYPE_POP_GROUP;           type_str = "POP_GROUP";
                     case GL_DEBUG_TYPE_OTHER;               type_str = "OTHER";
-                    case; // :Assert we shouldn't get these.
+                    case; assert(false);
                 }
                 
                 severity_str: string;
@@ -270,6 +270,7 @@ main :: () {
                     case GL_DEBUG_SEVERITY_MEDIUM;          severity_str = "MEDIUM";
                     case GL_DEBUG_SEVERITY_LOW;             severity_str = "LOW";
                     case GL_DEBUG_SEVERITY_NOTIFICATION;    severity_str = "NOTIFICATION";
+                    case; assert(false);
                 }
 
                 message_str := string.{data=message, count=length};
@@ -328,5 +329,26 @@ main :: () {
 
 log :: (s: string) {
     WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
-    FlushFileBuffers(windows.stdout); // This function is for debug output. We don't care about performance.
+    FlushFileBuffers(windows.stdout); 
+    // This function is for debug output. We don't care about performance, so we flush every time we call this.
+}
+
+
+assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
+    // if !message message = "We've detected an error occuring in the game. This is almost definitely our fault. To prevent corruption, the game will crash now.";
+    // @TODO: Open a user-level windows MessageBoxA that contains the message in release builds. Telemetry?
+
+    // @Copypasta from modules/Basic
+    assert_stack_trace :: (message: string, loc: Source_Code_Location) -> bool {
+        if context.handling_assertion_failure  return false;  // Avoid infinite loops.
+        context.handling_assertion_failure = true;
+
+        // We provide 'loc' in case _STACK_TRACE is turned off, but assertion_failed may well
+        // look at the stack trace if it is available.
+        should_break := context.assertion_failed(loc, message);
+        context.handling_assertion_failure = false;
+        return true;
+    }
+
+    if !condition && assert_stack_trace(message, loc) debug_break();
 }

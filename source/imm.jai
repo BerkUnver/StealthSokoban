@@ -53,14 +53,14 @@ imm_init :: () -> Imm_State {
 
         success: GLint;
         glGetShaderiv(shader, GL_COMPILE_STATUS, *success);
-        // @TODO: Log shader parsing errors.
         if !success return 0;
         return shader;
     }
 
     vertex   := register_shader(GL_VERTEX_SHADER,   VERTEX_SOURCE);
     fragment := register_shader(GL_FRAGMENT_SHADER, FRAGMENT_SOURCE);
-    // :Assert Make sure these are nonzero, meaning they parsed correctly.
+    assert(vertex != 0);
+    assert(fragment != 0);
 
     program := glCreateProgram();
     glAttachShader(program, vertex);
@@ -69,7 +69,7 @@ imm_init :: () -> Imm_State {
 
     success: GLint;
     glGetProgramiv(program, GL_LINK_STATUS, *success);
-    // :Assert Make sure this is nonzero, meaning the default program linked correctly
+    assert(success != 0);
 
     glDeleteShader(fragment);
     glDeleteShader(vertex);
@@ -79,18 +79,18 @@ imm_init :: () -> Imm_State {
 }
 
 imm_begin :: (using s: *Imm_State) {
-    // :Assert make sure that we aren't submitting vertices!
+    assert(!submitting_vertices);
     submitting_vertices = true;
 }
 
 imm_end :: (using s: *Imm_State) {
-    // :Assert make sure we are submitting vertices!
+    assert(submitting_vertices);
     upload_vertices_to_gpu(s);
     submitting_vertices = false;    
 }
 
 imm_vertex :: (using s: *Imm_State, position: Vector3, color: Vector4) {
-    // :Assert make sure we are submitting vertices!
+    assert(submitting_vertices);
     if vertex_count == vertices.count upload_vertices_to_gpu(s);
     vertices[vertex_count] = .{
         position=position,
