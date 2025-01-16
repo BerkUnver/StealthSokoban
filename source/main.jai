@@ -27,6 +27,7 @@ main :: () {
     assert(windows.stdout != INVALID_HANDLE_VALUE);
     log("\n\n"); // Some blank lines to separate us from the compile messages
 
+    assert(SetProcessDPIAware() != 0);
     module_handle := GetModuleHandleA(null);
 
     window_class := WNDCLASSEXA.{
@@ -49,16 +50,44 @@ main :: () {
     };
 
     assert(RegisterClassExA(*window_class) != 0);
+    
+
+    //
+    // Get the coordinates to center the window
+    //
+
+    // @TODO: Support fullscreen, changing the window size
+    WINDOW_FLAGS :: WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    // This is WS_OVERLAPPEDWINDOW without the WS_MAXIMIZEBOX and WS_THICKFRAME.
+    // Supposedly this is to prevent you from resizing
+
+    INNER_WINDOW_W :: 1920;
+    INNER_WINDOW_H :: 1080;
+    
+    monitor_w := GetSystemMetrics(SM_CXSCREEN);
+    monitor_h := GetSystemMetrics(SM_CYSCREEN);
+    
+    window_x := (monitor_w - INNER_WINDOW_W) / 2;
+    window_y := (monitor_h - INNER_WINDOW_H) / 2;
+
+    rect := RECT.{
+        right = INNER_WINDOW_W,
+        bottom = INNER_WINDOW_H,
+    };
+
+    AdjustWindowRect(*rect, WINDOW_FLAGS, .FALSE);
+    window_w := rect.right - rect.left;
+    window_h := rect.bottom - rect.top;
 
     window := CreateWindowExA(
         0,
         "Window Class",
         "Sokoban",
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
+        WINDOW_FLAGS,
+        xx window_x,
+        xx window_y,
+        xx window_w,
+        xx window_h,
         null,
         null,
         module_handle,
@@ -222,8 +251,7 @@ main :: () {
     // So we need to deal with that.
     
     gl_load(*gl);
-    glClearColor(BACKGROUND_R/255.0, BACKGROUND_G/255.0, BACKGROUND_B/255.0, 1);
-    glViewport(0, 0, 100, 100);
+    glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
    
     // We want to support Mac, so we can't support OpenGL 4.3 which is when this
@@ -321,7 +349,7 @@ main :: () {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         imm_begin(*imm_state);
-        imm_rect(*imm_state, -0.5, 0.5, 0.5, 0.5, .{0, 0, 0, 1});
+        imm_rect(*imm_state, -0.5, -0.5, 1, 1, .{1, 1, 1, 1});
         imm_end(*imm_state);
         SwapBuffers(dc);
     }

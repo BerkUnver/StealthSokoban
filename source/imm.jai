@@ -74,6 +74,9 @@ imm_init :: () -> Imm_State {
     glDeleteShader(fragment);
     glDeleteShader(vertex);
     glUseProgram(program);
+    
+    matrix := MATRIX4_IDENTITY;
+    glUniformMatrix4fv(0, 1, GL_TRUE, *matrix.x_x);
 
     return s;
 }
@@ -111,8 +114,8 @@ imm_rect :: (s: *Imm_State, x: float, y: float, w: float, h: float, color: Vecto
     imm_vertex(s, p2, color);
     imm_vertex(s, p3, color);
     imm_vertex(s, p1, color);
+    imm_vertex(s, p3, color);
     imm_vertex(s, p4, color);
-    imm_vertex(s, p2, color);
 }
 
 
