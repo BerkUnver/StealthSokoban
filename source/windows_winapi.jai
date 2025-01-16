@@ -2455,6 +2455,8 @@ SetConsoleOutputCP :: (wCodePageID: u32) -> BOOL #foreign kernel32;
 
 ENABLE_VIRTUAL_TERMINAL_PROCESSING :: 0x4;
 
+WriteConsoleA :: (hConsoleOutput: HANDLE, lpBuffer: *void, nNumberOfCharsToWrite: u32,  lpNumberOfCharsWritten: *u32, lpReserved: *void) -> BOOL #foreign kernel32;
+
 
 // @@ National Language Support API
 

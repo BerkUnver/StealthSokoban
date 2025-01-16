@@ -19,9 +19,13 @@ BACKGROUND_B :: 19;
 
 windows: struct {
     running := true;
+    stdout: HANDLE;
 }
 
 main :: () {
+    windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE); // :Assert make sure this does not return INVALID_HANDLE_VALUE
+    log("\n\n"); // Some blank lines to separate us from the compile messages
+
     module_handle := GetModuleHandleA(null);
 
     window_class := WNDCLASSEXA.{
@@ -221,6 +225,73 @@ main :: () {
     glClearColor(BACKGROUND_R/255.0, BACKGROUND_G/255.0, BACKGROUND_B/255.0, 1);
     glViewport(0, 0, 100, 100);
     glEnable(GL_DEPTH_TEST);
+   
+    // We want to support Mac, so we can't support OpenGL 4.3 which is when this
+    // extension became part of the standard. As such, we have to use the extension.
+    if glDebugMessageCallbackARB { 
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
+        // Make sure we do not have to also call glEnable(GL_DEBUG_OUTPUT);
+        
+
+        // MAKE SURE THIS STAYS OUT OF THE GAME DLL WHEN WE ADD DLL HOT RELOADING.
+        // Or make it dynamically get the right proc out of the game dll?
+        // We have to see how often this is called.
+        gl_debug_callback :: (source: GLenum, type: GLenum, id: GLuint, severity: GLenum, length: GLsizei, message: *GLchar, userParam: *void) #c_call {
+            // @Investigate: Maybe this will notify us when we don't want to hear from it. Keep an eye out.
+            push_context #Context.{} {
+                source_str: string;
+                if source == {
+                    case GL_DEBUG_SOURCE_API;               source_str = "API";
+                    case GL_DEBUG_SOURCE_WINDOW_SYSTEM;     source_str = "WINDOW_SYSTEM";
+                    case GL_DEBUG_SOURCE_SHADER_COMPILER;   source_str = "SHADER_COMPILER";
+                    case GL_DEBUG_SOURCE_THIRD_PARTY;       source_str = "THIRD_PARTY";
+                    case GL_DEBUG_SOURCE_APPLICATION;       source_str = "APPLICATION";
+                    case GL_DEBUG_SOURCE_OTHER;             source_str = "OTHER";
+                    case; // :Assert we shouldn't get these.
+                }
+                
+                type_str: string;
+                if type == {
+                    case GL_DEBUG_TYPE_ERROR;               type_str = "ERROR";
+                    case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR; type_str = "DEPRECATED_BEHAVIOR";
+                    case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR;  type_str = "UNDEFINED_BEHAVIOR";
+                    case GL_DEBUG_TYPE_PORTABILITY;         type_str = "PORTABILITY";
+                    case GL_DEBUG_TYPE_PERFORMANCE;         type_str = "PERFORMANCE";
+                    case GL_DEBUG_TYPE_MARKER;              type_str = "MARKER";
+                    case GL_DEBUG_TYPE_PUSH_GROUP;          type_str = "PUSH_GROUP";
+                    case GL_DEBUG_TYPE_POP_GROUP;           type_str = "POP_GROUP";
+                    case GL_DEBUG_TYPE_OTHER;               type_str = "OTHER";
+                    case; // :Assert we shouldn't get these.
+                }
+                
+                severity_str: string;
+                if severity == {
+                    case GL_DEBUG_SEVERITY_HIGH;            severity_str = "HIGH";
+                    case GL_DEBUG_SEVERITY_MEDIUM;          severity_str = "MEDIUM";
+                    case GL_DEBUG_SEVERITY_LOW;             severity_str = "LOW";
+                    case GL_DEBUG_SEVERITY_NOTIFICATION;    severity_str = "NOTIFICATION";
+                }
+
+                message_str := string.{data=message, count=length};
+
+
+                // :FormatPrint
+                log("GL Debug Callback - source: ");
+                log(source_str);
+                log(", type: ");
+                log(type_str);
+                log(", severity: ");
+                log(severity_str);
+                log(", message: ");
+                log(message_str);
+                log("\n");
+            }
+        }
+        
+        glDebugMessageCallbackARB(gl_debug_callback, null);
+    } else {
+        log("glDebugMessageCallbackARB was not found.");
+    }
 
     imm_state := imm_init();
 
@@ -253,4 +324,9 @@ main :: () {
         imm_end(*imm_state);
         SwapBuffers(dc);
     }
+}
+
+log :: (s: string) {
+    WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
+    FlushFileBuffers(windows.stdout); // This function is for debug output. We don't care about performance.
 }

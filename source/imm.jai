@@ -15,31 +15,30 @@ Imm_State :: struct {
 imm_init :: () -> Imm_State {
     using s: Imm_State;
 
+
+    glGenBuffers(1, *vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * vertices.count, null, GL_STREAM_DRAW); // Allocate the buffer
     glGenVertexArrays(1, *vao);
+
+
     // The vao (vertex attribute object) just is a data structure that stores how the vertex information is structured.
     // We specifiy this by calling glBindVertexArray(vao), then calling glVertexAttribPointer to describe how an
     // attribute is stored before finally calling glEnableVertexAttribArray to use that attribute.
 
-    glGenBuffers(1, *vbo);
-
     glBindVertexArray(vao);
     
-    // Tell OpenGL how to use the current 
     POSITION_UNIFORM_LOC :: 0;
     glVertexAttribPointer(POSITION_UNIFORM_LOC, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).position);
     glEnableVertexAttribArray(POSITION_UNIFORM_LOC); 
 
     COLOR_UNIFORM_LOC :: 1;
+    glVertexAttribPointer(COLOR_UNIFORM_LOC, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).color);
     glEnableVertexAttribArray(COLOR_UNIFORM_LOC);
-    glVertexAttribPointer(COLOR_UNIFORM_LOC, 4, GL_FLOAT, GL_TRUE, size_of(Vertex), xx *cast(*Vertex, null).color);
 
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); 
-    // This indicates an array of the indices of vertices if we are using indices instead of the vertex directly.
-    // We aren't, so this is 0 to indicate that.
 
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * vertices.count, null, GL_STREAM_DRAW); // Allocate the buffer
 
     
     //
@@ -129,7 +128,7 @@ upload_vertices_to_gpu :: (using s: *Imm_State) {
 
 VERTEX_SOURCE :: #string END
 #version 330 core
-layout(location=0) in vec4 vertex_position;
+layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec4 vertex_color;
 
 uniform mat4 projection;
