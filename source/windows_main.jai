@@ -13,12 +13,13 @@ BACKGROUND_B :: 19;
 
 windows: struct {
     stdout: HANDLE;
+    game_dll: HMODULE;
 }
 
 main :: () {
     windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
     assert(windows.stdout != INVALID_HANDLE_VALUE);
-    log("\n\n"); // Some blank lines to separate us from the compile messages
+    print("\n\n"); // Some blank lines to separate us from the compile messages
 
     assert(SetProcessDPIAware() != 0);
     module_handle := GetModuleHandleA(null);
@@ -72,7 +73,7 @@ main :: () {
     window_h := rect.bottom - rect.top;
 
     window := CreateWindowExA(
-        WS_EX_TOPMOST,
+        0,
         "Window Class",
         "Sokoban",
         WINDOW_FLAGS,
@@ -238,18 +239,36 @@ main :: () {
     
     GAME_MEMORY_SIZE :: 1 << 24;
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
-    game_dll := LoadLibraryA("stealth_sokoban_game.dll"); 
-    assert(game_dll != null);
+    windows.game_dll = LoadLibraryA("stealth_sokoban_game.dll"); 
+    assert(windows.game_dll != null);
+ 
+    game_init := cast(Game_Init, GetProcAddress(windows.game_dll, "game_init"));
+    assert(game_init != null);
+    game_init(game_memory, GAME_MEMORY_SIZE, wglGetProcAddress, print);
     
-    game_main := cast(Game_Main, GetProcAddress(game_dll, "game_main"));
-    assert(game_main != null);
-    game_main(game_memory, GAME_MEMORY_SIZE, dc);
+    while main_loop := true {
+        message: MSG;
 
+        // @Investigate: Windows documentation mentions that if you do not pass the window handle (HINSTANCE)
+        // directly to GetMessage, it gets all the messages for all windows belonging to the current
+        // thread, as well as the THREAD message queue.
+        // Does this mean that there is a separate message queue for each thread?
+
+        while (PeekMessageA(*message, null, 0, 0, PM_REMOVE)) {
+            if message.message == WM_QUIT break main_loop;
+            TranslateMessage(*message);
+            DispatchMessageA(*message);
+        }
+
+        game_update := cast(Game_Update, GetProcAddress(windows.game_dll, "game_update"));
+        game_update(game_memory);
+
+        SwapBuffers(dc);
+    }
 }
 
 
-
-log :: (s: string) {
+print :: (s: string) {
     WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
     FlushFileBuffers(windows.stdout); 
     // This function is for debug output. We don't care about performance, so we flush every time we call this.

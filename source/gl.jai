@@ -2760,7 +2760,8 @@ GL_Procedures :: struct #type_info_procedures_are_void_pointers #type_info_no_si
     glClearDepthdNV : (depth: GLdouble) #c_call;
     glDepthBoundsdNV : (zmin: GLdouble, zmax: GLdouble) #c_call;
 
-
+    
+    /*
     #if OS == .WINDOWS {
         wglCreateContextAttribsARB : (hDC: HDC, hShareContext: HGLRC, attribList: *s32) -> HGLRC #c_call;
         // WGL_ARB_pixel_format
@@ -2774,6 +2775,7 @@ GL_Procedures :: struct #type_info_procedures_are_void_pointers #type_info_no_si
         wglSwapIntervalEXT : (interval: s32) -> BOOL #c_call;
         wglGetSwapIntervalEXT : () -> s32 #c_call;
     }
+    */
 
     #if OS == .LINUX {
         glXSwapIntervalEXT : (dpy: *Display, draw: GLXDrawable, interval: s32) -> s32 #c_call;

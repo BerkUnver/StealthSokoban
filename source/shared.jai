@@ -1,7 +1,13 @@
-// These are the type definitions shared between the os-specific main
-// and the game itself. Please keep the stuff in this file to a minimum.
+// These are the type definitions shared between the os-specific main // and the game itself. Please keep the stuff in this file to a minimum.
 
-Game_Main :: #type (*void, u64, HDC);
+Game_Init :: #type (
+    game_memory: *void,
+    game_memory_size: u64,
+    gl_extension_loader: (*u8) -> *void #c_call,
+    debug_print: (string)
+);
+
+Game_Update :: #type (*void);
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
     // if !message message = "We've detected an error occuring in the game. This is almost definitely our fault. To prevent corruption, the game will crash now.";
