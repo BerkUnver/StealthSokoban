@@ -1,13 +1,25 @@
 
 #load "windows_winapi.jai"; // @TODO Remove this
 
+#load "gl.jai";
 #load "shared.jai";
 #load "imm.jai";
 #load "helpers.jai";
 #load "math.jai";
 
+
+Game :: struct {
+    using gl_procs: GL_Procedures;
+    using gl_extensions: GL_Extensions;
+    imm_state: Imm_State;
+}
+
 #program_export "game_main"
-game_main : Game_Main : (using game: *Game, dc: HDC) {
+game_main : Game_Main : (game_memory: *void, game_memory_size: u64, dc: HDC) {
+    assert(game_memory_size >= size_of(Game));
+    game := cast(*Game, game_memory);
+    using game;
+
     for * type_info(GL_Procedures).members {
         assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
 

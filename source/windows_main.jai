@@ -27,7 +27,13 @@ main :: () {
         cbSize = size_of(WNDCLASSEXA),
         style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC,
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
-            return DefWindowProcA(window, message, w_param, l_param);
+            if message == {
+                case WM_CLOSE;
+                    PostQuitMessage(0);
+                    return 0;
+                case; 
+                    return DefWindowProcA(window, message, w_param, l_param);
+            }
         },
         hInstance = module_handle,
         hCursor = LoadCursorA(null, IDC_ARROW),
@@ -66,7 +72,7 @@ main :: () {
     window_h := rect.bottom - rect.top;
 
     window := CreateWindowExA(
-        0,
+        WS_EX_TOPMOST,
         "Window Class",
         "Sokoban",
         WINDOW_FLAGS,
@@ -229,17 +235,18 @@ main :: () {
     //
     // Initialize the game state
     //
-
-   
-    game: Game; 
+    
+    GAME_MEMORY_SIZE :: 1 << 24;
+    game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
     game_dll := LoadLibraryA("stealth_sokoban_game.dll"); 
     assert(game_dll != null);
     
     game_main := cast(Game_Main, GetProcAddress(game_dll, "game_main"));
     assert(game_main != null);
-    game_main(*game, dc);
+    game_main(game_memory, GAME_MEMORY_SIZE, dc);
 
 }
+
 
 
 log :: (s: string) {

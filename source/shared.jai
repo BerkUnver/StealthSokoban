@@ -1,52 +1,7 @@
-// These are the type definitions shared between the os-specific main and the game itself.
+// These are the type definitions shared between the os-specific main
+// and the game itself. Please keep the stuff in this file to a minimum.
 
-// :DontShare @TODO THE OPERATING SYSTEM SHOULD NOT KNOW ABOUT THIS STUFF!
-
-// :DontShare
-#load "gl.jai";
-
-// :DontShare
-Vector2 :: struct {
-    x, y: float;
-} 
-
-// :DontShare
-Vector3 :: struct {
-    x, y, z: float;
-}
-
-// :DontShare
-Vector4 :: struct {
-    x, y, z, w: float;
-}
-
-
-
-Game_Main :: #type (*Game, HDC /* :DontShare */);
-
-// :DontShare
-Game :: struct {
-    using gl_procs: GL_Procedures;
-    using gl_extensions: GL_Extensions;
-    imm_state: Imm_State;
-}
-
-// :DontShare
-Vertex :: struct {
-    position: Vector3;
-    color: Vector4;
-}
-
-// :DontShare
-Imm_State :: struct {
-    vao: GLuint;
-    vbo: GLuint;
-    vertices: [4096] Vertex;
-    vertex_count: u32;
-    submitting_vertices: bool;
-}
-
-
+Game_Main :: #type (*void, u64, HDC);
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
     // if !message message = "We've detected an error occuring in the game. This is almost definitely our fault. To prevent corruption, the game will crash now.";

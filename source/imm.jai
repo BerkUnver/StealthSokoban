@@ -1,3 +1,16 @@
+Vertex :: struct {
+    position: Vector3;
+    color: Vector4;
+}
+
+Imm_State :: struct {
+    vao: GLuint;
+    vbo: GLuint;
+    vertices: [4096] Vertex;
+    vertex_count: u32;
+    submitting_vertices: bool;
+}
+
 imm_init :: (using g: *Game) {
     using g.imm_state;
 

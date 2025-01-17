@@ -7,7 +7,7 @@
     
     // Compile the platform executable
     {
-        w := compiler_create_workspace("w");
+        w := compiler_create_workspace("Platform Workspace");
         o := get_build_options(w);
         copy_commonly_propagated_fields(options, *o);
 
@@ -25,7 +25,7 @@
      
     // Compile the game dynamic link library
     {
-        w := compiler_create_workspace("w");
+        w := compiler_create_workspace("Compiler Workspace");
         o := get_build_options(w);
         copy_commonly_propagated_fields(options, *o);
 
