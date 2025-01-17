@@ -7,13 +7,11 @@ BACKGROUND_R :: 12;
 BACKGROUND_G :: 27;
 BACKGROUND_B :: 19;
 
-#import "GL";
-// @TODO: REMOVE THIS DEPENDENCY! We do almost everything this does manually, we just need this for the gl extension procs loading.
-// @TODO: ALSO MAKE THE GL_PROCS STRUCT PART OF THE GAME STATE SO WE CAN USE DLL HOT-RELOADING!
-
-#load "windows_winapi.jai";
 #load "imm.jai";
+#load "helpers.jai";
 #load "math.jai";
+#load "gl.jai";
+#load "windows_winapi.jai";
 
 
 windows: struct {
@@ -21,6 +19,9 @@ windows: struct {
     stdout: HANDLE;
 }
 
+using gl_procs: GL_Procedures;
+using gl_extensions: GL_Extensions;
+imm_state: Imm_State;
 
 main :: () {
     windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -242,21 +243,52 @@ main :: () {
 
 
     //
-    // Done with the OpenGL init. Now we can start the message loop.
+    // Initialize the game state
+    //
+    
+    for * type_info(GL_Procedures).members {
+        assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
+        
+        // Works whether or not address is null.
+        address := wglGetProcAddress(it.name.data);
+        dest := cast(*u8, *gl_procs) + it.offset_in_bytes;
+        cast(**void, dest).* = address;
+    }
+    
+    // This comes after loading the procs because we need to use glGetIntegerv, etc.
+    gl_extension_count: s32;
+    glGetIntegerv(GL_NUM_EXTENSIONS, *gl_extension_count);
+    for * member: type_info(GL_Extensions).members {
+        assert(member.type.type == .BOOL);
+
+        has_extension := false;
+        for 0..gl_extension_count-1 {
+            extension := glGetStringi(GL_EXTENSIONS, xx it);
+            if (jai_string_equals_c_string(member.name, extension)) {
+                has_extension = true;
+                break;
+            }
+        }
+
+        dest := cast(*u8, *gl_extensions) + member.offset_in_bytes;
+        cast(*bool, dest).* = has_extension;
+    }
+
+    imm_state = imm_init();
+   
+
+    //
+    // Initialization is done, and now we can start the message loop.
     //
 
+
     // @TODO: Enable OpenGL vsync by calling wglSwapIntervalEXT(1)
-    // @TODO: Install an OpenGL debug message handler with glDebugMessageCallbackARB.
-    // It's an extension until OpenGL 4.3, and we want to support only up until 3.3.
-    // So we need to deal with that.
-    
-    gl_load(*gl);
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
    
     // We want to support Mac, so we can't support OpenGL 4.3 which is when this
     // extension became part of the standard. As such, we have to use the extension.
-    if glDebugMessageCallbackARB { 
+    if GL_ARB_debug_output { 
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
         // Make sure we do not have to also call glEnable(GL_DEBUG_OUTPUT);
         
@@ -322,7 +354,6 @@ main :: () {
         log("glDebugMessageCallbackARB was not found.");
     }
 
-    imm_state := imm_init();
 
     message: MSG;
 

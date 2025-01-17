@@ -684,7 +684,7 @@ WNDCLASSEXA :: struct {
     lpszMenuName: *u8;
     lpszClassName: *u8;
     hIconSm: HICON;
-};  // @Temporary, just so we can define deprecated procedures.
+};  // @Added
 
 WNDCLASSEXW :: struct {
     cbSize: u32;
