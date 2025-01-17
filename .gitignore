@@ -3,5 +3,9 @@
 
 *.exe
 *.pdb
+*.dll
+*.exp
+*.lib
+
 .vs
 .build

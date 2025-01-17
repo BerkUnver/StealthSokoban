@@ -7,22 +7,12 @@ BACKGROUND_R :: 12;
 BACKGROUND_G :: 27;
 BACKGROUND_B :: 19;
 
-#load "imm.jai";
-#load "helpers.jai";
-#load "math.jai";
-#load "gl.jai";
 #load "windows_winapi.jai";
+#load "shared.jai";
 
 
 windows: struct {
-    running := true;
     stdout: HANDLE;
-}
-
-Game :: struct {
-    using gl_procs: GL_Procedures;
-    using gl_extensions: GL_Extensions;
-    imm_state: Imm_State;
 }
 
 main :: () {
@@ -37,14 +27,7 @@ main :: () {
         cbSize = size_of(WNDCLASSEXA),
         style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC,
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
-            if message == {
-            case WM_CLOSE;
-                // We are using our own quit instead of WM_QUIT.
-                windows.running = false;
-                return 0;
-            case;
-                return DefWindowProcA(window, message, w_param, l_param);
-            }
+            return DefWindowProcA(window, message, w_param, l_param);
         },
         hInstance = module_handle,
         hCursor = LoadCursorA(null, IDC_ARROW),
@@ -243,175 +226,24 @@ main :: () {
     opengl_context := _wglCreateContextAttribsARB(dc, null, attributes.data);
     assert(wglMakeCurrent(dc, opengl_context) != 0);
 
-
     //
     // Initialize the game state
     //
 
-    using game: Game;
-    
-    for * type_info(GL_Procedures).members {
-        assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
-        
-        // Works whether or not address is null.
-        address := wglGetProcAddress(it.name.data);
-        dest := cast(*u8, *game.gl_procs) + it.offset_in_bytes;
-        cast(**void, dest).* = address;
-    }
-    
-    // This comes after loading the procs because we need to use glGetIntegerv, etc.
-    gl_extension_count: s32;
-    glGetIntegerv(GL_NUM_EXTENSIONS, *gl_extension_count);
-    for * member: type_info(GL_Extensions).members {
-        assert(member.type.type == .BOOL);
-
-        has_extension := false;
-        for 0..gl_extension_count-1 {
-            extension := glGetStringi(GL_EXTENSIONS, xx it);
-            if (jai_string_equals_c_string(member.name, extension)) {
-                has_extension = true;
-                break;
-            }
-        }
-
-        dest := cast(*u8, *game.gl_extensions) + member.offset_in_bytes;
-        cast(*bool, dest).* = has_extension;
-    }
-
-    imm_init(*game);
    
-
-    //
-    // Initialization is done, and now we can start the message loop.
-    //
-
-
-    // @TODO: Enable OpenGL vsync by calling wglSwapIntervalEXT(1)
-    glClearColor(0, 0, 0, 1);
-    glEnable(GL_DEPTH_TEST);
-   
-    // We want to support Mac, so we can't support OpenGL 4.3 which is when this
-    // extension became part of the standard. As such, we have to use the extension.
-    if GL_ARB_debug_output { 
-        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
-        // Make sure we do not have to also call glEnable(GL_DEBUG_OUTPUT);
-        
-
-        // MAKE SURE THIS STAYS OUT OF THE GAME DLL WHEN WE ADD DLL HOT RELOADING.
-        // Or make it dynamically get the right proc out of the game dll?
-        // We have to see how often this is called.
-        gl_debug_callback :: (source: GLenum, type: GLenum, id: GLuint, severity: GLenum, length: GLsizei, message: *GLchar, userParam: *void) #c_call {
-            // @Investigate: Maybe this will notify us when we don't want to hear from it. Keep an eye out.
-            push_context #Context.{} {
-                source_str: string;
-                if source == {
-                    case GL_DEBUG_SOURCE_API;               source_str = "API";
-                    case GL_DEBUG_SOURCE_WINDOW_SYSTEM;     source_str = "WINDOW_SYSTEM";
-                    case GL_DEBUG_SOURCE_SHADER_COMPILER;   source_str = "SHADER_COMPILER";
-                    case GL_DEBUG_SOURCE_THIRD_PARTY;       source_str = "THIRD_PARTY";
-                    case GL_DEBUG_SOURCE_APPLICATION;       source_str = "APPLICATION";
-                    case GL_DEBUG_SOURCE_OTHER;             source_str = "OTHER";
-                    case; assert(false);
-                }
-                
-                type_str: string;
-                if type == {
-                    case GL_DEBUG_TYPE_ERROR;               type_str = "ERROR";
-                    case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR; type_str = "DEPRECATED_BEHAVIOR";
-                    case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR;  type_str = "UNDEFINED_BEHAVIOR";
-                    case GL_DEBUG_TYPE_PORTABILITY;         type_str = "PORTABILITY";
-                    case GL_DEBUG_TYPE_PERFORMANCE;         type_str = "PERFORMANCE";
-                    case GL_DEBUG_TYPE_MARKER;              type_str = "MARKER";
-                    case GL_DEBUG_TYPE_PUSH_GROUP;          type_str = "PUSH_GROUP";
-                    case GL_DEBUG_TYPE_POP_GROUP;           type_str = "POP_GROUP";
-                    case GL_DEBUG_TYPE_OTHER;               type_str = "OTHER";
-                    case; assert(false);
-                }
-                
-                severity_str: string;
-                if severity == {
-                    case GL_DEBUG_SEVERITY_HIGH;            severity_str = "HIGH";
-                    case GL_DEBUG_SEVERITY_MEDIUM;          severity_str = "MEDIUM";
-                    case GL_DEBUG_SEVERITY_LOW;             severity_str = "LOW";
-                    case GL_DEBUG_SEVERITY_NOTIFICATION;    severity_str = "NOTIFICATION";
-                    case; assert(false);
-                }
-
-                message_str := string.{data=message, count=length};
-
-
-                // :FormatPrint
-                log("GL Debug Callback - source: ");
-                log(source_str);
-                log(", type: ");
-                log(type_str);
-                log(", severity: ");
-                log(severity_str);
-                log(", message: ");
-                log(message_str);
-                log("\n");
-            }
-        }
-        
-        glDebugMessageCallbackARB(gl_debug_callback, null);
-    } else {
-        log("glDebugMessageCallbackARB was not found.");
-    }
-
-
-    message: MSG;
-
-    // @Investigate: Windows documentation mentions that if you do not pass the window handle (HINSTANCE)
-    // directly to GetMessage, it gets all the messages for all windows belonging to the current
-    // thread, as well as the THREAD message queue.
-    // Does this mean that there is a separate message queue for each thread?
-    // Investigate further.
+    game: Game; 
+    game_dll := LoadLibraryA("stealth_sokoban_game.dll"); 
+    assert(game_dll != null);
     
-    while windows.running {
-        // @TODO: When we use OpenGL and the window proc is just for gathering input,
-        // switch to PeekMessageA so we don't block.
-        message_result := GetMessageA(*message, null, 0, 0);
-        if (message_result > 0) {
-            TranslateMessage(*message);
-            DispatchMessageA(*message);
+    game_main := cast(Game_Main, GetProcAddress(game_dll, "game_main"));
+    assert(game_main != null);
+    game_main(*game, dc);
 
-        } else {
-            // @TODO: Log when this happens. Something goofy is going on.
-            // We shouldn't be getting unsolicited WM_QUIT messages because we handle that manually.
-            // This also shouldn't be returning -1 because that is an error condition.
-            break;
-        }
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        imm_begin(*game);
-        imm_rect(*game, -0.5, -0.5, 1, 1, .{1, 1, 1, 1});
-        imm_end(*game);
-        SwapBuffers(dc);
-    }
 }
+
 
 log :: (s: string) {
     WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
     FlushFileBuffers(windows.stdout); 
     // This function is for debug output. We don't care about performance, so we flush every time we call this.
-}
-
-
-assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
-    // if !message message = "We've detected an error occuring in the game. This is almost definitely our fault. To prevent corruption, the game will crash now.";
-    // @TODO: Open a user-level windows MessageBoxA that contains the message in release builds. Telemetry?
-
-    // @Copypasta from modules/Basic
-    assert_stack_trace :: (message: string, loc: Source_Code_Location) -> bool {
-        if context.handling_assertion_failure  return false;  // Avoid infinite loops.
-        context.handling_assertion_failure = true;
-
-        // We provide 'loc' in case _STACK_TRACE is turned off, but assertion_failed may well
-        // look at the stack trace if it is available.
-        should_break := context.assertion_failed(loc, message);
-        context.handling_assertion_failure = false;
-        return true;
-    }
-
-    if !condition && assert_stack_trace(message, loc) debug_break();
 }
