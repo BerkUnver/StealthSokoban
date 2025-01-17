@@ -1,4 +1,12 @@
-// These are the type definitions shared between the os-specific main // and the game itself. Please keep the stuff in this file to a minimum.
+// These are the type definitions shared between the os-specific main
+// and the game itself. Please keep the stuff in this file to a minimum.
+
+BACKGROUND_R :: 12;
+BACKGROUND_G :: 27;
+BACKGROUND_B :: 19;
+
+INNER_WINDOW_W :: 1920;
+INNER_WINDOW_H :: 1080;
 
 Game_Init :: #type (
     game_memory: *void,

@@ -3,10 +3,6 @@
 // @TODO: Find out how to disable Runtime_Support
 // @TODO: Switch to the wide character version of everything.
 
-BACKGROUND_R :: 12;
-BACKGROUND_G :: 27;
-BACKGROUND_B :: 19;
-
 #load "windows_winapi.jai";
 #load "shared.jai";
 
@@ -53,9 +49,6 @@ main :: () {
     WINDOW_FLAGS :: WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     // This is WS_OVERLAPPEDWINDOW without the WS_MAXIMIZEBOX and WS_THICKFRAME.
     // Supposedly this is to prevent you from resizing
-
-    INNER_WINDOW_W :: 1920;
-    INNER_WINDOW_H :: 1080;
     
     monitor_w := GetSystemMetrics(SM_CXSCREEN);
     monitor_h := GetSystemMetrics(SM_CYSCREEN);

@@ -2,12 +2,10 @@ Vector2 :: struct {
     x, y: float;
 } 
 
-// :DontShare
 Vector3 :: struct {
     x, y, z: float;
 }
 
-// :DontShare
 Vector4 :: struct {
     x, y, z, w: float;
 }
@@ -21,3 +19,44 @@ Matrix4 :: struct {
 }
 
 MATRIX4_IDENTITY :: Matrix4.{ x_x=1, y_y=1, z_z=1, w_w=1};
+
+matmul :: (a: Matrix4, b: Matrix4) -> Matrix4 {
+    return .{
+        a.x_x*b.x_x + a.y_x*b.x_y + a.z_x*b.x_z + a.w_x*b.x_w,
+        a.x_x*b.y_x + a.y_x*b.y_y + a.z_x*b.y_z + a.w_x*b.y_w,
+        a.x_x*b.z_x + a.y_x*b.z_y + a.z_x*b.z_z + a.w_x*b.z_w,
+        a.x_x*b.w_x + a.y_x*b.w_y + a.z_x*b.w_z + a.w_x*b.w_w,
+        
+        a.x_y*b.x_x + a.y_y*b.x_y + a.z_y*b.x_z + a.w_y*b.x_w,
+        a.x_y*b.y_x + a.y_y*b.y_y + a.z_y*b.y_z + a.w_y*b.y_w,
+        a.x_y*b.z_x + a.y_y*b.z_y + a.z_y*b.z_z + a.w_y*b.z_w,
+        a.x_y*b.w_x + a.y_y*b.w_y + a.z_y*b.w_z + a.w_y*b.w_w,
+
+        a.x_z*b.x_x + a.y_z*b.x_y + a.z_z*b.x_z + a.w_z*b.x_w,
+        a.x_z*b.y_x + a.y_z*b.y_y + a.z_z*b.y_z + a.w_z*b.y_w,
+        a.x_z*b.z_x + a.y_z*b.z_y + a.z_z*b.z_z + a.w_z*b.z_w,
+        a.x_z*b.w_x + a.y_z*b.w_y + a.z_z*b.w_z + a.w_z*b.w_w,
+
+        a.x_w*b.x_x + a.y_w*b.x_y + a.z_w*b.x_z + a.w_w*b.x_w,
+        a.x_w*b.y_x + a.y_w*b.y_y + a.z_w*b.y_z + a.w_w*b.y_w,
+        a.x_w*b.z_x + a.y_w*b.z_y + a.z_w*b.z_z + a.w_w*b.z_w,
+        a.x_w*b.w_x + a.y_w*b.w_y + a.z_w*b.w_z + a.w_w*b.w_w,
+    };
+}
+
+// This assumes the input and output are opengl-style coorinate systems.
+// X right
+// Y up
+// Z away
+frustum :: (l: float, b: float, n: float, r: float, t: float, f: float) -> Matrix4 {
+    return .{
+        (2*n)/(r-l), 0,           -(r+l)/(r-l), 0,
+        0,           (2*n)/(t-b), -(t+b)/(t-b), 0,
+        0,           0,           (f+n)/(f-n),  -(2*f*n)/(f-n), 
+        0,           0,           1,            0
+    };
+}
+
+matrix4_translate :: (x: float, y: float, z: float) -> Matrix4 {
+    return .{x_x=1, y_y=1, z_z=1, w_x=x, w_y=y, w_z=z, w_w=1};
+}
