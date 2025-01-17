@@ -12,8 +12,8 @@ Imm_State :: struct {
     submitting_vertices: bool;
 }
 
-imm_init :: () -> Imm_State {
-    using s: Imm_State;
+imm_init :: (using g: *Game) {
+    using g.imm_state;
 
 
     glGenBuffers(1, *vbo);
@@ -45,7 +45,7 @@ imm_init :: () -> Imm_State {
     // Initialize shaders
     //
 
-    register_shader :: (type: GLenum, text: string) -> GLuint {
+    register_shader :: (using procs: GL_Procedures, type: GLenum, text: string) -> GLuint {
         shader := glCreateShader(type);
         text_count := cast(GLint)text.count;
         glShaderSource(shader, 1, *text.data, *text_count);
@@ -57,8 +57,8 @@ imm_init :: () -> Imm_State {
         return shader;
     }
 
-    vertex   := register_shader(GL_VERTEX_SHADER,   VERTEX_SOURCE);
-    fragment := register_shader(GL_FRAGMENT_SHADER, FRAGMENT_SOURCE);
+    vertex   := register_shader(g.gl_procs, GL_VERTEX_SHADER,   VERTEX_SOURCE);
+    fragment := register_shader(g.gl_procs, GL_FRAGMENT_SHADER, FRAGMENT_SOURCE);
     assert(vertex != 0);
     assert(fragment != 0);
 
@@ -77,24 +77,25 @@ imm_init :: () -> Imm_State {
     
     matrix := MATRIX4_IDENTITY;
     glUniformMatrix4fv(0, 1, GL_TRUE, *matrix.x_x);
-
-    return s;
 }
 
-imm_begin :: (using s: *Imm_State) {
+imm_begin :: (g: *Game) {
+    using g.imm_state;
     assert(!submitting_vertices);
     submitting_vertices = true;
 }
 
-imm_end :: (using s: *Imm_State) {
+imm_end :: (g: *Game) {
+    using g.imm_state;
     assert(submitting_vertices);
-    upload_vertices_to_gpu(s);
+    upload_vertices_to_gpu(g);
     submitting_vertices = false;    
 }
 
-imm_vertex :: (using s: *Imm_State, position: Vector3, color: Vector4) {
+imm_vertex :: (g: *Game, position: Vector3, color: Vector4) {
+    using g.imm_state;
     assert(submitting_vertices);
-    if vertex_count == vertices.count upload_vertices_to_gpu(s);
+    if vertex_count == vertices.count upload_vertices_to_gpu(g);
     vertices[vertex_count] = .{
         position=position,
         color=color
@@ -102,7 +103,7 @@ imm_vertex :: (using s: *Imm_State, position: Vector3, color: Vector4) {
     vertex_count += 1;
 }
 
-imm_rect :: (s: *Imm_State, x: float, y: float, w: float, h: float, color: Vector4) {
+imm_rect :: (g: *Game, x: float, y: float, w: float, h: float, color: Vector4) {
     x_end := x + w;
     y_end := y + h;
     p1 := Vector3.{x, y, 0};
@@ -110,19 +111,20 @@ imm_rect :: (s: *Imm_State, x: float, y: float, w: float, h: float, color: Vecto
     p3 := Vector3.{x_end, y_end, 0};
     p4 := Vector3.{x, y_end, 0};
 
-    imm_vertex(s, p1, color);
-    imm_vertex(s, p2, color);
-    imm_vertex(s, p3, color);
-    imm_vertex(s, p1, color);
-    imm_vertex(s, p3, color);
-    imm_vertex(s, p4, color);
+    imm_vertex(g, p1, color);
+    imm_vertex(g, p2, color);
+    imm_vertex(g, p3, color);
+    imm_vertex(g, p1, color);
+    imm_vertex(g, p3, color);
+    imm_vertex(g, p4, color);
 }
 
 
 
 
 #scope_file
-upload_vertices_to_gpu :: (using s: *Imm_State) {
+upload_vertices_to_gpu :: (using g: *Game) {
+    using g.imm_state;
     glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Vertex) * vertex_count, vertices.data);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
     vertex_count = 0;

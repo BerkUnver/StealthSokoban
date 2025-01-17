@@ -19,9 +19,11 @@ windows: struct {
     stdout: HANDLE;
 }
 
-using gl_procs: GL_Procedures;
-using gl_extensions: GL_Extensions;
-imm_state: Imm_State;
+Game :: struct {
+    using gl_procs: GL_Procedures;
+    using gl_extensions: GL_Extensions;
+    imm_state: Imm_State;
+}
 
 main :: () {
     windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -158,11 +160,11 @@ main :: () {
     dummy_context := wglCreateContext(dummy_dc);
     assert(wglMakeCurrent(dummy_dc, dummy_context) != 0);
 
-    wglCreateContextAttribsARB: (dc: HDC, hShareContext: HGLRC, attribList: *s32) -> HGLRC #c_call = xx wglGetProcAddress("wglCreateContextAttribsARB");
-    assert(wglCreateContextAttribsARB != null);
+    _wglCreateContextAttribsARB: (dc: HDC, hShareContext: HGLRC, attribList: *s32) -> HGLRC #c_call = xx wglGetProcAddress("wglCreateContextAttribsARB");
+    assert(_wglCreateContextAttribsARB != null);
 
-    wglChoosePixelFormatARB: (dc: HDC, piAttribIList: *s32, pfAttribFList: *float, nMaxFormats: u32, piFormats: *s32, nNumFormats: *u32) -> BOOL #c_call = wglGetProcAddress("wglChoosePixelFormatARB");
-    assert(wglChoosePixelFormatARB != null);
+    _wglChoosePixelFormatARB: (dc: HDC, piAttribIList: *s32, pfAttribFList: *float, nMaxFormats: u32, piFormats: *s32, nNumFormats: *u32) -> BOOL #c_call = wglGetProcAddress("wglChoosePixelFormatARB");
+    assert(_wglChoosePixelFormatARB != null);
 
     // wglGetPixelFormatAttribivARB: (dc: HDC, iPixelFormat: s32, iLayerPlane: s32, nAttributes: u32, piAttributes: *s32, piValues: *s32) -> BOOL #c_call = xx wglGetProcAddress("wglGetPixelFormatAttribivARB");
     // assert(wglGetPixelFormatAttribivARB != null);
@@ -205,7 +207,7 @@ main :: () {
     
     // We're done with the dummy window. Now, free everything associated with it.
     dc := GetDC(window);
-    assert(wglChoosePixelFormatARB(
+    assert(_wglChoosePixelFormatARB(
         dc, 
         piAttribIList = pixel_format_attributes.data,
         // pixel format attributes that are integers
@@ -238,20 +240,22 @@ main :: () {
         0, 0
     ];
 
-    opengl_context := wglCreateContextAttribsARB(dc, null, attributes.data);
+    opengl_context := _wglCreateContextAttribsARB(dc, null, attributes.data);
     assert(wglMakeCurrent(dc, opengl_context) != 0);
 
 
     //
     // Initialize the game state
     //
+
+    using game: Game;
     
     for * type_info(GL_Procedures).members {
         assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
         
         // Works whether or not address is null.
         address := wglGetProcAddress(it.name.data);
-        dest := cast(*u8, *gl_procs) + it.offset_in_bytes;
+        dest := cast(*u8, *game.gl_procs) + it.offset_in_bytes;
         cast(**void, dest).* = address;
     }
     
@@ -270,11 +274,11 @@ main :: () {
             }
         }
 
-        dest := cast(*u8, *gl_extensions) + member.offset_in_bytes;
+        dest := cast(*u8, *game.gl_extensions) + member.offset_in_bytes;
         cast(*bool, dest).* = has_extension;
     }
 
-    imm_state = imm_init();
+    imm_init(*game);
    
 
     //
@@ -379,9 +383,9 @@ main :: () {
         }
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        imm_begin(*imm_state);
-        imm_rect(*imm_state, -0.5, -0.5, 1, 1, .{1, 1, 1, 1});
-        imm_end(*imm_state);
+        imm_begin(*game);
+        imm_rect(*game, -0.5, -0.5, 1, 1, .{1, 1, 1, 1});
+        imm_end(*game);
         SwapBuffers(dc);
     }
 }
