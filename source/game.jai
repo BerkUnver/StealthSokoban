@@ -2,6 +2,7 @@ Math :: #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
 tan :: Math.tan;
 sin :: Math.sin;
 cos :: Math.cos;
+sqrt :: Math.sqrt;
 
 #load "gl.jai";
 #load "shared.jai";
@@ -91,7 +92,15 @@ game_update : Game_Update : (game_memory: *void) {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     imm_begin(game);
-    imm_cuboid(game, .{-1, -1, -1}, .{1, 1, 1});
+
+    cubes := bool.[
+        false, true, true, false,
+        true, false, false, true,
+        false, true, true, false,
+        true, false, false, true
+    ];
+
+    imm_cube_map(game, cubes, 4, 4, .{-1.5, 0, -1.5});
     imm_end(game);
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);

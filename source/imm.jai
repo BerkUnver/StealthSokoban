@@ -1,6 +1,7 @@
 Vertex :: struct {
     position: Vector3;
     color: Vector4;
+    normal: Vector3; // :GetCubeLightingWorking
 }
 
 Imm_State :: struct {
@@ -28,6 +29,7 @@ imm_init :: (using g: *Game) {
 
     glBindVertexArray(vao);
     
+    // Consider getting this information from the Vertex struct with metaprogramming.
     POSITION_UNIFORM_LOC :: 0;
     glVertexAttribPointer(POSITION_UNIFORM_LOC, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).position);
     glEnableVertexAttribArray(POSITION_UNIFORM_LOC); 
@@ -35,7 +37,10 @@ imm_init :: (using g: *Game) {
     COLOR_UNIFORM_LOC :: 1;
     glVertexAttribPointer(COLOR_UNIFORM_LOC, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).color);
     glEnableVertexAttribArray(COLOR_UNIFORM_LOC);
-
+    
+    NORMAL_UNIFORM_LOC :: 2;
+    glVertexAttribPointer(NORMAL_UNIFORM_LOC, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).normal);
+    glEnableVertexAttribArray(NORMAL_UNIFORM_LOC);
 
 
 
@@ -52,7 +57,15 @@ imm_init :: (using g: *Game) {
 
         success: GLint;
         glGetShaderiv(shader, GL_COMPILE_STATUS, *success);
-        if !success return 0;
+        if !success {
+            count: GLsizei;
+            buffer: [1024] u8 = ---;
+            glGetShaderInfoLog(shader, 1024, *count, *buffer[0]);
+
+            str := string.{data=*buffer[0], count=count};
+            print(str);
+
+        }
         return shader;
     }
 
@@ -88,7 +101,12 @@ imm_init :: (using g: *Game) {
 
     matrix := matmul(camera_projection, matmul(rotate_camera_down, world_to_camera));
     
-    glUniformMatrix4fv(0, 1, GL_TRUE, *matrix.x_x);
+    projection_loc := glGetUniformLocation(program, "projection");
+    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *matrix.x_x);
+
+    lighting_direction := normalize(Vector3.{1, -1, 1});
+    lighting_direction_loc := glGetUniformLocation(program, "lighting_direction");
+    glUniform3fv(lighting_direction_loc, 1, *lighting_direction.x);
 }
 
 imm_begin :: (g: *Game) {
@@ -104,13 +122,14 @@ imm_end :: (g: *Game) {
     submitting_vertices = false;    
 }
 
-imm_vertex :: (g: *Game, position: Vector3, color: Vector4) {
+imm_vertex :: (g: *Game, position: Vector3, color: Vector4, normal: Vector3) {
     using g.imm_state;
     assert(submitting_vertices);
     if vertex_count == vertices.count upload_vertices_to_gpu(g);
     vertices[vertex_count] = .{
         position=position,
-        color=color
+        color=color,
+        normal=normal
     };
     vertex_count += 1;
 }
@@ -123,12 +142,12 @@ imm_rect :: (g: *Game, x: float, y: float, w: float, h: float, color: Vector4) {
     p3 := Vector3.{x_end, y_end, 0};
     p4 := Vector3.{x, y_end, 0};
 
-    imm_vertex(g, p1, color);
-    imm_vertex(g, p2, color);
-    imm_vertex(g, p3, color);
-    imm_vertex(g, p1, color);
-    imm_vertex(g, p3, color);
-    imm_vertex(g, p4, color);
+    imm_vertex(g, p1, color, .{0, 0, -1});
+    imm_vertex(g, p2, color, .{0, 0, -1});
+    imm_vertex(g, p3, color, .{0, 0, -1});
+    imm_vertex(g, p1, color, .{0, 0, -1});
+    imm_vertex(g, p3, color, .{0, 0, -1});
+    imm_vertex(g, p4, color, .{0, 0, -1});
 }
 
 imm_cuboid :: (g: *Game, b: Vector3, e: Vector3) {
@@ -136,56 +155,83 @@ imm_cuboid :: (g: *Game, b: Vector3, e: Vector3) {
     // e: end, the top corner of the cuboid
 
     // Front face
-    imm_vertex(g, .{b.x, b.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{e.x, b.y, b.z}, .{0, 1, 0, 1});
-    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{b.x, b.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{1, 0, 0, 1}, .{0, 0, -1});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{0, 1, 0, 1}, .{0, 0, -1});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 0, 1, 1}, .{0, 0, -1});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{1, 0, 0, 1}, .{0, 0, -1});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 0, 1, 1}, .{0, 0, -1});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 1, 0, 1}, .{0, 0, -1});
     
     // Right face
-    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{e.x, b.y, e.z}, .{0, 1, 0, 1});
-    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1}, .{1, 0, 0});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{0, 1, 0, 1}, .{1, 0, 0});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 0, 0});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1}, .{1, 0, 0});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 0, 0});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 1, 0, 1}, .{1, 0, 0});
     
     // Top face
-    imm_vertex(g, .{b.x, e.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 1, 0, 1});
-    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{b.x, e.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{1, 0, 0, 1}, .{0, 1, 0});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 1, 0, 1}, .{0, 1, 0});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1}, .{0, 1, 0});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{1, 0, 0, 1}, .{0, 1, 0});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1}, .{0, 1, 0});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 1, 0, 1}, .{0, 1, 0});
     
     // Bottom face
-    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{b.x, b.y, b.z}, .{0, 1, 0, 1});
-    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{e.x, b.y, e.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1}, .{0, -1, 0});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{0, 1, 0, 1}, .{0, -1, 0});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 0, 1, 1}, .{0, -1, 0});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1}, .{0, -1, 0});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 0, 1, 1}, .{0, -1, 0});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{0, 1, 0, 1}, .{0, -1, 0});
 
     // Left face
-    imm_vertex(g, .{b.x, b.y, e.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{b.x, b.y, b.z}, .{0, 1, 0, 1});
-    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{b.x, b.y, e.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{1, 0, 0, 1}, .{-1, 0, 0});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{0, 1, 0, 1}, .{-1, 0, 0});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 0, 1, 1}, .{-1, 0, 0});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{1, 0, 0, 1}, .{-1, 0, 0});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 0, 1, 1}, .{-1, 0, 0});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 1, 0, 1}, .{-1, 0, 0});
 
     // Back face
-    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 1, 0, 1});
-    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1});
-    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1});
-    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0, 1});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 1, 0, 1}, .{0, 0, 1});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{0, 0, 1});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0, 1});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{0, 0, 1});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 1, 0, 1}, .{0, 0, 1});
 
 }
 
 
+// @TODO: Replace this with dynamically generating a mesh for the cubemap
+// cubes are x-major.
+imm_cube_map :: (g: *Game, cubes: [] bool, x_count: u64, y_count: u64, corner: Vector3) {
+    assert(cubes.count == cast(s64, x_count * y_count));
+
+    x_begin_map := corner.x - 0.5;
+    
+    y_begin := corner.y - 0.5;
+    y_end := corner.y + 0.5;
+
+    z_begin_map := corner.z - 0.5;
+    
+
+    // The "y axis" of the cubes is equivalent to the z-axis of the coordinate system
+    for y_index: 0..y_count-1 {
+        offset := y_index * x_count;
+        z_begin := z_begin_map + cast(float, y_index);
+        z_end := z_begin + 1;
+        for x_index: 0..x_count-1 {
+            has_cube := cubes[offset + x_index];
+            if !has_cube continue;
+            x_begin := x_begin_map + cast(float, x_index);
+            x_end := x_begin + 1;
+            imm_cuboid(g, .{x_begin, y_begin, z_begin}, .{x_end, y_end, z_end});
+        }
+    }
+}
 
 
 #scope_file
@@ -201,13 +247,18 @@ VERTEX_SOURCE :: #string END
 #version 330 core
 layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec4 vertex_color;
+layout(location=2) in vec3 vertex_normal;
 
 uniform mat4 projection;
+uniform vec3 lighting_direction;
+
 out vec4 fragment_color;
+out vec3 fragment_normal;
 
 void main() {
-    gl_Position = projection * vec4(vertex_position.xyz, 1.0);
+    gl_Position = projection * vec4(vertex_position, 1.0);
     fragment_color = vertex_color;
+    fragment_normal = (projection * vec4(vertex_normal, 0)).xyz;
 }
 END
 
@@ -215,9 +266,21 @@ END
 FRAGMENT_SOURCE :: #string END
 #version 330 core
 in vec4 fragment_color;
+in vec3 fragment_normal;
+
+uniform mat4 projection;
+uniform vec3 lighting_direction;
+
 layout(location=0) out vec4 color;
 
 void main() {
-    color = fragment_color;
+    float lighting_intensity = dot(fragment_normal, lighting_direction);
+
+    if (lighting_intensity > 0) {
+        vec3 color_rgb = fragment_color.rgb + (vec3(1) - fragment_color.rgb) * lighting_intensity;
+        color = vec4(color_rgb, fragment_color.a);
+    } else {
+        color = fragment_color * (1.0 - lighting_intensity);
+    }
 }
 END

@@ -12,6 +12,15 @@ Vector4 :: struct {
     x, y, z, w: float;
 }
 
+normalize :: (v: Vector3) -> Vector3 {
+    length := sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    return .{v.x/length, v.y/length, v.y/length};
+}
+
+operator - :: (v: Vector3) -> Vector3 {
+    return .{-v.x, -v.y, -v.z};
+}
+
 
 Matrix4 :: struct {
     x_x, y_x, z_x, w_x,
