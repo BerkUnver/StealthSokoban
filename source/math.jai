@@ -1,3 +1,5 @@
+PI :: 3.141592653689793238;
+
 Vector2 :: struct {
     x, y: float;
 } 
@@ -59,4 +61,31 @@ frustum :: (l: float, b: float, n: float, r: float, t: float, f: float) -> Matri
 
 matrix4_translate :: (x: float, y: float, z: float) -> Matrix4 {
     return .{x_x=1, y_y=1, z_z=1, w_x=x, w_y=y, w_z=z, w_w=1};
+}
+
+
+// :Quaternion @TODO: Replace this with quaternion stuff
+matrix4_rotate_y :: (r: float) -> Matrix4 {
+    // Rotate about the y-axis
+    sin_r := sin(r);
+    cos_r := cos(r);
+    return .{
+        cos_r, 0, -sin_r, 0,
+        0,     1, 0,      0,
+        sin_r, 0, cos_r,  0,
+        0,     0, 0,      1
+    };
+}
+
+// :Quaternion
+matrix4_rotate_x :: (r: float) -> Matrix4 {
+    sin_r := sin(r);
+    cos_r := cos(r);
+
+    return .{
+        1, 0,      0,     0,
+        0, cos_r,  sin_r, 0,
+        0, -sin_r, cos_r, 0,
+        0, 0,      0,     1
+    };
 }

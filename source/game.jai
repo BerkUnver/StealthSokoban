@@ -1,3 +1,8 @@
+Math :: #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
+tan :: Math.tan;
+sin :: Math.sin;
+cos :: Math.cos;
+
 #load "gl.jai";
 #load "shared.jai";
 #load "imm.jai";
@@ -86,7 +91,7 @@ game_update : Game_Update : (game_memory: *void) {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     imm_begin(game);
-    imm_rect(game, -0.5, -0.5, 1, 1, .{1, 1, 1, 1});
+    imm_cuboid(game, .{-1, -1, -1}, .{1, 1, 1});
     imm_end(game);
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);

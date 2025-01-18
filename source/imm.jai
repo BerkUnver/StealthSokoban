@@ -74,7 +74,20 @@ imm_init :: (using g: *Game) {
     glDeleteShader(vertex);
     glUseProgram(program);
     
-    matrix := MATRIX4_IDENTITY;
+    
+    FOV :: PI / 3;
+    NEAR :: 0.1;
+
+    right := cast(float, NEAR * tan(FOV / 2));
+    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
+    
+
+    camera_projection := frustum(-right, -top, NEAR, right, top, 1000);
+    rotate_camera_down := matrix4_rotate_x(cast(float, PI/3));
+    world_to_camera := matrix4_translate(0, -8, 4);
+
+    matrix := matmul(camera_projection, matmul(rotate_camera_down, world_to_camera));
+    
     glUniformMatrix4fv(0, 1, GL_TRUE, *matrix.x_x);
 }
 
@@ -116,6 +129,60 @@ imm_rect :: (g: *Game, x: float, y: float, w: float, h: float, color: Vector4) {
     imm_vertex(g, p1, color);
     imm_vertex(g, p3, color);
     imm_vertex(g, p4, color);
+}
+
+imm_cuboid :: (g: *Game, b: Vector3, e: Vector3) {
+    // b: beginning, the bottom corner of the cuboid
+    // e: end, the top corner of the cuboid
+
+    // Front face
+    imm_vertex(g, .{b.x, b.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 1, 0, 1});
+    
+    // Right face
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 1, 0, 1});
+    
+    // Top face
+    imm_vertex(g, .{b.x, e.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{e.x, e.y, b.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 1, 0, 1});
+    
+    // Bottom face
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{e.x, b.y, b.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{0, 1, 0, 1});
+
+    // Left face
+    imm_vertex(g, .{b.x, b.y, e.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{b.x, b.y, b.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{b.x, e.y, b.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 1, 0, 1});
+
+    // Back face
+    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 1, 0, 1});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1});
+    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1});
+    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 1, 0, 1});
+
 }
 
 
