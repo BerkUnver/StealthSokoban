@@ -21,6 +21,13 @@ operator - :: (v: Vector3) -> Vector3 {
     return .{-v.x, -v.y, -v.z};
 }
 
+operator + :: (a: Vector3, b: Vector3) -> Vector3 {
+    return .{a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+operator - :: (a: Vector3, b: Vector3) -> Vector3 {
+    return .{a.x - b.x, a.y - b.y, a.z - b.z};
+}
 
 Matrix4 :: struct {
     x_x, y_x, z_x, w_x,

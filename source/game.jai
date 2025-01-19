@@ -15,6 +15,10 @@ Game :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
     imm_state: Imm_State;
+    
+    level_shader: GLuint;
+    level_bitmap: GLuint;
+    player_shader: GLuint;
 }
 
 
@@ -29,15 +33,15 @@ game_init : Game_Init : (
 ) {
     print = debug_print;
     assert(game_memory_size >= size_of(Game));
-    game := cast(*Game, game_memory);
-    using game;
+    g := cast(*Game, game_memory);
+    using g;
 
     for * type_info(GL_Procedures).members {
         assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
 
         // Works whether or not address is null.
         address := gl_extension_loader(it.name.data);
-        dest := cast(*u8, *game.gl_procs) + it.offset_in_bytes;
+        dest := cast(*u8, *g.gl_procs) + it.offset_in_bytes;
         cast(**void, dest).* = address;
     }
 
@@ -56,7 +60,7 @@ game_init : Game_Init : (
             }
         }
 
-        dest := cast(*u8, *game.gl_extensions) + member.offset_in_bytes;
+        dest := cast(*u8, *g.gl_extensions) + member.offset_in_bytes;
         cast(*bool, dest).* = has_extension;
     }
 
@@ -75,33 +79,105 @@ game_init : Game_Init : (
 
     // :GLDebugProcHotloadingHack
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, null);
-    imm_init(game);
+    imm_init(g);
+
+    level_shader = register_shader(g.gl_procs, LEVEL_SHADER);
+    assert(level_shader != 0);
+    player_shader = register_shader(g.gl_procs, PLAYER_SHADER);
+    assert(player_shader != 0);
+
+    FOV :: PI / 3;
+    NEAR :: 0.1;
+
+    right := cast(float, NEAR * tan(FOV / 2));
+    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
+
+    camera_projection := frustum(-right, -top, NEAR, right, top, 1000);
+    rotate_camera_down := matrix4_rotate_x(cast(float, PI/3));
+    world_to_camera := matrix4_translate(0, -8, 4);
+
+    matrix := matmul(camera_projection, matmul(rotate_camera_down, world_to_camera));
+   
+    // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
+    f := cast(u8, 255);
+    bitmap_data := u8.[ 
+        0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
+        0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0
+    ];
+    
+    glGenTextures(1, *level_bitmap);
+    assert(level_bitmap != 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, level_bitmap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    
+    {
+        glUseProgram(level_shader);
+        projection_loc := glGetUniformLocation(level_shader, "projection");
+        glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *matrix.x_x);
+        bitmap_loc := glGetUniformLocation(level_shader, "bitmap");
+        glUniform1i(bitmap_loc, 0);
+    }
+    
+    {
+        glUseProgram(player_shader);
+        projection_loc := glGetUniformLocation(player_shader, "projection");
+        glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *matrix.x_x);
+    }
+
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
+
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
 
 #program_export "game_update"
 game_update : Game_Update : (game_memory: *void) {
-    game := cast(*Game, game_memory);
-    using game;
+    g := cast(*Game, game_memory);
+    using g;
 
     // :GLDebugProcHotloadingHack
     // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, null);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    imm_begin(game);
 
-    cubes := bool.[
+    level := bool.[
         false, true, true, false,
         true, false, false, true,
         false, true, true, false,
         true, false, false, true
     ];
+    
+    level_offset := Vector3.{-1.5, 0, -1.5};
 
-    imm_cube_map(game, cubes, 4, 4, .{-1.5, 0, -1.5});
-    imm_end(game);
+    imm_set_shader(g, level_shader);
+    imm_set_bitmap(g, level_bitmap);
+    imm_cube_map(g, level, 4, 4, level_offset, .{1, 143.0/255.0, 0, 1});
+    imm_flush(g);
+
+    player_begin := level_offset + Vector3.{1, 0, 1} - Vector3.{0.3, 0.3, 0.3};
+    player_end   := level_offset + Vector3.{1, 0, 1} + Vector3.{0.3, 0.3, 0.3};
+
+    imm_set_shader(g, player_shader);
+    imm_cuboid(g, player_begin, player_end, .{1, 1, 1, 1});
+    imm_flush(g);
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
@@ -172,3 +248,56 @@ gl_debug_callback :: (
 }
 
 
+
+
+LEVEL_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=1) in vec4 vertex_color;
+layout(location=2) in vec2 vertex_uv;
+#else
+layout(location=0) out vec4 color;
+#endif
+
+uniform mat4 projection;
+uniform sampler2D bitmap;
+
+OUTIN vec4 fragment_color;
+OUTIN vec2 fragment_uv;
+
+#ifdef VERTEX_SHADER
+void main() {
+    gl_Position = projection * vec4(vertex_position, 1.0);
+    fragment_color = vertex_color;
+    fragment_uv = vertex_uv;
+}
+#else
+void main() {
+    color = fragment_color * texture(bitmap, fragment_uv);
+}
+#endif
+END
+
+PLAYER_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=1) in vec4 vertex_color;
+#else
+layout(location=0) out vec4 color;
+#endif
+
+uniform mat4 projection;
+
+OUTIN vec4 fragment_color;
+
+#ifdef VERTEX_SHADER
+void main() {
+    gl_Position = projection * vec4(vertex_position, 1.0);
+    fragment_color = vertex_color;
+}
+#else
+void main() {
+    color = fragment_color;
+}
+#endif
+END
