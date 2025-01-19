@@ -2431,6 +2431,7 @@ RemoveDirectoryA :: (lpPathName: *u8) -> BOOL #foreign kernel32;
 RemoveDirectoryW :: (lpPathName: *u16) -> BOOL #foreign kernel32;
 //RemoveDirectoryTransacted
 
+SetCurrentDirectoryA :: (name: *u8) -> BOOL #foreign kernel32;
 SetCurrentDirectoryW :: (name: *u16) -> BOOL #foreign kernel32;
 
 
