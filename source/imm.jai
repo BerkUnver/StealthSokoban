@@ -47,42 +47,103 @@ imm_init :: (using g: *Game) {
     // Initialize shaders
     //
 
-    register_shader :: (using procs: GL_Procedures, type: GLenum, text: string) -> GLuint {
-        shader := glCreateShader(type);
-        text_count := cast(GLint)text.count;
-        glShaderSource(shader, 1, *text.data, *text_count);
-        glCompileShader(shader);
+    register_program :: (using procs: GL_Procedures, text: string) -> GLuint {
+        LOG_SIZE :: 1024;
 
-        success: GLint;
-        glGetShaderiv(shader, GL_COMPILE_STATUS, *success);
-        if !success {
+        vertex := glCreateShader(GL_VERTEX_SHADER);
+        defer glDeleteShader(vertex);
+        
+        VERTEX_L0 :: "#version 330 core\n";
+        VERTEX_L1 :: "#define VERTEX_SHADER\n";
+        VERTEX_L2 :: "#define OUTIN out\n";
+
+        vertex_lines := *u8.[
+            VERTEX_L0,
+            VERTEX_L1,
+            VERTEX_L2,
+            text.data
+        ];
+
+        vertex_lengths :=  GLint.[
+            xx VERTEX_L0.count,
+            xx VERTEX_L1.count,
+            xx VERTEX_L2.count,
+            xx text.count
+        ];
+
+        glShaderSource(vertex, xx vertex_lines.count, vertex_lines.data, vertex_lengths.data);
+        glCompileShader(vertex);
+        
+        vertex_success: GLint;
+        glGetShaderiv(vertex, GL_COMPILE_STATUS, *vertex_success);
+        if !vertex_success {
             count: GLsizei;
-            buffer: [1024] u8 = ---;
-            glGetShaderInfoLog(shader, 1024, *count, *buffer[0]);
+            buffer: [LOG_SIZE] u8 = ---;
+            glGetShaderInfoLog(vertex, LOG_SIZE, *count, *buffer[0]);
 
             str := string.{data=*buffer[0], count=count};
+            print("Vertex shader compilation error:\n");
             print(str);
-
+            return 0;
         }
-        return shader;
+        
+        fragment := glCreateShader(GL_FRAGMENT_SHADER);
+        defer glDeleteShader(fragment);
+        
+        FRAGMENT_L0 :: "#version 330 core\n";
+        FRAGMENT_L1 :: "#define OUTIN in\n";
+
+        fragment_lines := *u8.[
+            FRAGMENT_L0,
+            FRAGMENT_L1,
+            text.data
+        ];
+
+        fragment_lengths := GLint.[
+            xx FRAGMENT_L0.count,
+            xx FRAGMENT_L1.count,
+            xx text.count
+        ];
+
+        glShaderSource(fragment, xx fragment_lines.count, fragment_lines.data, fragment_lengths.data);
+        glCompileShader(fragment);
+
+        fragment_success: GLint;
+        glGetShaderiv(fragment, GL_COMPILE_STATUS, *fragment_success);
+        if !fragment_success {
+            count: GLsizei;
+            buffer: [LOG_SIZE] u8 = ---;
+            glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
+
+            str := string.{data=*buffer[0], count=count};
+            print("Fragment shader compilation error:\n");
+            print(str);
+            return 0;
+        }
+
+        program := glCreateProgram();
+        glAttachShader(program, vertex);
+        glAttachShader(program, fragment);
+        glLinkProgram(program);
+        
+        link_success: GLint;
+        glGetProgramiv(program, GL_LINK_STATUS, *link_success);
+        if !link_success {
+            count: GLsizei;
+            buffer: [LOG_SIZE] u8 = ---;
+            glGetProgramInfoLog(program, LOG_SIZE, *count, *buffer[0]);
+
+            str := string.{data=*buffer[0], count=count};
+            print("Shader linking error:\n");
+            print(str);
+            return 0;
+        }
+
+        return program;
     }
 
-    vertex   := register_shader(g.gl_procs, GL_VERTEX_SHADER,   VERTEX_SOURCE);
-    fragment := register_shader(g.gl_procs, GL_FRAGMENT_SHADER, FRAGMENT_SOURCE);
-    assert(vertex != 0);
-    assert(fragment != 0);
-
-    program := glCreateProgram();
-    glAttachShader(program, vertex);
-    glAttachShader(program, fragment);
-    glLinkProgram(program);
-
-    success: GLint;
-    glGetProgramiv(program, GL_LINK_STATUS, *success);
-    assert(success != 0);
-
-    glDeleteShader(fragment);
-    glDeleteShader(vertex);
+    program := register_program(g.gl_procs, SHADER_SOURCE);
+    assert(program != 0);
     glUseProgram(program);
     
     
@@ -268,55 +329,30 @@ upload_vertices_to_gpu :: (using g: *Game) {
     vertex_count = 0;
 }
 
-VERTEX_SOURCE :: #string END
-#version 330 core
+SHADER_SOURCE :: #string END
+#ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec4 vertex_color;
 layout(location=2) in vec2 vertex_uv;
+#else
+layout(location=0) out vec4 color;
+#endif
 
 uniform mat4 projection;
 uniform sampler2D bitmap;
 
-out vec4 fragment_color;
-out vec2 fragment_uv;
+OUTIN vec4 fragment_color;
+OUTIN vec2 fragment_uv;
 
+#ifdef VERTEX_SHADER
 void main() {
     gl_Position = projection * vec4(vertex_position, 1.0);
     fragment_color = vertex_color;
     fragment_uv = vertex_uv;
 }
-END
-
-
-FRAGMENT_SOURCE :: #string END
-#version 330 core
-in vec4 fragment_color;
-in vec2 fragment_uv;
-
-uniform mat4 projection;
-uniform sampler2D bitmap;
-
-layout(location=0) out vec4 color;
-
+#else
 void main() {
     color = fragment_color * texture(bitmap, fragment_uv);
 }
-END
-
-
-// @TODO: Experiment with combining vertex and fragment shaders with #ifdefs.
-/*
-#version 330 core
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=1) in vec4 vertex_color;
-layout(location=2) in vec2 vertex_uv;
 #endif
-
-uniform mat4 projection;
-
-INOUT vec4 fragment_color;
-INOUT vec2 fragment_uv;
-
-void main()
-*/
+END
