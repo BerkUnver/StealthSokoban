@@ -20,8 +20,10 @@ Game :: struct {
     level_bitmap: GLuint;
     player_shader: GLuint;
     
+    walls: Fixed_Array(32, Wall);
+
     player_position: Vector3i;
-    collision: Collision;
+    // collision: Collision;
 }
 
 Collision :: struct {
@@ -35,6 +37,15 @@ Collision :: struct {
     // development period, but may make less sense later.
     // Consider coming back to this.
     // @TODO Implement a bit array for better cache coherency.
+}
+
+Wall :: struct {
+    position: Vector3i;
+    size: Vector3i;
+    filled: [] bool;
+    color: Vector4;
+    // @TODO Pregenerate the mesh for the wall and upload it to the GPU
+    // @TODO Make a bit array data structure for better cache coherency
 }
 
 is_voxel_occupied :: (col: Collision, position: Vector3i) -> bool {
@@ -176,27 +187,43 @@ game_init : Game_Init : (
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
     
-    collision = .{
+    T :: true;
+    F :: false;
+    
+    wall_0 := append(*walls);
+    wall_0.* = .{
         position = .{-2, -1, -2},
-        size = .{4, 2, 4},
-        level = bool.[
-            true,  true,  true,  true,
-            true,  true,  true,  true,
-            true,  true,  true,  true,
-            true,  true,  true,  true,
-            
-            true,  true,  true,  true,
-            true,  true,  true,  true,
-            true,  true,  false, false,
-            true,  true,  false, false
-        ]
+        size = .{4, 1, 4},
+        filled = .[
+            T, T, T, T,
+            T, T, T, T,
+            T, T, T, T,
+            T, T, T, T
+        ],
+        color = .{1, 0, 0, 1}
     };
     
+    wall_1 := append(*walls);
+    wall_1.* = .{
+        position = .{-2, 0, -2},
+        size = .{4, 1, 4},
+        filled = .[
+            T, F, F, F,
+            T, T, F, F,
+            T, T, T, F,
+            T, T, T, T
+        ],
+        color = .{1, 143.0/255.0, 0, 1}
+    };
+
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
 
 #program_export "game_update"
-game_update : Game_Update : (game_memory: *void, input_events: [] Input_Event) {
+game_update : Game_Update : (
+    game_memory: *void, 
+    input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
+) {
     g := cast(*Game, game_memory);
     using g;
 
@@ -214,9 +241,9 @@ game_update : Game_Update : (game_memory: *void, input_events: [] Input_Event) {
             case .RIGHT; new_player_position.x -= 1;
         }
 
-        if !is_voxel_occupied(g.collision, new_player_position) {
+        // if !is_voxel_occupied(g.collision, new_player_position) {
             player_position = new_player_position;
-        }
+        // }
     }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -225,31 +252,34 @@ game_update : Game_Update : (game_memory: *void, input_events: [] Input_Event) {
     imm_set_bitmap(g, level_bitmap);
 
     // Draw the collision information
-    y_chunk := collision.size.x * collision.size.z;
-    for y_index: 0..collision.size.y-1 {
-        y_offset := y_index * y_chunk;
+    for walls {
+        y_chunk := it.size.x * it.size.z;
+        for y_index: 0..it.size.y-1 {
+            y_offset := y_index * y_chunk;
 
-        y_begin := cast(float, collision.position.y + y_index);
-        y_end := y_begin + 1;
+            y_begin := cast(float, it.position.y + y_index);
+            y_end := y_begin + 1;
 
-        for z_index: 0..collision.size.z-1 {
-            z_offset := z_index * collision.size.x;
-            offset := y_offset + z_offset;
+            for z_index: 0..it.size.z-1 {
+                z_offset := z_index * it.size.x;
+                offset := y_offset + z_offset;
 
-            z_begin := cast(float, collision.position.z + z_index);
-            z_end := z_begin + 1;
+                z_begin := cast(float, it.position.z + z_index);
+                z_end := z_begin + 1;
 
-            for x_index: 0..collision.size.x-1 {
-                has_cube := collision.level[offset + x_index];
-                if !has_cube continue;
+                for x_index: 0..it.size.x-1 {
+                    has_cube := it.filled[offset + x_index];
+                    if !has_cube continue;
+                    
+                    x_begin := cast(float, it.position.x + x_index);
+                    x_end := x_begin + 1;
 
-                x_begin := cast(float, collision.position.x + x_index);
-                x_end := x_begin + 1;
-
-                imm_cuboid(g, .{x_begin, y_begin, z_begin}, .{x_end, y_end, z_end}, .{1, 143.0/255.0, 0, 1});
+                    imm_cuboid(g, .{x_begin, y_begin, z_begin}, .{x_end, y_end, z_end}, it.color);
+                }
             }
         }
     }
+
 
     imm_flush(g);
     

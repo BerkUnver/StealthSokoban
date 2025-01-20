@@ -15,9 +15,10 @@ Game_Init :: #type (
     debug_print: (string)
 );
 
+INPUT_EVENT_COUNT :: 64;
 Game_Update :: #type (
     game_memory: *void,
-    input_events: [] Input_Event
+    input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
 );
 
 Input_Event :: struct {
@@ -31,6 +32,38 @@ Input :: enum {
     LEFT;
     DOWN;
     RIGHT;
+}
+
+Fixed_Array :: struct (n: s64, $T: Type) {
+    count: s64;
+    data: [n] T;
+}
+
+append :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
+    if count == N return false;
+    data[count] = item;
+    count += 1;
+    return true;
+}
+
+append :: (using array: *Fixed_Array($N, $T)) -> *T {
+    if count == N return null;
+    ptr := *data[count];
+    count += 1;
+    return ptr;
+}
+
+for_expansion :: (array: Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
+    #assert(!(flags & .REVERSE));
+    for `it_index: 0..array.count-1 {
+        #if flags & .POINTER {
+            `it := *array.data[it_index];
+        } else {
+            `it := array.data[it_index];
+        }
+
+        #insert body;
+    }
 }
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
