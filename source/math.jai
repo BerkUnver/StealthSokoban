@@ -8,6 +8,10 @@ Vector3 :: struct {
     x, y, z: float;
 }
 
+Vector3i :: struct {
+    x, y, z: s32;
+}
+
 Vector4 :: struct {
     x, y, z, w: float;
 }
@@ -27,6 +31,18 @@ operator + :: (a: Vector3, b: Vector3) -> Vector3 {
 
 operator - :: (a: Vector3, b: Vector3) -> Vector3 {
     return .{a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+operator + :: (a: Vector3i, b: Vector3i) -> Vector3i {
+    return .{a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+operator - :: (a: Vector3i, b: Vector3i) -> Vector3i {
+    return .{a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+to_vector3 :: (v: Vector3i) -> Vector3 {
+    return .{xx v.x, xx v.y, xx v.z};
 }
 
 Matrix4 :: struct {

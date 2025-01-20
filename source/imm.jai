@@ -246,15 +246,15 @@ imm_cuboid :: (g: *Game, b: Vector3, e: Vector3, color: Vector4) {
 
 // @TODO: Replace this with dynamically generating a mesh for the cubemap
 // cubes are x-major.
-imm_cube_map :: (g: *Game, cubes: [] bool, x_count: u64, y_count: u64, corner: Vector3, color: Vector4) {
+imm_cube_map :: (g: *Game, cubes: [] bool, x_count: u32, y_count: u32, corner: Vector3, color: Vector4) {
     assert(cubes.count == cast(s64, x_count * y_count));
 
-    x_begin_map := corner.x - 0.5;
+    x_begin_map := corner.x;
     
-    y_begin := corner.y - 0.5;
-    y_end := corner.y + 0.5;
+    y_begin := corner.y;
+    y_end := corner.y + 1;
 
-    z_begin_map := corner.z - 0.5;
+    z_begin_map := corner.z;
     
 
     // The "y axis" of the cubes is equivalent to the z-axis of the coordinate system

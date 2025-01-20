@@ -19,10 +19,39 @@ Game :: struct {
     level_shader: GLuint;
     level_bitmap: GLuint;
     player_shader: GLuint;
-
-    player_x: s32;
-    player_z: s32;
+    
+    player_position: Vector3i;
+    collision: Collision;
 }
+
+Collision :: struct {
+    position: Vector3i;
+    size: Vector3i;
+
+    level: [] bool;
+    // @TODO This is stored x-major, then z, then y.
+    // This makes sense from the perspective of wanting to be 
+    // able to type levels directly into code for this initial
+    // development period, but may make less sense later.
+    // Consider coming back to this.
+    // @TODO Implement a bit array for better cache coherency.
+}
+
+is_voxel_occupied :: (col: Collision, position: Vector3i) -> bool {
+    local_position := position - col.position;
+    if local_position.x < 0 || col.size.x <= local_position.x
+    || local_position.y < 0 || col.size.y <= local_position.y
+    || local_position.z < 0 || col.size.z <= local_position.z {
+        return false;
+    }
+    
+    coord := local_position.x + 
+             local_position.z * col.size.x +
+             local_position.y * col.size.z * col.size.x;
+
+    return col.level[coord];
+}
+
 
 
 print: (string); // :Hotloading MAKE THIS NOT GLOBAL SO IT CAN TANK HOT RELOADS!
@@ -146,7 +175,23 @@ game_init : Game_Init : (
 
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
-
+    
+    collision = .{
+        position = .{-2, -1, -2},
+        size = .{4, 2, 4},
+        level = bool.[
+            true,  true,  true,  true,
+            true,  true,  true,  true,
+            true,  true,  true,  true,
+            true,  true,  true,  true,
+            
+            true,  true,  true,  true,
+            true,  true,  true,  true,
+            true,  true,  false, false,
+            true,  true,  false, false
+        ]
+    };
+    
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
 
@@ -161,32 +206,56 @@ game_update : Game_Update : (game_memory: *void, input_events: [] Input_Event) {
     
     for input_events {
         if !it.down continue;
+        new_player_position := player_position;
         if it.input == {
-            case .UP;    player_z += 1;
-            case .LEFT;  player_x += 1;
-            case .DOWN;  player_z -= 1;
-            case .RIGHT; player_x -= 1;
+            case .UP;    new_player_position.z += 1;
+            case .LEFT;  new_player_position.x += 1;
+            case .DOWN;  new_player_position.z -= 1;
+            case .RIGHT; new_player_position.x -= 1;
+        }
+
+        if !is_voxel_occupied(g.collision, new_player_position) {
+            player_position = new_player_position;
         }
     }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    level := bool.[
-        false, true, true, false,
-        true, false, false, true,
-        false, true, true, false,
-        true, false, false, true
-    ];
     
-    level_offset := Vector3.{-1.5, 0, -1.5};
-
     imm_set_shader(g, level_shader);
     imm_set_bitmap(g, level_bitmap);
-    imm_cube_map(g, level, 4, 4, level_offset, .{1, 143.0/255.0, 0, 1});
-    imm_flush(g);
 
-    player_begin := level_offset + Vector3.{xx player_x, 0, xx player_z} - Vector3.{0.3, 0.3, 0.3};
-    player_end   := level_offset + Vector3.{xx player_x, 0, xx player_z} + Vector3.{0.3, 0.3, 0.3};
+    // Draw the collision information
+    y_chunk := collision.size.x * collision.size.z;
+    for y_index: 0..collision.size.y-1 {
+        y_offset := y_index * y_chunk;
+
+        y_begin := cast(float, collision.position.y + y_index);
+        y_end := y_begin + 1;
+
+        for z_index: 0..collision.size.z-1 {
+            z_offset := z_index * collision.size.x;
+            offset := y_offset + z_offset;
+
+            z_begin := cast(float, collision.position.z + z_index);
+            z_end := z_begin + 1;
+
+            for x_index: 0..collision.size.x-1 {
+                has_cube := collision.level[offset + x_index];
+                if !has_cube continue;
+
+                x_begin := cast(float, collision.position.x + x_index);
+                x_end := x_begin + 1;
+
+                imm_cuboid(g, .{x_begin, y_begin, z_begin}, .{x_end, y_end, z_end}, .{1, 143.0/255.0, 0, 1});
+            }
+        }
+    }
+
+    imm_flush(g);
+    
+    player_corner := to_vector3(player_position);
+    player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
+    player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
 
     imm_set_shader(g, player_shader);
     imm_cuboid(g, player_begin, player_end, .{1, 1, 1, 1});
