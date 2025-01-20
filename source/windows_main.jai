@@ -10,7 +10,10 @@
 windows: struct {
     stdout: HANDLE;
     game_dll: HMODULE;
+    input_events: [64] Input_Event;
+    input_event_count: u32;
 }
+
 
 main :: () {
     windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -24,7 +27,50 @@ main :: () {
         cbSize = size_of(WNDCLASSEXA),
         style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC,
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
+
+            translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Input #no_context {
+                if keycode == #char "W" || keycode == VK_UP    return true, .UP;
+                if keycode == #char "D" || keycode == VK_LEFT  return true, .LEFT;
+                if keycode == #char "S" || keycode == VK_DOWN  return true, .DOWN;
+                if keycode == #char "A" || keycode == VK_RIGHT return true, .RIGHT;
+
+                return false, 0;
+            }
+
+            REPEAT_FLAG :: 0x40000000;
+            // This flag is 1 if the key was down before the message was sent,
+            // and 0 if it was up before the message was sent. Use this to filter
+            // out key repeats.
+
+            using windows;
             if message == {
+                // @Investigate: When is the lpfnWndProc called directly?
+                // Can it be called while it is executing? Is this a thread-safety problem,
+                // if it is writing to the input_event queue but then gets interrupted by 
+                // a direct call? The internet seems to say "no" but I'm not getting a
+                // definitive answer.
+
+                // The common consensus is that this proc only gets called nonqueued from 
+                // SendMessage if it's in the same thread or GetMessage / PeekMessage if it
+                // is not.
+                case WM_KEYDOWN;
+                    if (l_param & REPEAT_FLAG) == 0 && input_event_count < input_events.count {
+                        success, input := translate_keycode_to_game_input(w_param);
+                        if success {
+                            input_events[input_event_count] = .{input=input, down=true};
+                            input_event_count += 1;
+                        }
+                    }
+                    return 0;
+                case WM_KEYUP;
+                    if (l_param & REPEAT_FLAG) != 0 && input_event_count < input_events.count {
+                        success, input := translate_keycode_to_game_input(w_param);
+                        if success {
+                            input_events[input_event_count] = .{input=input, down=false};
+                            input_event_count += 1;
+                        }
+                    }
+                    return 0;
                 case WM_CLOSE;
                     PostQuitMessage(0);
                     return 0;
@@ -256,7 +302,9 @@ main :: () {
         }
 
         game_update := cast(Game_Update, GetProcAddress(windows.game_dll, "game_update"));
-        game_update(game_memory);
+        input_events: [] Input_Event = .{data=*windows.input_events[0], count=windows.input_event_count};
+        game_update(game_memory, input_events);
+        windows.input_event_count = 0;
 
         SwapBuffers(dc);
     }

@@ -15,7 +15,23 @@ Game_Init :: #type (
     debug_print: (string)
 );
 
-Game_Update :: #type (*void);
+Game_Update :: #type (
+    game_memory: *void,
+    input_events: [] Input_Event
+);
+
+Input_Event :: struct {
+    input: Input; // Do we want to pack the "down" into these bits?
+    down: bool; // Up or down?
+}
+
+Input :: enum {
+    // @TODO: If we add keyboard remapping, this are probably just going to be virtual keycodes that wrap the keycodes of the operating system.
+    UP;
+    LEFT;
+    DOWN;
+    RIGHT;
+}
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
     // if !message message = "We've detected an error occuring in the game. This is almost definitely our fault. To prevent corruption, the game will crash now.";

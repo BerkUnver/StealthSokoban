@@ -19,6 +19,9 @@ Game :: struct {
     level_shader: GLuint;
     level_bitmap: GLuint;
     player_shader: GLuint;
+
+    player_x: s32;
+    player_z: s32;
 }
 
 
@@ -148,13 +151,23 @@ game_init : Game_Init : (
 }
 
 #program_export "game_update"
-game_update : Game_Update : (game_memory: *void) {
+game_update : Game_Update : (game_memory: *void, input_events: [] Input_Event) {
     g := cast(*Game, game_memory);
     using g;
 
     // :GLDebugProcHotloadingHack
     // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, null);
+    
+    for input_events {
+        if !it.down continue;
+        if it.input == {
+            case .UP;    player_z += 1;
+            case .LEFT;  player_x += 1;
+            case .DOWN;  player_z -= 1;
+            case .RIGHT; player_x -= 1;
+        }
+    }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -172,8 +185,8 @@ game_update : Game_Update : (game_memory: *void) {
     imm_cube_map(g, level, 4, 4, level_offset, .{1, 143.0/255.0, 0, 1});
     imm_flush(g);
 
-    player_begin := level_offset + Vector3.{1, 0, 1} - Vector3.{0.3, 0.3, 0.3};
-    player_end   := level_offset + Vector3.{1, 0, 1} + Vector3.{0.3, 0.3, 0.3};
+    player_begin := level_offset + Vector3.{xx player_x, 0, xx player_z} - Vector3.{0.3, 0.3, 0.3};
+    player_end   := level_offset + Vector3.{xx player_x, 0, xx player_z} + Vector3.{0.3, 0.3, 0.3};
 
     imm_set_shader(g, player_shader);
     imm_cuboid(g, player_begin, player_end, .{1, 1, 1, 1});

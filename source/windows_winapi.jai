@@ -477,9 +477,6 @@ VK_PACKET         :: 0xE7;
 
 
 
-
-
-
 // Window API.
 
 // Messages:
