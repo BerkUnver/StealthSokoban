@@ -118,12 +118,22 @@ imm_init :: (using g: *Game) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * vertices.count, null, GL_STREAM_DRAW); // Allocate the buffer
     glGenVertexArrays(1, *vao);
+    
+    glBindVertexArray(vao);
+    
+    // Apparently you need to enable all the attribs on the vao before you compile the shaders,
+    // or else OpenGL will recompile your shader when you enable them.
+
+    vertex_type_info := type_info(Vertex);
+    for 0..vertex_type_info.members.count-1 {
+        glEnableVertexAttribArray(xx it);
+    }
+
 }
 
 imm_flush :: (using g: *Game) {
     using g.imm_state;
     
-    glUseProgram(shader);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bitmap);
@@ -149,6 +159,8 @@ imm_flush :: (using g: *Game) {
         glVertexAttribPointer(xx uv_loc, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).uv);
         glEnableVertexAttribArray(xx uv_loc);
     }
+
+    glUseProgram(shader);
 
     glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Vertex) * vertex_count, vertices.data);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
