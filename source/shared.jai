@@ -53,6 +53,13 @@ append :: (using array: *Fixed_Array($N, $T)) -> *T {
     return ptr;
 }
 
+append_many :: (using array: *Fixed_Array($N, $T), how_many: s64) -> *T {
+    if count + how_many > N return null;
+    ptr := *data[count];
+    count += how_many;
+    return ptr;
+}
+
 for_expansion :: (array: Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
     #assert(!(flags & .REVERSE));
     for `it_index: 0..array.count-1 {

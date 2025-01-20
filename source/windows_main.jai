@@ -278,7 +278,8 @@ main :: () {
     
     SetCurrentDirectoryA("..\\assets\\");
 
-    GAME_MEMORY_SIZE :: 1 << 24;
+    GAME_MEMORY_SIZE :: 1 << 28; // @TODO: See how much of this memory is actually used!
+
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
     windows.game_dll = LoadLibraryA("stealth_sokoban_game.dll"); 
     assert(windows.game_dll != null);

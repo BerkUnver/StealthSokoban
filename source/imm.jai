@@ -14,7 +14,8 @@ Imm_State :: struct {
 }
 
 
-register_shader :: (using gl_procs: GL_Procedures, text: string) -> GLuint {
+register_shader :: (using g: Game, text: string) -> GLuint {
+
     LOG_SIZE :: 1024;
 
     vertex := glCreateShader(GL_VERTEX_SHADER);
@@ -49,8 +50,9 @@ register_shader :: (using gl_procs: GL_Procedures, text: string) -> GLuint {
         glGetShaderInfoLog(vertex, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Vertex shader compilation error:\n");
-        print(str);
+        // :FormatPrint
+        print(g, "Vertex shader compilation error:\n");
+        print(g, str);
         return 0;
     }
     
@@ -83,8 +85,9 @@ register_shader :: (using gl_procs: GL_Procedures, text: string) -> GLuint {
         glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Fragment shader compilation error:\n");
-        print(str);
+        // :FormatPrint
+        print(g, "Fragment shader compilation error:\n");
+        print(g, str);
         return 0;
     }
 
@@ -101,8 +104,8 @@ register_shader :: (using gl_procs: GL_Procedures, text: string) -> GLuint {
         glGetProgramInfoLog(program, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Shader linking error:\n");
-        print(str);
+        print(g, "Shader linking error:\n");
+        print(g, str);
         return 0;
     }
 

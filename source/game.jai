@@ -14,6 +14,8 @@ sqrt :: Math.sqrt;
 Game :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
+    debug_print: (string);
+
     imm_state: Imm_State;
     
     level_shader: GLuint;
@@ -23,14 +25,18 @@ Game :: struct {
     walls: Fixed_Array(32, Wall);
 
     player_position: Vector3i;
-    // collision: Collision;
+
+    collision: Collision;
+
+    level_arena: Memory_Arena;
+    level_arena_store: [1 << 24] u8;
 }
 
 Collision :: struct {
     position: Vector3i;
     size: Vector3i;
 
-    level: [] bool;
+    filled: [] bool;
     // @TODO This is stored x-major, then z, then y.
     // This makes sense from the perspective of wanting to be 
     // able to type levels directly into code for this initial
@@ -60,26 +66,29 @@ is_voxel_occupied :: (col: Collision, position: Vector3i) -> bool {
              local_position.z * col.size.x +
              local_position.y * col.size.z * col.size.x;
 
-    return col.level[coord];
+    return col.filled[coord];
 }
 
-
-
-print: (string); // :Hotloading MAKE THIS NOT GLOBAL SO IT CAN TANK HOT RELOADS!
 
 #program_export "game_init"
 game_init : Game_Init : (
     game_memory: *void,
     game_memory_size: u64,
     gl_extension_loader: (*u8) -> *void #c_call,
-    debug_print: (string)
+    debug_print_: (string)
 ) {
-    print = debug_print;
     assert(game_memory_size >= size_of(Game));
     g := cast(*Game, game_memory);
     using g;
+    
+    debug_print = debug_print_;
+
+    LEVEL_ARENA_SIZE :: 1 << 24;
+    assert(game_memory_size >= LEVEL_ARENA_SIZE);
+    level_arena = make_arena(level_arena_store.data, level_arena_store.count);
 
     for * type_info(GL_Procedures).members {
+        if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
         assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
 
         // Works whether or not address is null.
@@ -121,12 +130,12 @@ game_init : Game_Init : (
    
 
     // :GLDebugProcHotloadingHack
-    if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, null);
+    if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, g);
     imm_init(g);
 
-    level_shader = register_shader(g.gl_procs, LEVEL_SHADER);
+    level_shader = register_shader(g, LEVEL_SHADER);
     assert(level_shader != 0);
-    player_shader = register_shader(g.gl_procs, PLAYER_SHADER);
+    player_shader = register_shader(g, PLAYER_SHADER);
     assert(player_shader != 0);
 
     FOV :: PI / 3;
@@ -215,6 +224,62 @@ game_init : Game_Init : (
         ],
         color = .{1, 143.0/255.0, 0, 1}
     };
+    
+    //
+    // Generate your collision information based on the walls
+    //
+
+    start: Vector3i;
+    end: Vector3i;
+    for walls {
+        if it_index == 0 {
+            start = it.position;
+            end = it.position + it.size;
+        } else {
+            if it.position.x < start.x start.x = it.position.x;
+            if it.position.y < start.y start.y = it.position.y;
+            if it.position.z < start.z start.z = it.position.z;
+            
+            it_end := it.position + it.size;
+            if it_end.x > end.x end.x = it_end.x;
+            if it_end.y > end.y end.y = it_end.y;
+            if it_end.z > end.z end.z = it_end.z;
+        }
+    }
+
+    size := end - start;
+    collision_array_size := size.x * size.y * size.z;
+    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, bool);
+    assert(success);
+
+    collision = .{
+        position = start,
+        size = size,
+        filled = collision_memory
+    };
+    
+    memset(collision_memory.data, 0, size_of(bool) * collision_array_size);
+    
+    // @Speed we could exploit the layouts of the 3D arrays to avoid
+    // recalculating offsets.
+
+    for walls {
+        for :iterate_vector3i coord: it.size {
+            absolute_coord := it.position + coord;
+            collision_coord := absolute_coord - collision.position;
+
+            filled := it.filled[convert_3d_coordinate_to_index(coord, it.size)];
+            if !filled continue;
+            
+            collision_index := convert_3d_coordinate_to_index(coord, collision.size);
+            collision_filled := collision.filled[collision_index];
+            
+            if collision_filled {
+                print(g, "Warning: Walls at coordinate (%, %, %) overlap in the level!\n", absolute_coord.x, absolute_coord.y, absolute_coord.z);
+            }
+            else collision.filled[collision_index] = true;
+        }
+    }
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
@@ -229,7 +294,7 @@ game_update : Game_Update : (
 
     // :GLDebugProcHotloadingHack
     // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
-    if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, null);
+    if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, g);
     
     for input_events {
         if !it.down continue;
@@ -241,9 +306,9 @@ game_update : Game_Update : (
             case .RIGHT; new_player_position.x -= 1;
         }
 
-        // if !is_voxel_occupied(g.collision, new_player_position) {
+        if !is_voxel_occupied(g.collision, new_player_position) {
             player_position = new_player_position;
-        // }
+        }
     }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -251,7 +316,7 @@ game_update : Game_Update : (
     imm_set_shader(g, level_shader);
     imm_set_bitmap(g, level_bitmap);
 
-    // Draw the collision information
+    // Draw the walls
     for walls {
         y_chunk := it.size.x * it.size.z;
         for y_index: 0..it.size.y-1 {
@@ -308,6 +373,9 @@ gl_debug_callback :: (
     userParam: *void
 ) #c_call {
     // @Investigate: Maybe this will notify us when we don't want to hear from it. Keep an eye out.
+
+    g := cast(*Game, userParam);
+
     push_context #Context.{} {
         source_str: string;
         if source == {
@@ -347,15 +415,14 @@ gl_debug_callback :: (
 
 
         // :FormatPrint
-        print("GL Debug Callback - source: ");
-        print(source_str);
-        print(", type: ");
-        print(type_str);
-        print(", severity: ");
-        print(severity_str);
-        print(", message: ");
-        print(message_str);
-        print("\n");
+        print(
+            g,
+            "GL Debug Call - source: %, type: %, severity: %, message: %\n",
+            source_str,
+            type_str,
+            severity_str,
+            message_str
+        );
     }
 }
 
