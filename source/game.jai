@@ -25,6 +25,7 @@ Game :: struct {
     walls: Fixed_Array(32, Wall);
 
     player_position: Vector3i;
+    block_position: Vector3i;
 
     collision: Collision;
 
@@ -263,7 +264,7 @@ game_init : Game_Init : (
             absolute_coord := it.position + coord;
             collision_coord := absolute_coord - collision.position;
 
-            filled := it.filled[convert_3d_coordinate_to_index(coord, it.size)];
+            filled := it.filled[it_index];
             if !filled continue;
             
             collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
@@ -277,6 +278,7 @@ game_init : Game_Init : (
     }
 
     player_position = .{0, 0, -1};
+    block_position = .{0, 0, -2};
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
@@ -295,16 +297,25 @@ game_update : Game_Update : (
     
     for input_events {
         if !it.down continue;
-        new_player_position := player_position;
+        push_direction: Vector3i;
         if it.input == {
-            case .UP;    new_player_position.z += 1;
-            case .LEFT;  new_player_position.x += 1;
-            case .DOWN;  new_player_position.z -= 1;
-            case .RIGHT; new_player_position.x -= 1;
+            case .UP;    push_direction.z += 1;
+            case .LEFT;  push_direction.x += 1;
+            case .DOWN;  push_direction.z -= 1;
+            case .RIGHT; push_direction.x -= 1;
         }
-
-        if !is_voxel_occupied(g.collision, new_player_position) {
-            player_position = new_player_position;
+        
+        new_player_position := player_position + push_direction;
+        if !is_voxel_occupied(collision, new_player_position) {
+            if block_position == new_player_position {
+                new_block_position := new_player_position + push_direction; 
+                if !is_voxel_occupied(collision, new_block_position) {
+                    block_position = new_block_position;
+                    player_position = new_player_position;
+                }
+            } else {
+                player_position = new_player_position;
+            }
         }
     }
 
@@ -324,7 +335,9 @@ game_update : Game_Update : (
             imm_cuboid(g, begin, end, it.color);
         }
     }
-
+    
+    block_corner := to_vector3(block_position);
+    imm_cuboid(g, block_corner, block_corner + Vector3.{1,1,1}, .{0, 0, 1, 1});
     imm_flush(g);
 
 
