@@ -278,15 +278,16 @@ main :: () {
     
     SetCurrentDirectoryA("..\\assets\\");
 
-    GAME_MEMORY_SIZE :: 1 << 28; // @TODO: See how much of this memory is actually used!
+    GAME_MEMORY_SIZE :: 1 << 24; // @TODO: See how much of this memory is actually used!
 
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
     windows.game_dll = LoadLibraryA("stealth_sokoban_game.dll"); 
     assert(windows.game_dll != null);
- 
+    
+    level_arena := VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE);
     game_init := cast(Game_Init, GetProcAddress(windows.game_dll, "game_init"));
     assert(game_init != null);
-    game_init(game_memory, GAME_MEMORY_SIZE, wglGetProcAddress, print);
+    game_init(game_memory, GAME_MEMORY_SIZE, wglGetProcAddress, print, level_arena);
     
     while main_loop := true {
         message: MSG;

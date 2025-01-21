@@ -26,7 +26,7 @@ arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type) -> bool, [] T 
     assert(count >= 0); // You would think this wouldn't happen but I had a bug here.
     byte_count := size_of(T) * count;
     if arena.count - arena.current < byte_count return false, .{};
-    ret := arena.data + count;
+    ret := arena.data + arena.current;
     arena.current += byte_count;
     return true, .{data=xx ret, count=count};
 }

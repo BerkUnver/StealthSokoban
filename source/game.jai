@@ -22,22 +22,20 @@ Game :: struct {
     level_bitmap: GLuint;
     player_shader: GLuint;
     
-    walls: Fixed_Array(32, Wall);
+    blocks: Fixed_Array(32, Block);
 
     player_position: Vector3i;
-    block_position: Vector3i;
 
     collision: Collision;
 
     level_arena: Memory_Arena;
-    level_arena_store: [1 << 24] u8;
 }
 
 Collision :: struct {
     position: Vector3i;
     size: Vector3i;
 
-    filled: [] Collision_Entry;
+    filled: [] *Block;
     // @TODO This is stored x-major, then z, then y.
     // This makes sense from the perspective of wanting to be 
     // able to type levels directly into code for this initial
@@ -46,30 +44,27 @@ Collision :: struct {
     // @TODO Implement a bit array for better cache coherency.
 }
 
-Collision_Entry :: struct {
-    value: *void;
-    type: enum { NONE; WALL; BLOCK; };
-}
 
-
-Wall :: struct {
+Block :: struct {
     position: Vector3i;
     size: Vector3i;
     filled: [] bool;
     color: Vector4;
-    // @TODO Pregenerate the mesh for the wall and upload it to the GPU
+    moveable: bool;
+    // @TODO Pregenerate the mesh for the block and upload it to the GPU
     // @TODO Make a bit array data structure for better cache coherency
 }
 
-get_entry :: (col: Collision, position: Vector3i) -> *Collision_Entry {
+get_block_cell :: (col: Collision, position: Vector3i) -> **Block {
     local_position := position - col.position;
     if local_position.x < 0 || col.size.x <= local_position.x
     || local_position.y < 0 || col.size.y <= local_position.y
     || local_position.z < 0 || col.size.z <= local_position.z {
         return null;
     }
-
-    return *col.filled[convert_3d_coordinate_to_index(local_position, col.size)];
+    
+    index := convert_3d_coordinate_to_index(local_position, col.size);
+    return *col.filled[index];
 }
 
 
@@ -78,14 +73,15 @@ game_init : Game_Init : (
     game_memory: *void,
     game_memory_size: u64,
     gl_extension_loader: (*u8) -> *void #c_call,
-    debug_print_: (string)
+    debug_print_: (string),
+    level_arena_memory: *void
 ) {
     assert(game_memory_size >= size_of(Game));
     g := cast(*Game, game_memory);
     using g;
     
     debug_print = debug_print_;
-    level_arena = make_arena(level_arena_store.data, level_arena_store.count);
+    level_arena = make_arena(level_arena_memory, LEVEL_ARENA_SIZE);
 
     for * type_info(GL_Procedures).members {
         if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
@@ -199,39 +195,50 @@ game_init : Game_Init : (
     T :: true;
     F :: false;
     
-    wall_0 := append(*walls);
-    wall_0.* = .{
-        position = .{-2, -1, -2},
-        size = .{4, 1, 4},
+    block_0 := append(*blocks);
+    block_0.* = .{
+        position = .{-3, -1, -2},
+        size = .{6, 1, 4},
         filled = .[
-            T, T, T, T,
-            T, T, T, T,
-            T, T, T, T,
-            T, T, T, T
+            T, T, T, T, T, T,
+            T, T, T, T, T, T,
+            T, T, T, T, T, T,
+            T, T, T, T, T, T
         ],
-        color = .{1, 0, 0, 1}
+        color = .{1, 0, 0, 1},
+        moveable = false
     };
     
-    wall_1 := append(*walls);
-    wall_1.* = .{
-        position = .{-2, 0, -2},
-        size = .{4, 1, 4},
+    block_1 := append(*blocks);
+    block_1.* = .{
+        position = .{-3, 0, -2},
+        size = .{6, 1, 4},
         filled = .[
-            T, F, F, F,
-            T, T, F, F,
-            T, T, T, F,
-            T, T, T, T
+            F, F, F, F, F, F,
+            F, F, F, F, F, F, 
+            F, F, F, F, F, F,
+            T, T, T, T, T, T
         ],
-        color = .{1, 143.0/255.0, 0, 1}
+        color = .{1, 143.0/255.0, 0, 1},
+        moveable = false
+    };
+
+    block_2 := append(*blocks);
+    block_2.* = .{
+        position = .{0, 0, -2},
+        size = .{1, 1, 1},
+        filled = .[T],
+        color = .{0, 0, 1, 1},
+        moveable = true
     };
     
     //
-    // Generate your collision information based on the walls
+    // Generate your collision information based on the blocks
     //
 
     start: Vector3i;
     end: Vector3i;
-    for walls {
+    for blocks {
         if it_index == 0 {
             start = it.position;
             end = it.position + it.size;
@@ -249,7 +256,7 @@ game_init : Game_Init : (
 
     size := end - start;
     collision_array_size := size.x * size.y * size.z;
-    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, Collision_Entry);
+    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, *Block);
     assert(success);
 
     collision = .{
@@ -259,13 +266,12 @@ game_init : Game_Init : (
     };
     
     player_position = .{0, 0, -1};
-    block_position = .{0, 0, -2};
 
     // @Speed we could exploit the layouts of the 3D arrays to avoid
     // recalculating offsets.
     
     // @Temporary All of this collision stuff is mega-temporary, and will soon be replaced by something more robust.
-    for * walls {
+    for * blocks {
         for :iterate_vector3i coord: it.size {
             absolute_coord := it.position + coord;
             collision_coord := absolute_coord - collision.position;
@@ -274,23 +280,11 @@ game_init : Game_Init : (
             if !filled continue;
             
             collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
-            collision_filled := collision.filled[collision_index];
+            block_already_there := collision.filled[collision_index];
+            assert(!block_already_there);
 
-            if collision_filled.type != .NONE {
-                print(g, "Warning: Walls at coordinate (%, %, %) overlap in the level!\n", absolute_coord.x, absolute_coord.y, absolute_coord.z);
-
-            } else {
-                collision.filled[collision_index] = .{value=it, type=.WALL};
-            }
+            collision.filled[collision_index] = it;
         }
-    }
-    
-    {
-        block_coord := block_position - collision.position;
-        collision_index := convert_3d_coordinate_to_index(block_coord, collision.size);
-        entry := collision.filled[collision_index];
-        assert(entry.type == .NONE);
-        collision.filled[collision_index] = .{value=*block_position, type=.BLOCK};
     }
     
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -319,24 +313,31 @@ game_update : Game_Update : (
         }
         
         new_player_position := player_position + push_direction;
-        player_blocking_entry := get_entry(collision, new_player_position);
-        if player_blocking_entry {
-            if #complete player_blocking_entry.type == {
-                case .NONE;
-                    player_position = new_player_position;
-                case .WALL;
-                case .BLOCK;
-                    new_block_position := new_player_position + push_direction;
-                    block_blocking_entry := get_entry(collision, new_block_position);
-                    if block_blocking_entry && block_blocking_entry.type == .NONE {
-                        player_blocking_entry.* = .{value=null, type=.NONE};
-                        block_blocking_entry.* = .{value=*block_position, type=.BLOCK};
-                        block_position = new_block_position;
-                        player_position = new_player_position;
-                    }
-            }
-        } else {
+        block_cell := get_block_cell(collision, new_player_position);
+
+        if !block_cell {
             player_position = new_player_position;
+            continue;
+        }
+
+        block := block_cell.*;
+        if !block {
+            player_position = new_player_position;
+            continue;
+        }
+        
+        if block.moveable {
+            new_block_position := block.position + push_direction;
+            second_block_cell := get_block_cell(collision, new_block_position);
+            if second_block_cell {
+                second_block := second_block_cell.*;
+                if !second_block {
+                    second_block_cell.* = block;
+                    block_cell.* = null;
+                    block.position = new_block_position;
+                    player_position = new_player_position;
+                }
+            }
         }
     }
 
@@ -345,9 +346,9 @@ game_update : Game_Update : (
     imm_set_shader(g, level_shader);
     imm_set_bitmap(g, level_bitmap);
     
-    // Draw the walls
+    // Draw the blocks
 
-    for walls {
+    for blocks {
         for :iterate_vector3i coord: it.size {
             filled := it.filled[it_index];
             if !filled continue;
@@ -356,12 +357,9 @@ game_update : Game_Update : (
             imm_cuboid(g, begin, end, it.color);
         }
     }
-    
-    block_corner := to_vector3(block_position);
-    imm_cuboid(g, block_corner, block_corner + Vector3.{1,1,1}, .{0, 0, 1, 1});
+
     imm_flush(g);
-
-
+    
     
     player_corner := to_vector3(player_position);
     player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};

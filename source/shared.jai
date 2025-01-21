@@ -8,11 +8,14 @@ BACKGROUND_B :: 19;
 INNER_WINDOW_W :: 1920;
 INNER_WINDOW_H :: 1080;
 
+LEVEL_ARENA_SIZE :: 1 << 24;
+
 Game_Init :: #type (
     game_memory: *void,
     game_memory_size: u64,
     gl_extension_loader: (*u8) -> *void #c_call,
-    debug_print: (string)
+    debug_print: (string),
+    level_arena_memory: *void
 );
 
 INPUT_EVENT_COUNT :: 64;
