@@ -50,9 +50,8 @@ register_shader :: (using g: Game, text: string) -> GLuint {
         glGetShaderInfoLog(vertex, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        // :FormatPrint
-        print(g, "Vertex shader compilation error:\n");
-        print(g, str);
+
+        print(g, "Vertex shader compilation error:\n%", str);
         return 0;
     }
     
@@ -85,9 +84,7 @@ register_shader :: (using g: Game, text: string) -> GLuint {
         glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        // :FormatPrint
-        print(g, "Fragment shader compilation error:\n");
-        print(g, str);
+        print(g, "Fragment shader compilation error:\n%", str);
         return 0;
     }
 

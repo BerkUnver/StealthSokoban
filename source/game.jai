@@ -82,9 +82,6 @@ game_init : Game_Init : (
     using g;
     
     debug_print = debug_print_;
-
-    LEVEL_ARENA_SIZE :: 1 << 24;
-    assert(game_memory_size >= LEVEL_ARENA_SIZE);
     level_arena = make_arena(level_arena_store.data, level_arena_store.count);
 
     for * type_info(GL_Procedures).members {
@@ -258,8 +255,6 @@ game_init : Game_Init : (
         filled = collision_memory
     };
     
-    memset(collision_memory.data, 0, size_of(bool) * collision_array_size);
-    
     // @Speed we could exploit the layouts of the 3D arrays to avoid
     // recalculating offsets.
 
@@ -271,7 +266,7 @@ game_init : Game_Init : (
             filled := it.filled[convert_3d_coordinate_to_index(coord, it.size)];
             if !filled continue;
             
-            collision_index := convert_3d_coordinate_to_index(coord, collision.size);
+            collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
             collision_filled := collision.filled[collision_index];
             
             if collision_filled {
@@ -280,6 +275,8 @@ game_init : Game_Init : (
             else collision.filled[collision_index] = true;
         }
     }
+
+    player_position = .{0, 0, -1};
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
@@ -315,38 +312,22 @@ game_update : Game_Update : (
     
     imm_set_shader(g, level_shader);
     imm_set_bitmap(g, level_bitmap);
-
+    
     // Draw the walls
+
     for walls {
-        y_chunk := it.size.x * it.size.z;
-        for y_index: 0..it.size.y-1 {
-            y_offset := y_index * y_chunk;
-
-            y_begin := cast(float, it.position.y + y_index);
-            y_end := y_begin + 1;
-
-            for z_index: 0..it.size.z-1 {
-                z_offset := z_index * it.size.x;
-                offset := y_offset + z_offset;
-
-                z_begin := cast(float, it.position.z + z_index);
-                z_end := z_begin + 1;
-
-                for x_index: 0..it.size.x-1 {
-                    has_cube := it.filled[offset + x_index];
-                    if !has_cube continue;
-                    
-                    x_begin := cast(float, it.position.x + x_index);
-                    x_end := x_begin + 1;
-
-                    imm_cuboid(g, .{x_begin, y_begin, z_begin}, .{x_end, y_end, z_end}, it.color);
-                }
-            }
+        for :iterate_vector3i coord: it.size {
+            filled := it.filled[it_index];
+            if !filled continue;
+            begin := to_vector3(it.position + coord);
+            end := begin + Vector3.{1,1,1};
+            imm_cuboid(g, begin, end, it.color);
         }
     }
 
-
     imm_flush(g);
+
+
     
     player_corner := to_vector3(player_position);
     player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
@@ -413,8 +394,6 @@ gl_debug_callback :: (
 
         message_str := string.{data=message, count=length};
 
-
-        // :FormatPrint
         print(
             g,
             "GL Debug Call - source: %, type: %, severity: %, message: %\n",

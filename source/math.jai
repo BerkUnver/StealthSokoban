@@ -45,6 +45,28 @@ to_vector3 :: (v: Vector3i) -> Vector3 {
     return .{xx v.x, xx v.y, xx v.z};
 }
 
+iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
+    #assert for_flags == 0;
+
+    y_chunk := v.x * v.y;
+    for `y_index: 0..v.y-1 {
+        y_offset := y_index * y_chunk;
+        for `z_index: 0..v.z-1 {
+            z_offset := y_offset + z_index * v.x;
+            for `x_index: 0..v.x-1 {
+                `it_index := z_offset + x_index;
+                `it := Vector3i.{x_index, y_index, z_index};
+                #insert(break=break y_index, continue=continue, remove=#assert false) body;
+            }
+        }
+    }
+}
+
+convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
+    return coord.y * size.z * size.x + coord.z * size.x + coord.x;
+}
+
+
 Matrix4 :: struct {
     x_x, y_x, z_x, w_x,
     x_y, y_y, z_y, w_y,

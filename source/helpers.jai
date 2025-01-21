@@ -31,26 +31,6 @@ arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type) -> bool, [] T 
     return true, .{data=xx ret, count=count};
 }
 
-
-iterate_vector3i :: (position: Vector3i, body: Code, for_flags: For_Flags) #expand {
-    #assert for_flags == 0;
-    `it_index := 0;
-    for `y_index: 0..position.y-1 {
-        for `z_index: 0..position.z-1 {
-            for `x_index: 0..position.z-1 {
-                `it := Vector3i.{x_index, y_index, z_index};
-                #insert(break=break y_index, continue=continue, remove=#assert false) body;
-            }
-        }
-    }
-}
-
-
-convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
-    return coord.y * size.z * size.x + coord.z + size.x + coord.x;
-}
-
-
 print :: (g: Game, s: string, args: ..Any) {
     buffer: [4096] u8 = ---;
     buffer_index := 0;
@@ -100,7 +80,7 @@ print :: (g: Game, s: string, args: ..Any) {
                         buffer_index += 1;
                     }
                 }
-            }
+            } else assert(false);
 
             arg_index += 1;
         } else {
