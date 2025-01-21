@@ -37,7 +37,7 @@ Collision :: struct {
     position: Vector3i;
     size: Vector3i;
 
-    filled: [] bool;
+    filled: [] Collision_Entry;
     // @TODO This is stored x-major, then z, then y.
     // This makes sense from the perspective of wanting to be 
     // able to type levels directly into code for this initial
@@ -45,6 +45,12 @@ Collision :: struct {
     // Consider coming back to this.
     // @TODO Implement a bit array for better cache coherency.
 }
+
+Collision_Entry :: struct {
+    value: *void;
+    type: enum { NONE; WALL; BLOCK; };
+}
+
 
 Wall :: struct {
     position: Vector3i;
@@ -55,19 +61,15 @@ Wall :: struct {
     // @TODO Make a bit array data structure for better cache coherency
 }
 
-is_voxel_occupied :: (col: Collision, position: Vector3i) -> bool {
+get_entry :: (col: Collision, position: Vector3i) -> *Collision_Entry {
     local_position := position - col.position;
     if local_position.x < 0 || col.size.x <= local_position.x
     || local_position.y < 0 || col.size.y <= local_position.y
     || local_position.z < 0 || col.size.z <= local_position.z {
-        return false;
+        return null;
     }
-    
-    coord := local_position.x + 
-             local_position.z * col.size.x +
-             local_position.y * col.size.z * col.size.x;
 
-    return col.filled[coord];
+    return *col.filled[convert_3d_coordinate_to_index(local_position, col.size)];
 }
 
 
@@ -247,7 +249,7 @@ game_init : Game_Init : (
 
     size := end - start;
     collision_array_size := size.x * size.y * size.z;
-    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, bool);
+    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, Collision_Entry);
     assert(success);
 
     collision = .{
@@ -256,10 +258,14 @@ game_init : Game_Init : (
         filled = collision_memory
     };
     
+    player_position = .{0, 0, -1};
+    block_position = .{0, 0, -2};
+
     // @Speed we could exploit the layouts of the 3D arrays to avoid
     // recalculating offsets.
-
-    for walls {
+    
+    // @Temporary All of this collision stuff is mega-temporary, and will soon be replaced by something more robust.
+    for * walls {
         for :iterate_vector3i coord: it.size {
             absolute_coord := it.position + coord;
             collision_coord := absolute_coord - collision.position;
@@ -269,17 +275,24 @@ game_init : Game_Init : (
             
             collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
             collision_filled := collision.filled[collision_index];
-            
-            if collision_filled {
+
+            if collision_filled.type != .NONE {
                 print(g, "Warning: Walls at coordinate (%, %, %) overlap in the level!\n", absolute_coord.x, absolute_coord.y, absolute_coord.z);
+
+            } else {
+                collision.filled[collision_index] = .{value=it, type=.WALL};
             }
-            else collision.filled[collision_index] = true;
         }
     }
-
-    player_position = .{0, 0, -1};
-    block_position = .{0, 0, -2};
-
+    
+    {
+        block_coord := block_position - collision.position;
+        collision_index := convert_3d_coordinate_to_index(block_coord, collision.size);
+        entry := collision.filled[collision_index];
+        assert(entry.type == .NONE);
+        collision.filled[collision_index] = .{value=*block_position, type=.BLOCK};
+    }
+    
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
 
@@ -306,16 +319,24 @@ game_update : Game_Update : (
         }
         
         new_player_position := player_position + push_direction;
-        if !is_voxel_occupied(collision, new_player_position) {
-            if block_position == new_player_position {
-                new_block_position := new_player_position + push_direction; 
-                if !is_voxel_occupied(collision, new_block_position) {
-                    block_position = new_block_position;
+        player_blocking_entry := get_entry(collision, new_player_position);
+        if player_blocking_entry {
+            if #complete player_blocking_entry.type == {
+                case .NONE;
                     player_position = new_player_position;
-                }
-            } else {
-                player_position = new_player_position;
+                case .WALL;
+                case .BLOCK;
+                    new_block_position := new_player_position + push_direction;
+                    block_blocking_entry := get_entry(collision, new_block_position);
+                    if block_blocking_entry && block_blocking_entry.type == .NONE {
+                        player_blocking_entry.* = .{value=null, type=.NONE};
+                        block_blocking_entry.* = .{value=*block_position, type=.BLOCK};
+                        block_position = new_block_position;
+                        player_position = new_player_position;
+                    }
             }
+        } else {
+            player_position = new_player_position;
         }
     }
 
