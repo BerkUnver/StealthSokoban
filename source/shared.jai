@@ -37,6 +37,8 @@ Input :: enum {
     RIGHT;
     UP;
     DOWN;
+
+    PULL;
 }
 
 Fixed_Array :: struct (n: s64, $T: Type) {

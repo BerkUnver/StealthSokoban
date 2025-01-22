@@ -36,6 +36,8 @@ main :: () {
                     if keycode == #char "Q" return true, .UP;
                     if keycode == #char "E" return true, .DOWN;
 
+                    if keycode == VK_SPACE return true, .PULL;
+
                     return false, 0;
                 }
 

@@ -68,8 +68,7 @@ get_block :: (col: Collision, position: Vector3i) -> in_bounds: bool, block: *Bl
 }
 
 add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
-    // @Speed we could exploit the layouts of the 3D arrays to avoid recalculating offsets.
-
+    // @TODO add bounds checking when we insert the block.
     for :iterate_vector3i coord: block.size {
         filled := block.filled[it_index];
         if !filled continue;
@@ -258,9 +257,12 @@ game_init : Game_Init : (
 
     block_2 := append(*blocks);
     block_2.* = .{
-        position = .{-1, 1, -2},
-        size = .{1, 1, 2},
-        filled = .[T, T],
+        position = .{-2, 0, -2},
+        size = .{2, 1, 2},
+        filled = .[
+            T, T,
+            F, T
+        ],
         color = .{0, 0, 1, 1},
         moveable = true
     };
@@ -368,65 +370,27 @@ game_update : Game_Update : (
             new_block_position := block.position + push_direction;
             
             blocked := false;
+            
+            // Check the cell next to each filled cell of the current block
+            // Make sure it is empty and it is okay to move in that direction.
+            offset := block.position + push_direction;
+            for :iterate_vector3i block.size {
+                if !block.filled[it_index] continue;
 
-            if push_direction.x != 0 {
-                x := ifx push_direction.x == 1 then block.position.x + block.size.x else block.position.x - 1;
-                for y_index: 0..block.size.y-1 {
-                    for z_index: 0..block.size.z-1 {
-                        position_to_check := Vector3i.{
-                            x,
-                            block.position.y + y_index,
-                            block.position.z + z_index
-                        };
-                        
-                        in_bounds, second_block := get_block(collision, position_to_check);
-                        if !in_bounds || second_block {
-                            blocked = true;
-                            break y_index;
-                        }
-                    }
-                }
-            } else if push_direction.y != 0 {
-                y := ifx push_direction.y == 1 then block.position.y + block.size.y else block.position.y - 1;
-                for z_index: 0..block.size.z-1 {
-                    for x_index: 0..block.size.x-1 {
-                        position_to_check := Vector3i.{
-                            block.position.x + x_index,
-                            y,
-                            block.position.z + z_index
-                        };
+                absolute_coord := it + offset;
+                in_bounds, second_block := get_block(collision, absolute_coord);
 
-                        in_bounds, second_block := get_block(collision, position_to_check);
-                        if !in_bounds || second_block {
-                            blocked = true;
-                            break z_index;
-                        }
-                    }
+                if !in_bounds || (second_block && second_block != block) {
+                    blocked = true;
+                    break;
                 }
-            } else if push_direction.z != 0 {
-                z := ifx push_direction.z == 1 then block.position.z + block.size.z else block.position.z - 1;
-                for y_index: 0..block.size.y-1 {
-                    for x_index: 0..block.size.x-1 {
-                        position_to_check := Vector3i.{
-                            block.position.x + x_index,
-                            block.position.y + y_index,
-                            z
-                        };
-
-                        in_bounds, second_block := get_block(collision, position_to_check);
-                        if !in_bounds || second_block {
-                            blocked = true;
-                            break y_index;
-                        }
-                    }
-                }
-            } else assert(false);
+            }
 
             if !blocked {
                 remove_block_from_collision(*collision, block);
-                block.position += push_direction;
+                block.position = new_block_position;
                 add_block_to_collision(*collision, block);
-                player_position += push_direction;
+                player_position = new_player_position;
             }
         }
     }
