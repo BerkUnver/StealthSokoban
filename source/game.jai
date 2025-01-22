@@ -225,7 +225,7 @@ game_init : Game_Init : (
 
     block_2 := append(*blocks);
     block_2.* = .{
-        position = .{0, 0, -2},
+        position = .{0, 0, -1},
         size = .{1, 1, 1},
         filled = .[T],
         color = .{0, 0, 1, 1},
@@ -271,6 +271,7 @@ game_init : Game_Init : (
     // recalculating offsets.
     
     // @Temporary All of this collision stuff is mega-temporary, and will soon be replaced by something more robust.
+
     for * blocks {
         for :iterate_vector3i coord: it.size {
             absolute_coord := it.position + coord;
@@ -282,7 +283,7 @@ game_init : Game_Init : (
             collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
             block_already_there := collision.filled[collision_index];
             assert(!block_already_there);
-
+            
             collision.filled[collision_index] = it;
         }
     }

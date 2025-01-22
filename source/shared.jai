@@ -63,7 +63,7 @@ append_many :: (using array: *Fixed_Array($N, $T), how_many: s64) -> *T {
     return ptr;
 }
 
-for_expansion :: (array: Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
+for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
     #assert(!(flags & .REVERSE));
     for `it_index: 0..array.count-1 {
         #if flags & .POINTER {
