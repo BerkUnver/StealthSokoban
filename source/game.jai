@@ -55,16 +55,49 @@ Block :: struct {
     // @TODO Make a bit array data structure for better cache coherency
 }
 
-get_block_cell :: (col: Collision, position: Vector3i) -> **Block {
+get_block :: (col: Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
     local_position := position - col.position;
     if local_position.x < 0 || col.size.x <= local_position.x
     || local_position.y < 0 || col.size.y <= local_position.y
     || local_position.z < 0 || col.size.z <= local_position.z {
-        return null;
+        return false, null;
     }
     
     index := convert_3d_coordinate_to_index(local_position, col.size);
-    return *col.filled[index];
+    return true, col.filled[index];
+}
+
+add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
+    // @Speed we could exploit the layouts of the 3D arrays to avoid recalculating offsets.
+
+    for :iterate_vector3i coord: block.size {
+        filled := block.filled[it_index];
+        if !filled continue;
+
+        absolute_coord := block.position + coord;
+        collision_coord := absolute_coord - col.position;
+        
+        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        block_already_there := col.filled[collision_index];
+        if block_already_there return false;
+        
+        col.filled[collision_index] = block;
+    }
+    return true;
+}
+
+remove_block_from_collision :: (col: *Collision, block: *Block) {
+    for :iterate_vector3i block.size {
+        filled := block.filled[it_index];
+        if !filled continue;
+        absolute_coord := block.position + it;
+        collision_coord := absolute_coord - col.position;
+
+        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        block_already_there := col.filled[collision_index];
+        assert(block_already_there == block);
+        col.filled[collision_index] = null;
+    }
 }
 
 
@@ -214,8 +247,8 @@ game_init : Game_Init : (
         position = .{-3, 0, -2},
         size = .{6, 1, 4},
         filled = .[
-            F, F, F, F, F, F,
-            F, F, F, F, F, F, 
+            F, F, F, F, F, T,
+            T, F, F, F, F, F, 
             F, F, F, F, F, F,
             T, T, T, T, T, T
         ],
@@ -225,9 +258,9 @@ game_init : Game_Init : (
 
     block_2 := append(*blocks);
     block_2.* = .{
-        position = .{0, 0, -1},
-        size = .{1, 1, 1},
-        filled = .[T],
+        position = .{-1, 0, -2},
+        size = .{1, 1, 2},
+        filled = .[T, T],
         color = .{0, 0, 1, 1},
         moveable = true
     };
@@ -267,25 +300,9 @@ game_init : Game_Init : (
     
     player_position = .{0, 0, -1};
 
-    // @Speed we could exploit the layouts of the 3D arrays to avoid
-    // recalculating offsets.
-    
-    // @Temporary All of this collision stuff is mega-temporary, and will soon be replaced by something more robust.
 
     for * blocks {
-        for :iterate_vector3i coord: it.size {
-            absolute_coord := it.position + coord;
-            collision_coord := absolute_coord - collision.position;
-
-            filled := it.filled[it_index];
-            if !filled continue;
-            
-            collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
-            block_already_there := collision.filled[collision_index];
-            assert(!block_already_there);
-            
-            collision.filled[collision_index] = it;
-        }
+        assert(add_block_to_collision(*collision, it));
     }
     
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -308,36 +325,66 @@ game_update : Game_Update : (
         push_direction: Vector3i;
         if it.input == {
             case .UP;    push_direction.z += 1;
-            case .LEFT;  push_direction.x += 1;
+            case .LEFT;  push_direction.x -= 1;
             case .DOWN;  push_direction.z -= 1;
-            case .RIGHT; push_direction.x -= 1;
+            case .RIGHT; push_direction.x += 1;
         }
         
         new_player_position := player_position + push_direction;
-        block_cell := get_block_cell(collision, new_player_position);
-
-        if !block_cell {
-            player_position = new_player_position;
-            continue;
-        }
-
-        block := block_cell.*;
-        if !block {
+        
+        in_bounds, block := get_block(collision, new_player_position);
+        if !in_bounds || !block {
             player_position = new_player_position;
             continue;
         }
         
         if block.moveable {
             new_block_position := block.position + push_direction;
-            second_block_cell := get_block_cell(collision, new_block_position);
-            if second_block_cell {
-                second_block := second_block_cell.*;
-                if !second_block {
-                    second_block_cell.* = block;
-                    block_cell.* = null;
-                    block.position = new_block_position;
-                    player_position = new_player_position;
+            
+            blocked := false;
+
+            if push_direction.x != 0 {
+                x := ifx push_direction.x == 1 then block.position.x + block.size.x else block.position.x - 1;
+                for y_index: 0..block.size.y-1 {
+                    for z_index: 0..block.size.z-1 {
+                        position_to_check := Vector3i.{
+                            x,
+                            block.position.y + y_index,
+                            block.position.z + z_index
+                        };
+                        
+                        in_bounds, second_block := get_block(collision, position_to_check);
+                        if !in_bounds || second_block {
+                            blocked = true;
+                            break y_index;
+                        }
+                    }
                 }
+            } else if push_direction.z != 0 {
+                z := ifx push_direction.z == 1 then block.position.z + block.size.z else block.position.z - 1;
+                for y_index: 0..block.size.y-1 {
+                    for x_index: 0..block.size.x-1 {
+                        position_to_check := Vector3i.{
+                            block.position.x + x_index,
+                            block.position.y + y_index,
+                            z
+                        };
+
+                        in_bounds, second_block := get_block(collision, position_to_check);
+                        if !in_bounds || second_block {
+                            blocked = true;
+                            break y_index;
+                        }
+                    }
+                }
+
+            } else assert(false); // @todo: get the y-axis to work as well
+
+            if !blocked {
+                remove_block_from_collision(*collision, block);
+                block.position += push_direction;
+                add_block_to_collision(*collision, block);
+                player_position += push_direction;
             }
         }
     }

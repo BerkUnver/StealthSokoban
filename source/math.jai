@@ -66,7 +66,7 @@ iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
     }
 }
 
-convert_3d_coordinate_to_index :: inline (coord: Vector3i, size: Vector3i) -> s64 {
+convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
     return coord.y * size.z * size.x + coord.z * size.x + coord.x;
 }
 

@@ -29,9 +29,9 @@ main :: () {
             push_context .{} {
                 translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Input #no_context {
                     if keycode == #char "W" || keycode == VK_UP    return true, .UP;
-                    if keycode == #char "D" || keycode == VK_LEFT  return true, .LEFT;
+                    if keycode == #char "A" || keycode == VK_LEFT  return true, .LEFT;
                     if keycode == #char "S" || keycode == VK_DOWN  return true, .DOWN;
-                    if keycode == #char "A" || keycode == VK_RIGHT return true, .RIGHT;
+                    if keycode == #char "D" || keycode == VK_RIGHT return true, .RIGHT;
 
                     return false, 0;
                 }
