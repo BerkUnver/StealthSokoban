@@ -258,7 +258,7 @@ game_init : Game_Init : (
 
     block_2 := append(*blocks);
     block_2.* = .{
-        position = .{-1, 0, -2},
+        position = .{-1, 1, -2},
         size = .{1, 1, 2},
         filled = .[T, T],
         color = .{0, 0, 1, 1},
@@ -268,7 +268,12 @@ game_init : Game_Init : (
     //
     // Generate your collision information based on the blocks
     //
+    
 
+    // This generates the collision information based on the bounding box of what's in the level.
+    // We may want to bring this back, or possibly have bounding box widgets in the level editor.
+
+    /*
     start: Vector3i;
     end: Vector3i;
     for blocks {
@@ -291,9 +296,28 @@ game_init : Game_Init : (
     collision_array_size := size.x * size.y * size.z;
     success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, *Block);
     assert(success);
+    */
+    
+    
+    // @Temporary
+    START :: Vector3i.{-10, -10, -10};
+    END :: Vector3i.{10, 10, 10};
+    size := END - START;
+    collision_array_size := size.x * size.y * size.z;
+
+    for blocks {
+        assert(it.position.x >= START.x
+            && it.position.y >= START.y
+            && it.position.z >= START.z);
+        assert(it.position.x + it.size.x < END.x
+            && it.position.y + it.size.y < END.y
+            && it.position.z + it.size.z < END.z);
+    }
+    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, *Block);
+    assert(success);
 
     collision = .{
-        position = start,
+        position = START,
         size = size,
         filled = collision_memory
     };
@@ -324,10 +348,12 @@ game_update : Game_Update : (
         if !it.down continue;
         push_direction: Vector3i;
         if it.input == {
-            case .UP;    push_direction.z += 1;
-            case .LEFT;  push_direction.x -= 1;
-            case .DOWN;  push_direction.z -= 1;
-            case .RIGHT; push_direction.x += 1;
+            case .FORWARD;  push_direction.z += 1;
+            case .LEFT;     push_direction.x -= 1;
+            case .BACKWARD; push_direction.z -= 1;
+            case .RIGHT;    push_direction.x += 1;
+            case .UP;       push_direction.y += 1;
+            case .DOWN;     push_direction.y -= 1;
         }
         
         new_player_position := player_position + push_direction;
@@ -360,6 +386,23 @@ game_update : Game_Update : (
                         }
                     }
                 }
+            } else if push_direction.y != 0 {
+                y := ifx push_direction.y == 1 then block.position.y + block.size.y else block.position.y - 1;
+                for z_index: 0..block.size.z-1 {
+                    for x_index: 0..block.size.x-1 {
+                        position_to_check := Vector3i.{
+                            block.position.x + x_index,
+                            y,
+                            block.position.z + z_index
+                        };
+
+                        in_bounds, second_block := get_block(collision, position_to_check);
+                        if !in_bounds || second_block {
+                            blocked = true;
+                            break z_index;
+                        }
+                    }
+                }
             } else if push_direction.z != 0 {
                 z := ifx push_direction.z == 1 then block.position.z + block.size.z else block.position.z - 1;
                 for y_index: 0..block.size.y-1 {
@@ -377,8 +420,7 @@ game_update : Game_Update : (
                         }
                     }
                 }
-
-            } else assert(false); // @todo: get the y-axis to work as well
+            } else assert(false);
 
             if !blocked {
                 remove_block_from_collision(*collision, block);

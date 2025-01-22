@@ -28,10 +28,13 @@ main :: () {
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
             push_context .{} {
                 translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Input #no_context {
-                    if keycode == #char "W" || keycode == VK_UP    return true, .UP;
+                    if keycode == #char "W" || keycode == VK_UP    return true, .FORWARD;
                     if keycode == #char "A" || keycode == VK_LEFT  return true, .LEFT;
-                    if keycode == #char "S" || keycode == VK_DOWN  return true, .DOWN;
+                    if keycode == #char "S" || keycode == VK_DOWN  return true, .BACKWARD;
                     if keycode == #char "D" || keycode == VK_RIGHT return true, .RIGHT;
+
+                    if keycode == #char "Q" return true, .UP;
+                    if keycode == #char "E" return true, .DOWN;
 
                     return false, 0;
                 }

@@ -31,10 +31,12 @@ Input_Event :: struct {
 
 Input :: enum {
     // @TODO: If we add keyboard remapping, this are probably just going to be virtual keycodes that wrap the keycodes of the operating system.
-    UP;
+    FORWARD; // Away from the viewer
     LEFT;
-    DOWN;
+    BACKWARD; // Towards the viewer
     RIGHT;
+    UP;
+    DOWN;
 }
 
 Fixed_Array :: struct (n: s64, $T: Type) {
