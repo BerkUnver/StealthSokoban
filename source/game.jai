@@ -25,6 +25,7 @@ Game :: struct {
     blocks: Fixed_Array(32, Block);
 
     player_position: Vector3i;
+    flags: enum {PULLING :: 1;};
 
     collision: Collision;
 
@@ -68,6 +69,13 @@ get_block :: (col: Collision, position: Vector3i) -> in_bounds: bool, block: *Bl
 }
 
 add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
+    assert(block.position.x >= col.position.x
+        && block.position.y >= col.position.y
+        && block.position.z >= col.position.z);
+    assert(block.position.x + block.size.x <= col.position.x + col.size.x
+        && block.position.y + block.size.y <= col.position.y + col.size.y
+        && block.position.z + block.size.z <= col.position.z + col.size.z);
+    
     // @TODO add bounds checking when we insert the block.
     for :iterate_vector3i coord: block.size {
         filled := block.filled[it_index];
@@ -257,11 +265,11 @@ game_init : Game_Init : (
 
     block_2 := append(*blocks);
     block_2.* = .{
-        position = .{-2, 0, -2},
-        size = .{2, 1, 2},
+        position = .{-1, 0, -2},
+        size = .{3, 1, 2},
         filled = .[
-            T, T,
-            F, T
+            T, T, T,
+            T, F, T
         ],
         color = .{0, 0, 1, 1},
         moveable = true
@@ -347,50 +355,85 @@ game_update : Game_Update : (
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, g);
     
     for input_events {
-        if !it.down continue;
-        push_direction: Vector3i;
-        if it.input == {
-            case .FORWARD;  push_direction.z += 1;
-            case .LEFT;     push_direction.x -= 1;
-            case .BACKWARD; push_direction.z -= 1;
-            case .RIGHT;    push_direction.x += 1;
-            case .UP;       push_direction.y += 1;
-            case .DOWN;     push_direction.y -= 1;
-        }
-        
-        new_player_position := player_position + push_direction;
-        
-        in_bounds, block := get_block(collision, new_player_position);
-        if !in_bounds || !block {
-            player_position = new_player_position;
-            continue;
-        }
-        
-        if block.moveable {
-            new_block_position := block.position + push_direction;
+        if it.input == .PULL {
+            if it.down flags |= .PULLING;
+            else       flags &= ~.PULLING;
+        } else {
+            if !it.down continue;
+            push_direction: Vector3i;
+            if it.input == {
+                case .FORWARD;  push_direction.z += 1;
+                case .LEFT;     push_direction.x -= 1;
+                case .BACKWARD; push_direction.z -= 1;
+                case .RIGHT;    push_direction.x += 1;
+                case .UP;       push_direction.y += 1;
+                case .DOWN;     push_direction.y -= 1;
+            }
             
-            blocked := false;
+            new_player_position := player_position + push_direction;
             
-            // Check the cell next to each filled cell of the current block
-            // Make sure it is empty and it is okay to move in that direction.
-            offset := block.position + push_direction;
-            for :iterate_vector3i block.size {
-                if !block.filled[it_index] continue;
+            // Make sure direction is a unit vector, or else stuff could teleport through walls!
+            can_move :: (col: Collision, block: *Block, direction: Vector3i) -> bool {
+                offset := block.position + direction;
 
-                absolute_coord := it + offset;
-                in_bounds, second_block := get_block(collision, absolute_coord);
+                for :iterate_vector3i block.size {
+                    if !block.filled[it_index] continue;
 
-                if !in_bounds || (second_block && second_block != block) {
-                    blocked = true;
-                    break;
+                    absolute_coord := it + offset;
+                    in_bounds, second_block := get_block(col, absolute_coord);
+
+                    if !in_bounds || (second_block && second_block != block) {
+                        return false;
+                    }
                 }
+
+                return true;
+            }
+            
+            pulled_block: *Block;
+            if flags & .PULLING {
+                pulling_block_position := player_position - push_direction;
+                in_bounds, block_behind_player := get_block(collision, pulling_block_position);
+                if in_bounds && block_behind_player && block_behind_player.moveable {
+                    if can_move(collision, block_behind_player, push_direction) pulled_block = block_behind_player;
+                }
+                // @Incomplete
+                // There is a major hole here.
+                // What if you are pulling a block, but that block is touching the block you are pushing?
+                // Or what if you are pulling the same block you are pushing?
+                // Under the current system, that wouldn't work. Instead, we should make a list of
+                // everything that needs to move, remove everything from the collision system,
+                // then try adding everything one at a time to make sure all the moves work, and bail
+                // if anything goes wrong.
             }
 
-            if !blocked {
+            in_bounds, block := get_block(collision, new_player_position);
+            if !in_bounds || !block {
+                player_position = new_player_position;
+
+                if pulled_block {
+                    remove_block_from_collision(*collision, pulled_block);
+                    pulled_block.position += push_direction;
+                    add_block_to_collision(*collision, pulled_block);
+                }
+                continue;
+            }
+            
+            if !block.moveable continue;
+
+            new_block_position := block.position + push_direction;
+            
+            if can_move(collision, block, push_direction) {
                 remove_block_from_collision(*collision, block);
                 block.position = new_block_position;
                 add_block_to_collision(*collision, block);
                 player_position = new_player_position;
+
+                if pulled_block {
+                    remove_block_from_collision(*collision, pulled_block);
+                    pulled_block.position += push_direction;
+                    add_block_to_collision(*collision, pulled_block);
+                }
             }
         }
     }
