@@ -159,7 +159,7 @@ game_init : Game_Init : (
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
     
-    level_init(*level, *level_arena);
+    test_game_level_init(*level, *level_arena);
 
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
@@ -178,8 +178,17 @@ game_update : Game_Update : (
 
     for input_events {
         if it.input == xx #char "1" && it.down {
-            if mode == .GAME mode = .EDITOR;
-            else mode = .GAME;
+
+            clear_arena(*level_arena);
+            memset(*level, 0, size_of(type_of(level)));
+
+            if mode == .GAME {
+                mode = .EDITOR;
+                test_editor_level_init(*level, *level_arena);
+            } else {
+                mode = .GAME;
+                test_game_level_init(*level, *level_arena);
+            }
         } else {
             level_update(*level, it);
         }

@@ -22,12 +22,19 @@ make_arena :: (memory: *u8, count: s64) -> Memory_Arena {
     };
 }
 
-arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type) -> bool, [] T {
+
+clear_arena :: inline (arena: *Memory_Arena) {
+    arena.current = 0;
+}
+
+
+arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := true) -> bool, [] T {
     assert(count >= 0); // You would think this wouldn't happen but I had a bug here.
     byte_count := size_of(T) * count;
     if arena.count - arena.current < byte_count return false, .{};
     ret := arena.data + arena.current;
     arena.current += byte_count;
+    #if zero_init memset(ret, 0, byte_count);
     return true, .{data=xx ret, count=count};
 }
 
