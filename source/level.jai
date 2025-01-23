@@ -33,6 +33,67 @@ Block :: struct {
 }
 
 
+get_block :: (col: Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
+    local_position := position - col.position;
+    if local_position.x < 0 || col.size.x <= local_position.x
+    || local_position.y < 0 || col.size.y <= local_position.y
+    || local_position.z < 0 || col.size.z <= local_position.z {
+        return false, null;
+    }
+    
+    index := convert_3d_coordinate_to_index(local_position, col.size);
+    return true, col.filled[index];
+}
+
+
+add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
+    if block.position.x < col.position.x return false;
+    if block.position.y < col.position.y return false;
+    if block.position.z < col.position.z return false;
+    if block.position.x + block.size.x > col.position.x + col.size.x return false;
+    if block.position.y + block.size.y > col.position.y + col.size.y return false;
+    if block.position.z + block.size.z > col.position.z + col.size.z return false;
+    
+    offset := block.position - col.position;
+
+    // @Speed we could just detect when the failure happens and unwind what we've
+    // already added instead of first checking, then adding.
+    
+    for :iterate_vector3i block.size {
+        filled := block.filled[it_index];
+        if !filled continue;
+        collision_coord := it + offset;
+        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        block_already_there := col.filled[collision_index];
+        if block_already_there return false;
+    }
+
+    for :iterate_vector3i block.size {
+        filled := block.filled[it_index];
+        if !filled continue;
+        collision_coord := it + offset;
+        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        col.filled[collision_index] = block;
+    }
+
+    return true;
+}
+
+
+remove_block_from_collision :: (col: *Collision, block: *Block) {
+    for :iterate_vector3i block.size {
+        filled := block.filled[it_index];
+        if !filled continue;
+        absolute_coord := block.position + it;
+        collision_coord := absolute_coord - col.position;
+
+        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        block_already_there := col.filled[collision_index];
+        assert(block_already_there == block);
+        col.filled[collision_index] = null;
+    }
+}
+
 level_init :: (using level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
