@@ -10,26 +10,33 @@ sqrt :: Math.sqrt;
 #load "helpers.jai";
 #load "math.jai";
 
+Game_Mode :: enum {
+    EDITOR;
+    GAME;
+}
 
-Game :: struct {
-    using gl_procs: GL_Procedures;
-    using gl_extensions: GL_Extensions;
-    debug_print: (string);
-
-    imm_state: Imm_State;
-    
-    level_shader: GLuint;
-    level_bitmap: GLuint;
-    player_shader: GLuint;
-    
+Level :: struct {
     blocks: Fixed_Array(32, Block);
 
     player_position: Vector3i;
     flags: enum {PULLING :: 1;};
 
     collision: Collision;
-    test_collision: Collision;
+}
 
+Game :: struct {
+    // @TODO: MOVE THIS STUFF ONTO THE CONTEXT!
+    using gl_procs: GL_Procedures;
+    using gl_extensions: GL_Extensions;
+    debug_print: (string);
+
+    imm_state: Imm_State;
+    
+    block_shader: GLuint;
+    block_bitmap: GLuint;
+    player_shader: GLuint;
+
+    level: Level;
     level_arena: Memory_Arena;
 }
 
@@ -178,8 +185,8 @@ game_init : Game_Init : (
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, g);
     imm_init(g);
 
-    level_shader = register_shader(g, LEVEL_SHADER);
-    assert(level_shader != 0);
+    block_shader = register_shader(g, BLOCK_SHADER);
+    assert(block_shader != 0);
     player_shader = register_shader(g, PLAYER_SHADER);
     assert(player_shader != 0);
 
@@ -192,7 +199,8 @@ game_init : Game_Init : (
     camera_projection := frustum(-right, -top, NEAR, right, top, 1000);
     rotate_camera_down := matrix4_rotate_x(cast(float, PI/3));
     world_to_camera := matrix4_translate(0, -8, 4);
-
+    
+    // @TODO: Have this as a per-level setting that we set once per frame instead of setting it on the shader at init.
     matrix := matmul(camera_projection, matmul(rotate_camera_down, world_to_camera));
    
     // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
@@ -216,19 +224,19 @@ game_init : Game_Init : (
         0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0
     ];
     
-    glGenTextures(1, *level_bitmap);
-    assert(level_bitmap != 0);
+    glGenTextures(1, *block_bitmap);
+    assert(block_bitmap != 0);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, level_bitmap);
+    glBindTexture(GL_TEXTURE_2D, block_bitmap);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     
     {
-        glUseProgram(level_shader);
-        projection_loc := glGetUniformLocation(level_shader, "projection");
+        glUseProgram(block_shader);
+        projection_loc := glGetUniformLocation(block_shader, "projection");
         glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *matrix.x_x);
-        bitmap_loc := glGetUniformLocation(level_shader, "bitmap");
+        bitmap_loc := glGetUniformLocation(block_shader, "bitmap");
         glUniform1i(bitmap_loc, 0);
     }
     
@@ -241,9 +249,15 @@ game_init : Game_Init : (
     glClearColor(0, 0, 0, 1);
     glEnable(GL_DEPTH_TEST);
     
+    level_init(*level, *level_arena);
+
+    if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
+}
+
+level_init :: (using level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
-    
+     
     block_0 := append(*blocks);
     block_0.* = .{
         position = .{-3, -1, -2},
@@ -283,6 +297,16 @@ game_init : Game_Init : (
         color = .{0, 0, 1, 1},
         moveable = true
     };
+    /* 
+    block_3 := append(*blocks);
+    block_3.* = .{
+        position = .{-1, 0, 0},
+        size = .{3, 1, 1},
+        filled = .[T, T, T],
+        color = .{0, 0.5, 0, 1},
+        moveable = true
+    };
+    */
     
     //
     // Generate your collision information based on the blocks
@@ -332,7 +356,7 @@ game_init : Game_Init : (
             && it.position.y + it.size.y < END.y
             && it.position.z + it.size.z < END.z);
     }
-    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, *Block);
+    success, collision_memory := arena_alloc_array(level_arena, collision_array_size, *Block);
     assert(success);
 
     collision = .{
@@ -341,15 +365,13 @@ game_init : Game_Init : (
         filled = collision_memory
     };
 
-    player_position = .{0, 0, -1};
-
-
     for * blocks {
         assert(add_block_to_collision(*collision, it));
     }
-    
-    if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
+
+    player_position = .{0, 0, -1};
 }
+
 
 #program_export "game_update"
 game_update : Game_Update : (
@@ -359,10 +381,44 @@ game_update : Game_Update : (
     g := cast(*Game, game_memory);
     using g;
 
+    level_update(*g.level, input_events);
+
     // :GLDebugProcHotloadingHack
     // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, g);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
+    imm_set_shader(g, block_shader);
+    imm_set_bitmap(g, block_bitmap);
+    
+    // Draw the blocks
+
+    for level.blocks {
+        for :iterate_vector3i coord: it.size {
+            filled := it.filled[it_index];
+            if !filled continue;
+            begin := to_vector3(it.position + coord);
+            end := begin + Vector3.{1,1,1};
+            imm_cuboid(g, begin, end, it.color);
+        }
+    }
+
+    imm_flush(g);
+    
+    
+    player_corner := to_vector3(level.player_position);
+    player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
+    player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
+
+    imm_set_shader(g, player_shader);
+    imm_cuboid(g, player_begin, player_end, .{1, 1, 1, 1});
+    imm_flush(g);
+
+    if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
+}
+
+level_update :: (using level: *Level, input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event)) {
     for input_events {
         if it.input == .PULL {
             if it.down flags |= .PULLING;
@@ -400,6 +456,9 @@ game_update : Game_Update : (
             // game state until we _know_ we can make a move, then do the update.
 
             //          -berk, 22 - 1 - 2025.
+
+            // @TODO Add pulling blocks next to you, not just in the opposite direction of where
+            // you are moving (I'm pretty sure we want this)
 
             moving_blocks: Fixed_Array(2, *Block);
             
@@ -447,39 +506,7 @@ game_update : Game_Update : (
             if !move_failed player_position = new_player_position;
         }
     }
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    imm_set_shader(g, level_shader);
-    imm_set_bitmap(g, level_bitmap);
-    
-    // Draw the blocks
-
-    for blocks {
-        for :iterate_vector3i coord: it.size {
-            filled := it.filled[it_index];
-            if !filled continue;
-            begin := to_vector3(it.position + coord);
-            end := begin + Vector3.{1,1,1};
-            imm_cuboid(g, begin, end, it.color);
-        }
-    }
-
-    imm_flush(g);
-    
-    
-    player_corner := to_vector3(player_position);
-    player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
-    player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
-
-    imm_set_shader(g, player_shader);
-    imm_cuboid(g, player_begin, player_end, .{1, 1, 1, 1});
-    imm_flush(g);
-
-    if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
-
-
 
 
 
@@ -547,7 +574,7 @@ gl_debug_callback :: (
 
 
 
-LEVEL_SHADER :: #string END
+BLOCK_SHADER :: #string END
 #ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec4 vertex_color;
