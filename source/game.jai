@@ -28,6 +28,7 @@ Game :: struct {
     flags: enum {PULLING :: 1;};
 
     collision: Collision;
+    test_collision: Collision;
 
     level_arena: Memory_Arena;
 }
@@ -69,27 +70,35 @@ get_block :: (col: Collision, position: Vector3i) -> in_bounds: bool, block: *Bl
 }
 
 add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
-    assert(block.position.x >= col.position.x
-        && block.position.y >= col.position.y
-        && block.position.z >= col.position.z);
-    assert(block.position.x + block.size.x <= col.position.x + col.size.x
-        && block.position.y + block.size.y <= col.position.y + col.size.y
-        && block.position.z + block.size.z <= col.position.z + col.size.z);
+    if block.position.x < col.position.x return false;
+    if block.position.y < col.position.y return false;
+    if block.position.z < col.position.z return false;
+    if block.position.x + block.size.x > col.position.x + col.size.x return false;
+    if block.position.y + block.size.y > col.position.y + col.size.y return false;
+    if block.position.z + block.size.z > col.position.z + col.size.z return false;
     
-    // @TODO add bounds checking when we insert the block.
-    for :iterate_vector3i coord: block.size {
+    offset := block.position - col.position;
+
+    // @Speed we could just detect when the failure happens and unwind what we've
+    // already added instead of first checking, then adding.
+    
+    for :iterate_vector3i block.size {
         filled := block.filled[it_index];
         if !filled continue;
-
-        absolute_coord := block.position + coord;
-        collision_coord := absolute_coord - col.position;
-        
+        collision_coord := it + offset;
         collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
         block_already_there := col.filled[collision_index];
         if block_already_there return false;
-        
+    }
+
+    for :iterate_vector3i block.size {
+        filled := block.filled[it_index];
+        if !filled continue;
+        collision_coord := it + offset;
+        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
         col.filled[collision_index] = block;
     }
+
     return true;
 }
 
@@ -331,7 +340,7 @@ game_init : Game_Init : (
         size = size,
         filled = collision_memory
     };
-    
+
     player_position = .{0, 0, -1};
 
 
@@ -371,70 +380,71 @@ game_update : Game_Update : (
             }
             
             new_player_position := player_position + push_direction;
+
+
             
-            // Make sure direction is a unit vector, or else stuff could teleport through walls!
-            can_move :: (col: Collision, block: *Block, direction: Vector3i) -> bool {
-                offset := block.position + direction;
+            // This code took a while to put together and likely is only going to get more complex.
 
-                for :iterate_vector3i block.size {
-                    if !block.filled[it_index] continue;
+            // When the player moves, either the entire move needs to succeed at once or fail at once.
+            // When the player pushes or pulls a block, a lot about the game state needs to change.
+            // If we're trying to update the game state and we find out that the move the player is
+            // trying to make is illegal, then we need to undo all the changes we made to the game
+            // state while determining if that move is legal.
 
-                    absolute_coord := it + offset;
-                    in_bounds, second_block := get_block(col, absolute_coord);
+            // Right now, I am just removing all the blocks from the collision map, updating them,
+            // re-adding them to the collision map, and undoing all of that if it turns out one of
+            // the blocks is overlapping with something.
+            
+            // If we are not _very_ careful, this could get messy really quickly.
+            // Possibly consider investigating an alternate strategy that does not touch the core
+            // game state until we _know_ we can make a move, then do the update.
 
-                    if !in_bounds || (second_block && second_block != block) {
-                        return false;
-                    }
-                }
+            //          -berk, 22 - 1 - 2025.
 
-                return true;
+            moving_blocks: Fixed_Array(2, *Block);
+            
+            pushed_in_bounds, pushed_block := get_block(collision, new_player_position);
+            if !pushed_in_bounds continue;
+
+            if pushed_block {
+                if !pushed_block.moveable continue;
+                assert(append(*moving_blocks, pushed_block));
             }
-            
-            pulled_block: *Block;
+
             if flags & .PULLING {
-                pulling_block_position := player_position - push_direction;
-                in_bounds, block_behind_player := get_block(collision, pulling_block_position);
-                if in_bounds && block_behind_player && block_behind_player.moveable {
-                    if can_move(collision, block_behind_player, push_direction) pulled_block = block_behind_player;
+                pulled_in_bounds, pulled_block := get_block(collision, player_position - push_direction);
+                if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(moving_blocks, pulled_block) {
+                    assert(append(*moving_blocks, pulled_block));
                 }
-                // @Incomplete
-                // There is a major hole here.
-                // What if you are pulling a block, but that block is touching the block you are pushing?
-                // Or what if you are pulling the same block you are pushing?
-                // Under the current system, that wouldn't work. Instead, we should make a list of
-                // everything that needs to move, remove everything from the collision system,
-                // then try adding everything one at a time to make sure all the moves work, and bail
-                // if anything goes wrong.
-            }
-
-            in_bounds, block := get_block(collision, new_player_position);
-            if !in_bounds || !block {
-                player_position = new_player_position;
-
-                if pulled_block {
-                    remove_block_from_collision(*collision, pulled_block);
-                    pulled_block.position += push_direction;
-                    add_block_to_collision(*collision, pulled_block);
-                }
-                continue;
             }
             
-            if !block.moveable continue;
+            for moving_blocks {
+                remove_block_from_collision(*collision, it);
+            }
 
-            new_block_position := block.position + push_direction;
-            
-            if can_move(collision, block, push_direction) {
-                remove_block_from_collision(*collision, block);
-                block.position = new_block_position;
-                add_block_to_collision(*collision, block);
-                player_position = new_player_position;
+            move_failed := false;
+            for moving_blocks {
+                it.position += push_direction;
+                if !add_block_to_collision(*collision, it) {
 
-                if pulled_block {
-                    remove_block_from_collision(*collision, pulled_block);
-                    pulled_block.position += push_direction;
-                    add_block_to_collision(*collision, pulled_block);
+                    // Undo everything we just tried to do
+                    it.position -= push_direction;
+                    for #v2 < 0..it_index-1 {
+                        block := moving_blocks[it];
+                        remove_block_from_collision(*collision, block);
+                        block.position -= push_direction;
+                    }
+
+                    for moving_blocks {
+                        assert(add_block_to_collision(*collision, it));
+                    }
+
+                    move_failed = true;
+                    break;
                 }
             }
+
+            if !move_failed player_position = new_player_position;
         }
     }
 
