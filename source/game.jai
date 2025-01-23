@@ -11,8 +11,8 @@ sqrt :: Math.sqrt;
 #load "math.jai";
 
 Game_Mode :: enum {
-    EDITOR;
     GAME;
+    EDITOR;
 }
 
 Level :: struct {
@@ -36,6 +36,7 @@ Game :: struct {
     block_bitmap: GLuint;
     player_shader: GLuint;
 
+    mode: Game_Mode;
     level: Level;
     level_arena: Memory_Arena;
 }
@@ -381,7 +382,18 @@ game_update : Game_Update : (
     g := cast(*Game, game_memory);
     using g;
 
-    level_update(*g.level, input_events);
+
+    game_input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event);
+
+    for input_events {
+        if it.input == xx #char "1" && it.down {
+            if mode == .GAME mode == .EDITOR;
+            else mode = .GAME;
+        } else {
+            level_update(*level, it);
+        }
+    }
+
 
     // :GLDebugProcHotloadingHack
     // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
@@ -418,93 +430,92 @@ game_update : Game_Update : (
     if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
 }
 
-level_update :: (using level: *Level, input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event)) {
-    for input_events {
-        if it.input == .PULL {
-            if it.down flags |= .PULLING;
-            else       flags &= ~.PULLING;
-        } else {
-            if !it.down continue;
-            push_direction: Vector3i;
-            if it.input == {
-                case .FORWARD;  push_direction.z += 1;
-                case .LEFT;     push_direction.x -= 1;
-                case .BACKWARD; push_direction.z -= 1;
-                case .RIGHT;    push_direction.x += 1;
-                case .UP;       push_direction.y += 1;
-                case .DOWN;     push_direction.y -= 1;
-            }
-            
-            new_player_position := player_position + push_direction;
+level_update :: (using level: *Level, event: Input_Event) { 
+    if event.input == #char " " {
+        if event.down flags |= .PULLING;
+        else          flags &= ~.PULLING;
+    } else {
+        if !event.down return;
+        push_direction: Vector3i;
+        if event.input == {
+            case xx #char "W"; push_direction.z += 1;
+            case xx #char "A"; push_direction.x -= 1;
+            case xx #char "S"; push_direction.z -= 1;
+            case xx #char "D"; push_direction.x += 1;
+            case xx #char "Q"; push_direction.y += 1;
+            case xx #char "E"; push_direction.y -= 1;
+            case; return;
 
-
-            
-            // This code took a while to put together and likely is only going to get more complex.
-
-            // When the player moves, either the entire move needs to succeed at once or fail at once.
-            // When the player pushes or pulls a block, a lot about the game state needs to change.
-            // If we're trying to update the game state and we find out that the move the player is
-            // trying to make is illegal, then we need to undo all the changes we made to the game
-            // state while determining if that move is legal.
-
-            // Right now, I am just removing all the blocks from the collision map, updating them,
-            // re-adding them to the collision map, and undoing all of that if it turns out one of
-            // the blocks is overlapping with something.
-            
-            // If we are not _very_ careful, this could get messy really quickly.
-            // Possibly consider investigating an alternate strategy that does not touch the core
-            // game state until we _know_ we can make a move, then do the update.
-
-            //          -berk, 22 - 1 - 2025.
-
-            // @TODO Add pulling blocks next to you, not just in the opposite direction of where
-            // you are moving (I'm pretty sure we want this)
-
-            moving_blocks: Fixed_Array(2, *Block);
-            
-            pushed_in_bounds, pushed_block := get_block(collision, new_player_position);
-            if !pushed_in_bounds continue;
-
-            if pushed_block {
-                if !pushed_block.moveable continue;
-                assert(append(*moving_blocks, pushed_block));
-            }
-
-            if flags & .PULLING {
-                pulled_in_bounds, pulled_block := get_block(collision, player_position - push_direction);
-                if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(moving_blocks, pulled_block) {
-                    assert(append(*moving_blocks, pulled_block));
-                }
-            }
-            
-            for moving_blocks {
-                remove_block_from_collision(*collision, it);
-            }
-
-            move_failed := false;
-            for moving_blocks {
-                it.position += push_direction;
-                if !add_block_to_collision(*collision, it) {
-
-                    // Undo everything we just tried to do
-                    it.position -= push_direction;
-                    for #v2 < 0..it_index-1 {
-                        block := moving_blocks[it];
-                        remove_block_from_collision(*collision, block);
-                        block.position -= push_direction;
-                    }
-
-                    for moving_blocks {
-                        assert(add_block_to_collision(*collision, it));
-                    }
-
-                    move_failed = true;
-                    break;
-                }
-            }
-
-            if !move_failed player_position = new_player_position;
         }
+        
+        new_player_position := player_position + push_direction;
+
+        
+        // This code took a while to put together and likely is only going to get more complex.
+
+        // When the player moves, either the entire move needs to succeed at once or fail at once.
+        // When the player pushes or pulls a block, a lot about the game state needs to change.
+        // If we're trying to update the game state and we find out that the move the player is
+        // trying to make is illegal, then we need to undo all the changes we made to the game
+        // state while determining if that move is legal.
+
+        // Right now, I am just removing all the blocks from the collision map, updating them,
+        // re-adding them to the collision map, and undoing all of that if it turns out one of
+        // the blocks is overlapping with something.
+        
+        // If we are not _very_ careful, this could get messy really quickly.
+        // Possibly consider investigating an alternate strategy that does not touch the core
+        // game state until we _know_ we can make a move, then do the update.
+
+        //          -berk, 22 - 1 - 2025.
+
+        // @TODO Add pulling blocks next to you, not just in the opposite direction of where
+        // you are moving (I'm pretty sure we want this)
+
+        moving_blocks: Fixed_Array(2, *Block);
+        
+        pushed_in_bounds, pushed_block := get_block(collision, new_player_position);
+        if !pushed_in_bounds return;
+
+        if pushed_block {
+            if !pushed_block.moveable return;
+            assert(append(*moving_blocks, pushed_block));
+        }
+
+        if flags & .PULLING {
+            pulled_in_bounds, pulled_block := get_block(collision, player_position - push_direction);
+            if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(moving_blocks, pulled_block) {
+                assert(append(*moving_blocks, pulled_block));
+            }
+        }
+        
+        for moving_blocks {
+            remove_block_from_collision(*collision, it);
+        }
+
+        move_failed := false;
+        for moving_blocks {
+            it.position += push_direction;
+            if !add_block_to_collision(*collision, it) {
+
+                // Undo everything we just tried to do
+                it.position -= push_direction;
+                for #v2 < 0..it_index-1 {
+                    block := moving_blocks[it];
+                    remove_block_from_collision(*collision, block);
+                    block.position -= push_direction;
+                }
+
+                for moving_blocks {
+                    assert(add_block_to_collision(*collision, it));
+                }
+
+                move_failed = true;
+                break;
+            }
+        }
+
+        if !move_failed player_position = new_player_position;
     }
 }
 

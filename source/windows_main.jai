@@ -27,16 +27,13 @@ main :: () {
         style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC,
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
             push_context .{} {
+
                 translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Input #no_context {
-                    if keycode == #char "W" || keycode == VK_UP    return true, .FORWARD;
-                    if keycode == #char "A" || keycode == VK_LEFT  return true, .LEFT;
-                    if keycode == #char "S" || keycode == VK_DOWN  return true, .BACKWARD;
-                    if keycode == #char "D" || keycode == VK_RIGHT return true, .RIGHT;
-
-                    if keycode == #char "Q" return true, .UP;
-                    if keycode == #char "E" return true, .DOWN;
-
-                    if keycode == VK_SPACE return true, .PULL;
+                    if #char "A" <= keycode && keycode <= #char "Z"
+                    || #char "0" <= keycode && keycode <= #char "9"
+                    || #char " " == keycode {
+                        return true, xx keycode;
+                    }
 
                     return false, 0;
                 }

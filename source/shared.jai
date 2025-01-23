@@ -30,20 +30,15 @@ Input_Event :: struct {
 }
 
 Input :: enum {
-    // @TODO: If we add keyboard remapping, this are probably just going to be virtual keycodes that wrap the keycodes of the operating system.
-    FORWARD; // Away from the viewer
-    LEFT;
-    BACKWARD; // Towards the viewer
-    RIGHT;
-    UP;
-    DOWN;
-
-    PULL;
+    // @TODO: Fill in the rest of these.
+    // A - Z: Ascii 'A' - 'Z' 
+    // 0 - 9: Ascii '0' - '9'
+    // Space: Ascii ' '
 }
 
 Fixed_Array :: struct (n: s64, $T: Type) {
     count: s64;
-    data: [n] T;
+    data: [n] T = ---;
 }
 
 append :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
