@@ -16,13 +16,13 @@ Game_Init :: #type (
     gl_extension_loader: (*u8) -> *void #c_call,
     debug_print: (string),
     level_arena_memory: *void
-);
+) #no_context;
 
 INPUT_EVENT_COUNT :: 64;
 Game_Update :: #type (
     game_memory: *void,
     input_events: *Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
-);
+) #no_context;
 
 Input_Event :: struct {
     input: Input; // Do we want to pack the "down" into these bits?

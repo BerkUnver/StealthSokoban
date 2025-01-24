@@ -1,5 +1,3 @@
-// In debug builds, this should just be a break with a stacktrace.
-// In release builds, it should pop up a window and tell the user how to report the bug.
 // @TODO: Find out how to disable Runtime_Support
 // @TODO: Switch to the wide character version of everything.
 

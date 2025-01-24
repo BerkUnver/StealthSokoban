@@ -14,7 +14,8 @@ Imm_State :: struct {
 }
 
 
-register_shader :: (using g: *Game, text: string) -> GLuint {
+register_shader :: (text: string) -> GLuint {
+    using context.game_context;
 
     LOG_SIZE :: 1024;
 
@@ -51,7 +52,7 @@ register_shader :: (using g: *Game, text: string) -> GLuint {
 
         str := string.{data=*buffer[0], count=count};
 
-        print(g, "Vertex shader compilation error:\n%", str);
+        print("Vertex shader compilation error:\n%", str);
         return 0;
     }
     
@@ -84,7 +85,7 @@ register_shader :: (using g: *Game, text: string) -> GLuint {
         glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print(g, "Fragment shader compilation error:\n%", str);
+        print("Fragment shader compilation error:\n%", str);
         return 0;
     }
 
@@ -101,8 +102,8 @@ register_shader :: (using g: *Game, text: string) -> GLuint {
         glGetProgramInfoLog(program, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print(g, "Shader linking error:\n");
-        print(g, str);
+        print("Shader linking error:\n");
+        print(str);
         return 0;
     }
 
@@ -110,8 +111,9 @@ register_shader :: (using g: *Game, text: string) -> GLuint {
 }
 
 
-imm_init :: (using g: *Game) {
-    using g.imm_state;
+imm_init :: () {
+    using context.game_context.imm_state;
+    using context.game_context;
 
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -131,9 +133,9 @@ imm_init :: (using g: *Game) {
 
 }
 
-imm_flush :: (using g: *Game) {
-    using g.imm_state;
-    
+imm_flush :: () {
+    using context.game_context.imm_state;
+    using context.game_context;
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bitmap);
@@ -167,17 +169,17 @@ imm_flush :: (using g: *Game) {
     vertex_count = 0;
 }
 
-imm_set_shader :: (using g: *Game, shader: GLuint) {
-    imm_state.shader = shader; 
+imm_set_shader :: (shader: GLuint) {
+    context.game_context.imm_state.shader = shader; 
 }
 
-imm_set_bitmap :: (using g: *Game, bitmap: GLuint) {
-    imm_state.bitmap = bitmap;
+imm_set_bitmap :: (bitmap: GLuint) {
+    context.game_context.imm_state.bitmap = bitmap;
 }
 
-imm_vertex :: (g: *Game, position: Vector3, color: Vector4, uv: Vector2) {
-    using g.imm_state;
-    if vertex_count == vertices.count imm_flush(g);
+imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
+    using context.game_context.imm_state;
+    if vertex_count == vertices.count imm_flush();
     vertices[vertex_count] = .{
         position=position,
         color=color,
@@ -186,71 +188,57 @@ imm_vertex :: (g: *Game, position: Vector3, color: Vector4, uv: Vector2) {
     vertex_count += 1;
 }
 
-/*
-imm_vertex :: (using g: *Game) -> *Vertex {
-    using g.imm_state;
-    if vertex_count >= vertices.count {
-        imm_flush();
-        vertex_count = 1;
-        return *vertices[0];
-    }
-    
-    v := *vertices[vertex_count];
-    vertex_count += 1;
-    return v;
-}
-*/
 
-imm_cuboid :: (g: *Game, b: Vector3, e: Vector3, color: Vector4) {
+imm_cuboid :: (b: Vector3, e: Vector3, color: Vector4) {
     // b: beginning, the bottom corner of the cuboid
     // e: end, the top corner of the cuboid
 
     // Front face
-    imm_vertex(g, .{b.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{e.x, b.y, b.z}, color, .{1, 0});
-    imm_vertex(g, .{e.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(g, .{b.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{e.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(g, .{b.x, e.y, b.z}, color, .{0, 1});
+    imm_vertex(.{b.x, b.y, b.z}, color, .{0, 0});
+    imm_vertex(.{e.x, b.y, b.z}, color, .{1, 0});
+    imm_vertex(.{e.x, e.y, b.z}, color, .{1, 1});
+    imm_vertex(.{b.x, b.y, b.z}, color, .{0, 0});
+    imm_vertex(.{e.x, e.y, b.z}, color, .{1, 1});
+    imm_vertex(.{b.x, e.y, b.z}, color, .{0, 1});
     
     // Right face
-    imm_vertex(g, .{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{e.x, b.y, e.z}, color, .{1, 0});
-    imm_vertex(g, .{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(g, .{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(g, .{e.x, e.y, b.z}, color, .{0, 1});
+    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
+    imm_vertex(.{e.x, b.y, e.z}, color, .{1, 0});
+    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
+    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
+    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
+    imm_vertex(.{e.x, e.y, b.z}, color, .{0, 1});
     
     // Top face
-    imm_vertex(g, .{b.x, e.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{e.x, e.y, b.z}, color, .{1, 0});
-    imm_vertex(g, .{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(g, .{b.x, e.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(g, .{b.x, e.y, e.z}, color, .{0, 1});
+    imm_vertex(.{b.x, e.y, b.z}, color, .{0, 0});
+    imm_vertex(.{e.x, e.y, b.z}, color, .{1, 0});
+    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
+    imm_vertex(.{b.x, e.y, b.z}, color, .{0, 0});
+    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
+    imm_vertex(.{b.x, e.y, e.z}, color, .{0, 1});
     
     // Bottom face
-    imm_vertex(g, .{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{b.x, b.y, b.z}, color, .{1, 0});
-    imm_vertex(g, .{b.x, b.y, e.z}, color, .{1, 1});
-    imm_vertex(g, .{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(g, .{b.x, b.y, e.z}, color, .{1, 1});
-    imm_vertex(g, .{e.x, b.y, e.z}, color, .{0, 1});
+    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
+    imm_vertex(.{b.x, b.y, b.z}, color, .{1, 0});
+    imm_vertex(.{b.x, b.y, e.z}, color, .{1, 1});
+    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
+    imm_vertex(.{b.x, b.y, e.z}, color, .{1, 1});
+    imm_vertex(.{e.x, b.y, e.z}, color, .{0, 1});
 
     // Left face
-    imm_vertex(g, .{b.x, b.y, e.z}, color, .{0, 0});
-    imm_vertex(g, .{b.x, b.y, b.z}, color, .{1, 0});
-    imm_vertex(g, .{b.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(g, .{b.x, b.y, e.z}, color, .{0, 0});
-    imm_vertex(g, .{b.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(g, .{b.x, e.y, e.z}, color, .{0, 1});
+    imm_vertex(.{b.x, b.y, e.z}, color, .{0, 0});
+    imm_vertex(.{b.x, b.y, b.z}, color, .{1, 0});
+    imm_vertex(.{b.x, e.y, b.z}, color, .{1, 1});
+    imm_vertex(.{b.x, b.y, e.z}, color, .{0, 0});
+    imm_vertex(.{b.x, e.y, b.z}, color, .{1, 1});
+    imm_vertex(.{b.x, e.y, e.z}, color, .{0, 1});
 
     // Back face
-    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0});
-    imm_vertex(g, .{b.x, b.y, e.z}, .{0, 1, 0, 1}, .{1, 0});
-    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 1});
-    imm_vertex(g, .{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0});
-    imm_vertex(g, .{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 1});
-    imm_vertex(g, .{e.x, e.y, e.z}, .{0, 1, 0, 1}, .{0, 1});
+    imm_vertex(.{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0});
+    imm_vertex(.{b.x, b.y, e.z}, .{0, 1, 0, 1}, .{1, 0});
+    imm_vertex(.{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 1});
+    imm_vertex(.{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0});
+    imm_vertex(.{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 1});
+    imm_vertex(.{e.x, e.y, e.z}, .{0, 1, 0, 1}, .{0, 1});
 
 }
