@@ -32,7 +32,6 @@ Block :: struct {
     // @TODO Make a bit array data structure for better cache coherency
 }
 
-
 get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
     local_position := position - col.position;
     if local_position.x < 0 || col.size.x <= local_position.x
@@ -43,6 +42,23 @@ get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *B
     
     index := convert_3d_coordinate_to_index(local_position, col.size);
     return true, col.filled[index];
+}
+
+
+make_collision :: (level_arena: *Memory_Arena) -> Collision {
+    START :: Vector3i.{-10, -10, -10};
+    END :: Vector3i.{10, 10, 10};
+    size := END - START;
+    collision_array_size := size.x * size.y * size.z;
+
+    success, collision_memory := arena_alloc_array(level_arena, collision_array_size, *Block);
+    assert(success);
+
+    return Collision.{
+        position = START,
+        size = size,
+        filled = collision_memory
+    };
 }
 
 
@@ -94,78 +110,46 @@ remove_block_from_collision :: (col: *Collision, block: *Block) {
     }
 }
 
-init_collision_from_blocks :: (blocks: *Fixed_Array(32, Block), level_arena: *Memory_Arena) -> Collision {
-    //
-    // Generate your collision information based on the blocks
-    //
+add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vector3i, size: Vector3i, filled: [] bool, color: Vector4, moveable: bool) {
+     assert(position.x >= level.collision.position.x
+            && position.y >= level.collision.position.y
+            && position.z >= level.collision.position.z);
+     assert(position.x + size.x < level.collision.position.x + level.collision.size.x
+            && position.y + size.y < level.collision.position.y + level.collision.size.y
+            && position.z + size.z < level.collision.position.z + level.collision.size.z);
+
+     assert(size.x * size.y * size.z == filled.count);
     
+     // Do we need more elegant failure cases here?
 
-    // This generates the collision information based on the bounding box of what's in the level.
-    // We may want to bring this back, or possibly have bounding box widgets in the level editor.
+     success, filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
+     assert(success);
+     memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
 
-    /*
-    start: Vector3i;
-    end: Vector3i;
-    for blocks {
-        if it_index == 0 {
-            start = it.position;
-            end = it.position + it.size;
-        } else {
-            if it.position.x < start.x start.x = it.position.x;
-            if it.position.y < start.y start.y = it.position.y;
-            if it.position.z < start.z start.z = it.position.z;
-            
-            it_end := it.position + it.size;
-            if it_end.x > end.x end.x = it_end.x;
-            if it_end.y > end.y end.y = it_end.y;
-            if it_end.z > end.z end.z = it_end.z;
-        }
-    }
-
-    size := end - start;
-    collision_array_size := size.x * size.y * size.z;
-    success, collision_memory := arena_alloc_array(*level_arena, collision_array_size, *Block);
-    assert(success);
-    */
+     block := append(*level.blocks);
+     assert(block != null);
     
-    
-    // @Temporary
-    START :: Vector3i.{-10, -10, -10};
-    END :: Vector3i.{10, 10, 10};
-    size := END - START;
-    collision_array_size := size.x * size.y * size.z;
-
-    for blocks {
-        assert(it.position.x >= START.x
-            && it.position.y >= START.y
-            && it.position.z >= START.z);
-        assert(it.position.x + it.size.x < END.x
-            && it.position.y + it.size.y < END.y
-            && it.position.z + it.size.z < END.z);
-    }
-    success, collision_memory := arena_alloc_array(level_arena, collision_array_size, *Block);
-    assert(success);
-
-    collision := Collision.{
-        position = START,
+     block.* = .{
+        position = position,
         size = size,
-        filled = collision_memory
-    };
+        filled = filled_allocated,
+        color = color,
+        moveable = moveable
+     };
 
-    for * blocks {
-        assert(add_block_to_collision(*collision, it));
-    }
-
-    return collision;
+     assert(add_block_to_collision(*level.collision, block));
 }
 
 
-test_game_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
+
+test_game_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
      
-    block_0 := append(*blocks);
-    block_0.* = .{
+    level.player_position = .{0, 0, -1};
+    level.collision = make_collision(level_arena);
+
+    add_block_to_level(level, level_arena, 
         position = .{-3, -1, -2},
         size = .{6, 1, 4},
         filled = .[
@@ -176,10 +160,9 @@ test_game_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
         ],
         color = .{1, 0, 0, 1},
         moveable = false
-    };
+    );
     
-    block_1 := append(*blocks);
-    block_1.* = .{
+    add_block_to_level(level, level_arena, 
         position = .{-3, 0, -2},
         size = .{6, 1, 4},
         filled = .[
@@ -190,10 +173,9 @@ test_game_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
         ],
         color = .{1, 143.0/255.0, 0, 1},
         moveable = false
-    };
+    );
 
-    block_2 := append(*blocks);
-    block_2.* = .{
+    add_block_to_level(level, level_arena, 
         position = .{-1, 0, -2},
         size = .{3, 1, 2},
         filled = .[
@@ -202,7 +184,7 @@ test_game_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
         ],
         color = .{0, 0, 1, 1},
         moveable = true
-    };
+    );
     /* 
     block_3 := append(*blocks);
     block_3.* = .{
@@ -213,18 +195,17 @@ test_game_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
         moveable = true
     };
     */
-
-    collision = init_collision_from_blocks(*blocks, level_arena);
-    player_position = .{0, 0, -1};
 }
 
 
-test_editor_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
+test_editor_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
 
-    block_0 := append(*blocks);
-    block_0.* = .{
+    level.player_position = .{0, 0, -1};
+    level.collision = make_collision(level_arena);
+
+    add_block_to_level(level, level_arena, 
         position = .{-3, -1, -2},
         size = .{6, 1, 4},
         filled = .[
@@ -235,11 +216,7 @@ test_editor_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
         ],
         color = .{0, 0, 0.5, 1},
         moveable = false
-    };
-
-    collision = init_collision_from_blocks(*blocks, level_arena);
-
-    player_position = .{0, -1, -1};
+    );
 }
 
 
