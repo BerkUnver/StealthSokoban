@@ -193,7 +193,7 @@ game_init : Game_Init : (
 #program_export "game_update"
 game_update : Game_Update : (
     game_memory_: *void, 
-    input_events: *Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
+    input: *Input
 ) #no_context {
     push_context {
         game_memory := cast(*Game_Memory, game_memory_);
@@ -201,11 +201,8 @@ game_update : Game_Update : (
         using game_memory.game_context;
         using game_memory.game;
 
-
-        game_input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event);
-
-        for input_events {
-            if it.input == xx #char "1" && it.down {
+        for input.events {
+            if it.key == xx #char "1" && it.down {
 
                 clear_arena(*level_arena);
                 memset(*level, 0, size_of(type_of(level)));

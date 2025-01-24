@@ -8,7 +8,7 @@
 windows: struct {
     stdout: HANDLE;
     game_dll: HMODULE;
-    input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event);
+    input_events: Fixed_Array(Input.EVENT_COUNT, Input_Event);
 }
 
 
@@ -26,7 +26,7 @@ main :: () {
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
             push_context .{} {
 
-                translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Input #no_context {
+                translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Key #no_context {
                     if #char "A" <= keycode && keycode <= #char "Z"
                     || #char "0" <= keycode && keycode <= #char "9"
                     || #char " " == keycode {
@@ -54,28 +54,40 @@ main :: () {
                     // is not.
                     case WM_KEYDOWN;
                         if (l_param & REPEAT_FLAG) == 0 {
-                            success, input := translate_keycode_to_game_input(w_param);
+                            success, key := translate_keycode_to_game_input(w_param);
                             if success {
                                 event := append(*input_events);
-                                if event event.* = .{input=input, down=true};
+                                if event event.* = .{key=key, down=true};
                             }
                         }
                         return 0;
                     case WM_KEYUP;
                         if (l_param & REPEAT_FLAG) != 0 {
-                            success, input := translate_keycode_to_game_input(w_param);
+                            success, key := translate_keycode_to_game_input(w_param);
                             if success {
                                 event := append(*input_events);
-                                if event event.* = .{input=input, down=false};
+                                if event event.* = .{key=key, down=false};
                             }
                         }
                         return 0;
+
+                    case WM_LBUTTONDOWN;
+                        event := append(*input_events);
+                        if event event.* = .{key=.MOUSE_LEFT_BUTTON, down=true};
+                        return 0;
+
+                    case WM_LBUTTONUP;
+                        event := append(*input_events);
+                        if event event.* = .{key=.MOUSE_LEFT_BUTTON, down=false};
+                        return 0;
+                        
                     case WM_CLOSE;
                         PostQuitMessage(0);
                         return 0;
                     case; 
-                        return DefWindowProcA(window, message, w_param, l_param);
                 }
+
+                return DefWindowProcA(window, message, w_param, l_param);
             }
         },
         hInstance = module_handle,
@@ -96,11 +108,8 @@ main :: () {
     // This is WS_OVERLAPPEDWINDOW without the WS_MAXIMIZEBOX and WS_THICKFRAME.
     // Supposedly this is to prevent you from resizing
     
-    monitor_w := GetSystemMetrics(SM_CXSCREEN);
-    monitor_h := GetSystemMetrics(SM_CYSCREEN);
-    
-    window_x := (monitor_w - INNER_WINDOW_W) / 2;
-    window_y := (monitor_h - INNER_WINDOW_H) / 2;
+    window_x := (GetSystemMetrics(SM_CXSCREEN) - INNER_WINDOW_W) / 2;
+    window_y := (GetSystemMetrics(SM_CYSCREEN) - INNER_WINDOW_H) / 2;
 
     rect := RECT.{
         right = INNER_WINDOW_W,
@@ -303,8 +312,40 @@ main :: () {
             DispatchMessageA(*message);
         }
 
+        
+        monitor_h := GetSystemMetrics(SM_CYSCREEN);
+
+        client_rect: RECT;
+        GetClientRect(window, *client_rect);
+
+        window_top_left := POINT.{0, 0};
+        ClientToScreen(window, *window_top_left);
+        window_bottom_right := POINT.{x=client_rect.right, y=client_rect.bottom};
+        ClientToScreen(window, *window_bottom_right);
+
+        window_x := window_top_left.x;
+        window_y := monitor_h - window_top_left.y - 1;
+
+        window_w := window_bottom_right.x - window_top_left.x;
+        window_h := window_top_left.y - window_bottom_right.y;
+
+        mouse_pos: POINT;
+        GetCursorPos(*mouse_pos);
+
+        global_mouse_x := mouse_pos.x;
+        global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
+
+        mouse_x := cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
+        mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
+
+        input := Input.{
+            events = *windows.input_events,
+            mouse_x = mouse_x,
+            mouse_y = mouse_y
+        };
+
         game_update := cast(Game_Update, GetProcAddress(windows.game_dll, "game_update"));
-        game_update(game_memory, *windows.input_events);
+        game_update(game_memory, *input);
         windows.input_events.count = 0;
 
         SwapBuffers(dc);

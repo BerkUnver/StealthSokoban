@@ -221,13 +221,13 @@ test_editor_level_init :: (level: *Level, level_arena: *Memory_Arena) {
 
 
 level_update :: (using level: *Level, event: Input_Event) { 
-    if event.input == #char " " {
+    if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
     } else {
         if !event.down return;
         push_direction: Vector3i;
-        if event.input == {
+        if event.key == {
             case xx #char "W"; push_direction.z += 1;
             case xx #char "A"; push_direction.x -= 1;
             case xx #char "S"; push_direction.z -= 1;

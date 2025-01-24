@@ -18,28 +18,42 @@ Game_Init :: #type (
     level_arena_memory: *void
 ) #no_context;
 
-INPUT_EVENT_COUNT :: 64;
 Game_Update :: #type (
     game_memory: *void,
-    input_events: *Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
+    input: *Input
 ) #no_context;
 
+
+Input :: struct {
+    EVENT_COUNT :: 64;
+    events: *Fixed_Array(EVENT_COUNT, Input_Event); // This is stored by the OS
+
+    // In the range (-1, 1) for the x and y axis of the window. Maybe this is a mistake?
+    mouse_x: float;
+    mouse_y: float;
+}
+
+
 Input_Event :: struct {
-    input: Input; // Do we want to pack the "down" into these bits?
+    key: Key; // Do we want to pack the "down" into these bits?
     down: bool; // Up or down?
 }
 
-Input :: enum {
+
+Key :: enum {
     // @TODO: Fill in the rest of these.
     // A - Z: Ascii 'A' - 'Z' 
     // 0 - 9: Ascii '0' - '9'
     // Space: Ascii ' '
+    MOUSE_LEFT_BUTTON :: 256;
 }
+
 
 Fixed_Array :: struct (n: s64, $T: Type) {
     count: s64;
     data: [n] T = ---;
 }
+
 
 append :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
     if count == N return false;
