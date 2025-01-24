@@ -21,7 +21,7 @@ Game_Init :: #type (
 INPUT_EVENT_COUNT :: 64;
 Game_Update :: #type (
     game_memory: *void,
-    input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
+    input_events: *Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
 );
 
 Input_Event :: struct {
@@ -62,7 +62,7 @@ append_many :: (using array: *Fixed_Array($N, $T), how_many: s64) -> *T {
     return ptr;
 }
 
-contains :: (using array: Fixed_Array($N, $T), item: T) -> bool {
+contains :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
     for array {
         if it == item return true;
     }

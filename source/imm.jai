@@ -14,7 +14,7 @@ Imm_State :: struct {
 }
 
 
-register_shader :: (using g: Game, text: string) -> GLuint {
+register_shader :: (using g: *Game, text: string) -> GLuint {
 
     LOG_SIZE :: 1024;
 

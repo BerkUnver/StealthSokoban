@@ -38,7 +38,7 @@ arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := 
     return true, .{data=xx ret, count=count};
 }
 
-print :: (g: Game, s: string, args: ..Any) {
+print :: (g: *Game, s: string, args: ..Any) {
     buffer: [4096] u8 = ---;
     buffer_index := 0;
     arg_index := 0;

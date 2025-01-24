@@ -33,7 +33,7 @@ Block :: struct {
 }
 
 
-get_block :: (col: Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
+get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
     local_position := position - col.position;
     if local_position.x < 0 || col.size.x <= local_position.x
     || local_position.y < 0 || col.size.y <= local_position.y
@@ -287,7 +287,7 @@ level_update :: (using level: *Level, event: Input_Event) {
 
         moving_blocks: Fixed_Array(2, *Block);
         
-        pushed_in_bounds, pushed_block := get_block(collision, new_player_position);
+        pushed_in_bounds, pushed_block := get_block(*collision, new_player_position);
         if !pushed_in_bounds return;
 
         if pushed_block {
@@ -296,8 +296,8 @@ level_update :: (using level: *Level, event: Input_Event) {
         }
 
         if flags & .PULLING {
-            pulled_in_bounds, pulled_block := get_block(collision, player_position - push_direction);
-            if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(moving_blocks, pulled_block) {
+            pulled_in_bounds, pulled_block := get_block(*collision, player_position - push_direction);
+            if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(*moving_blocks, pulled_block) {
                 assert(append(*moving_blocks, pulled_block));
             }
         }

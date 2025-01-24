@@ -306,7 +306,7 @@ main :: () {
         }
 
         game_update := cast(Game_Update, GetProcAddress(windows.game_dll, "game_update"));
-        game_update(game_memory, windows.input_events);
+        game_update(game_memory, *windows.input_events);
         windows.input_events.count = 0;
 
         SwapBuffers(dc);

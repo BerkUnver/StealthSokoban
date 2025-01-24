@@ -168,7 +168,7 @@ game_init : Game_Init : (
 #program_export "game_update"
 game_update : Game_Update : (
     game_memory: *void, 
-    input_events: Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
+    input_events: *Fixed_Array(INPUT_EVENT_COUNT, Input_Event)
 ) {
     g := cast(*Game, game_memory);
     using g;
