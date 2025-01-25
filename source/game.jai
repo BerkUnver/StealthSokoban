@@ -200,12 +200,19 @@ game_update : Game_Update : (
         
         imm_set_shader(block_shader);
         imm_set_bitmap(block_bitmap);
-        imm_set_projection(level.camera_matrix);
-        // imm_set_projection(matmul(camera_projection, matmul(to_matrix(rotate_world_to_camera), matrix4_translate(camera_position));
+
+        using level;
+        
+        camera_matrix := matrix4_translate(-camera_position);
+        // camera_matrix = matmul(matrix4_rotate_x(cast(float, PI/10)), camera_matrix);
+        camera_matrix = matmul(to_matrix4(camera_rotation), camera_matrix);
+        camera_matrix = matmul(camera_projection, camera_matrix);
+
+        imm_set_projection(camera_matrix);
         
         // Draw the blocks
 
-        for level.blocks {
+        for blocks {
             for :iterate_vector3i coord: it.size {
                 filled := it.filled[it_index];
                 if !filled continue;
@@ -218,7 +225,7 @@ game_update : Game_Update : (
         imm_flush();
         
         
-        player_corner := to_vector3(level.player_position);
+        player_corner := to_vector3(player_position);
         player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
         player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
 

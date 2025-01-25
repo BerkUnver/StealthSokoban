@@ -117,8 +117,9 @@ frustum :: (l: float, b: float, n: float, r: float, t: float, f: float) -> Matri
     };
 }
 
-matrix4_translate :: (x: float, y: float, z: float) -> Matrix4 {
-    return .{x_x=1, y_y=1, z_z=1, w_x=x, w_y=y, w_z=z, w_w=1};
+
+matrix4_translate :: (v: Vector3) -> Matrix4 {
+    return .{x_x=1, y_y=1, z_z=1, w_x=v.x, w_y=v.y, w_z=v.z, w_w=1};
 }
 
 
@@ -181,8 +182,8 @@ rotate :: (r: Rotor, v: Vector3) -> Vector3 {
     xyz := r.xy*v.z + r.yz*v.x + r.zx*v.y;
     
     return .{
-        x*r.s + y*r.xy + z*r.zx + xyz*r.yz,
-       -x*r.xy + y*r.s - z*r.yz + xyz*r.zx,
+        x*r.s + y*r.xy - z*r.zx + xyz*r.yz,
+       -x*r.xy + y*r.s + z*r.yz + xyz*r.zx,
         x*r.zx - y*r.yz + z*r.s + xyz*r.xy,
     };
 }
@@ -197,6 +198,10 @@ to_matrix4 :: (r: Rotor) -> Matrix4 {
         x.x, y.x, z.x, 0,
         x.y, y.y, z.y, 0,
         x.z, y.z, z.z, 0,
-        0,   0,   0,   0
+        0,   0,   0,   1
     };
+}
+
+inverse :: (r: Rotor) -> Rotor {
+    return .{s=r.s, xy=-r.xy, yz=-r.yz, zx=-r.zx};
 }
