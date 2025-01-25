@@ -1,8 +1,15 @@
 Level :: struct {
     blocks: Fixed_Array(32, Block);
-
+    
     player_position: Vector3i;
     flags: enum {PULLING :: 1;};
+    
+    /*
+    camera_position: Vector3;
+    rotate_world_to_camera: Rotor;
+    camera_projection: Matrix4;
+    */
+    camera_matrix: Matrix4;
 
     collision: Collision;
 }
@@ -141,6 +148,20 @@ add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vect
 }
 
 
+make_camera_matrix :: () -> Matrix4 {
+    FOV :: PI / 3;
+    NEAR :: 0.1;
+
+    right := cast(float, NEAR * tan(FOV / 2));
+    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
+
+    camera_projection := frustum(-right, -top, NEAR, right, top, 1000);
+    rotate_camera_down := matrix4_rotate_x(cast(float, PI/3));
+    world_to_camera := matrix4_translate(0, -8, 4);
+    
+    return matmul(camera_projection, matmul(rotate_camera_down, world_to_camera));
+}
+
 
 test_game_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     T :: true;
@@ -148,6 +169,7 @@ test_game_level_init :: (level: *Level, level_arena: *Memory_Arena) {
      
     level.player_position = .{0, 0, -1};
     level.collision = make_collision(level_arena);
+    level.camera_matrix = make_camera_matrix();
 
     add_block_to_level(level, level_arena, 
         position = .{-3, -1, -2},
@@ -204,6 +226,7 @@ test_editor_level_init :: (level: *Level, level_arena: *Memory_Arena) {
 
     level.player_position = .{0, 0, -1};
     level.collision = make_collision(level_arena);
+    level.camera_matrix = make_camera_matrix();
 
     add_block_to_level(level, level_arena, 
         position = .{-3, -1, -2},

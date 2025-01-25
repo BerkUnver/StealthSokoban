@@ -40,9 +40,6 @@ Game_Mode :: enum {
     EDITOR;
 }
 
-
-
-
 #program_export "game_init"
 game_init : Game_Init : (
     game_memory_: *void,
@@ -126,19 +123,6 @@ game_init : Game_Init : (
         assert(block_shader != 0);
         player_shader = register_shader(PLAYER_SHADER);
         assert(player_shader != 0);
-
-        FOV :: PI / 3;
-        NEAR :: 0.1;
-
-        right := cast(float, NEAR * tan(FOV / 2));
-        top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
-
-        camera_projection := frustum(-right, -top, NEAR, right, top, 1000);
-        rotate_camera_down := matrix4_rotate_x(cast(float, PI/3));
-        world_to_camera := matrix4_translate(0, -8, 4);
-        
-        // @TODO: Have this as a per-level setting that we set once per frame instead of setting it on the shader at init.
-        matrix := matmul(camera_projection, matmul(rotate_camera_down, world_to_camera));
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -168,20 +152,7 @@ game_init : Game_Init : (
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        
-        {
-            glUseProgram(block_shader);
-            projection_loc := glGetUniformLocation(block_shader, "projection");
-            glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *matrix.x_x);
-            bitmap_loc := glGetUniformLocation(block_shader, "bitmap");
-            glUniform1i(bitmap_loc, 0);
-        }
-        
-        {
-            glUseProgram(player_shader);
-            projection_loc := glGetUniformLocation(player_shader, "projection");
-            glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *matrix.x_x);
-        }
+
         
         test_game_level_init(*level, *level_arena);
 
@@ -229,6 +200,8 @@ game_update : Game_Update : (
         
         imm_set_shader(block_shader);
         imm_set_bitmap(block_bitmap);
+        imm_set_projection(level.camera_matrix);
+        // imm_set_projection(matmul(camera_projection, matmul(to_matrix(rotate_world_to_camera), matrix4_translate(camera_position));
         
         // Draw the blocks
 

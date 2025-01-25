@@ -333,7 +333,7 @@ main :: () {
         GetCursorPos(*mouse_pos);
 
         global_mouse_x := mouse_pos.x;
-        global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
+        global_mouse_y := monitor_h - mouse_pos.y; // Flip so we're in the cartesian plane
 
         mouse_x := cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
         mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;

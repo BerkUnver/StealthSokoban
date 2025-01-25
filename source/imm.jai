@@ -9,6 +9,7 @@ Imm_State :: struct {
     vbo: GLuint;
     vertices: [4096] Vertex;
     vertex_count: u32;
+    projection: Matrix4;
     shader: GLuint;
     bitmap: GLuint;
 }
@@ -136,6 +137,7 @@ imm_init :: () {
 imm_flush :: () {
     using context.game_context.imm_state;
     using context.game_context;
+    
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bitmap);
@@ -144,6 +146,15 @@ imm_flush :: () {
     glGenVertexArrays(1, *vao);
     glBindVertexArray(vao);
     
+    glUseProgram(shader);
+
+    projection_loc := glGetUniformLocation(shader, "projection");
+    assert(projection_loc >= 0);
+    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection.x_x);
+    
+    bitmap_loc := glGetUniformLocation(shader, "bitmap");
+    if bitmap_loc >= 0 glUniform1i(bitmap_loc, 0);
+
     position_loc := glGetAttribLocation(shader, "vertex_position");
     if position_loc >= 0 {
         glVertexAttribPointer(xx position_loc, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).position);
@@ -162,7 +173,6 @@ imm_flush :: () {
         glEnableVertexAttribArray(xx uv_loc);
     }
 
-    glUseProgram(shader);
 
     glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Vertex) * vertex_count, vertices.data);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
@@ -175,6 +185,10 @@ imm_set_shader :: (shader: GLuint) {
 
 imm_set_bitmap :: (bitmap: GLuint) {
     context.game_context.imm_state.bitmap = bitmap;
+}
+
+imm_set_projection :: (projection: Matrix4) {
+    context.game_context.imm_state.projection = projection;
 }
 
 imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {

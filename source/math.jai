@@ -135,6 +135,7 @@ matrix4_rotate_y :: (r: float) -> Matrix4 {
     };
 }
 
+
 // :Quaternion
 matrix4_rotate_x :: (r: float) -> Matrix4 {
     sin_r := sin(r);
@@ -145,5 +146,57 @@ matrix4_rotate_x :: (r: float) -> Matrix4 {
         0, cos_r,  sin_r, 0,
         0, -sin_r, cos_r, 0,
         0, 0,      0,     1
+    };
+}
+
+
+Rotor :: struct {
+    s := 1.0;
+    xy, yz, zx: float;
+}
+
+
+make_rotor :: (v: Vector3, angle: float) -> Rotor {
+    // Your axis is actually a bivector describing the plane you wish to rotate along.
+    // I'm pretty sure x -> yz, y -> zx, z -> xy
+
+    half := angle / 2;
+    cos_half := cos(half);
+    neg_sin_half := -sin(half);
+
+    return .{
+        s = cos_half,
+        xy = neg_sin_half * v.z,
+        yz = neg_sin_half * v.x,
+        zx = neg_sin_half * v.y
+    };
+}
+
+
+rotate :: (r: Rotor, v: Vector3) -> Vector3 {
+    x := r.s*v.x + r.xy*v.y - r.zx*v.z;
+    y := r.s*v.y - r.xy*v.x + r.yz*v.z;
+    z := r.s*v.z - r.yz*v.y + r.zx*v.x;
+
+    xyz := r.xy*v.z + r.yz*v.x + r.zx*v.y;
+    
+    return .{
+        x*r.s + y*r.xy + z*r.zx + xyz*r.yz,
+       -x*r.xy + y*r.s - z*r.yz + xyz*r.zx,
+        x*r.zx - y*r.yz + z*r.s + xyz*r.xy,
+    };
+}
+
+to_matrix4 :: (r: Rotor) -> Matrix4 {
+    // @Speed See if inlining this gets rid of the multiplies by zero?
+    x := rotate(r, .{1, 0, 0});
+    y := rotate(r, .{0, 1, 0});
+    z := rotate(r, .{0, 0, 1});
+
+    return .{
+        x.x, y.x, z.x, 0,
+        x.y, y.y, z.y, 0,
+        x.z, y.z, z.z, 0,
+        0,   0,   0,   0
     };
 }
