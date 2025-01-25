@@ -23,14 +23,6 @@ operator == :: (a: Vector3i, b: Vector3i) -> bool {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-make_left_handed_frustum_matrix :: (l: float, b: float, n: float, r: float, t: float, f: float) -> Matrix4 {
-    return .{
-        (2*n)/(r-l), 0,           -(r+l)/(r-l), 0,
-        0,           (2*n)/(t-b), -(t+b)/(t-b), 0,
-        0,           0,           (f+n)/(f-n),  -(2*f*n)/(f-n), 
-        0,           0,           1,            0
-    };
-}
 
 to_vector3 :: (v: Vector3i) -> Vector3 {
     return .{xx v.x, xx v.y, xx v.z};
@@ -55,6 +47,42 @@ iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
 
 convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
     return coord.y * size.z * size.x + coord.z * size.x + coord.x;
+}
+
+
+make_y_rotation_matrix4 :: (r: float) -> Matrix4 {
+    // Rotate about the y-axis
+    sin_r := sin(r);
+    cos_r := cos(r);
+    return .{
+        cos_r, 0, -sin_r, 0,
+        0,     1, 0,      0,
+        sin_r, 0, cos_r,  0,
+        0,     0, 0,      1
+    };
+}
+
+
+make_x_rotation_matrix4 :: (r: float) -> Matrix4 {
+    sin_r := sin(r);
+    cos_r := cos(r);
+
+    return .{
+        1, 0,      0,     0,
+        0, cos_r,  sin_r, 0,
+        0, -sin_r, cos_r, 0,
+        0, 0,      0,     1
+    };
+}
+
+
+make_left_handed_frustum_matrix :: (l: float, b: float, n: float, r: float, t: float, f: float) -> Matrix4 {
+    return .{
+        (2*n)/(r-l), 0,           -(r+l)/(r-l), 0,
+        0,           (2*n)/(t-b), -(t+b)/(t-b), 0,
+        0,           0,           (f+n)/(f-n),  -(2*f*n)/(f-n), 
+        0,           0,           1,            0
+    };
 }
 
 /*

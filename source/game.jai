@@ -207,11 +207,7 @@ game_update : Game_Update : (
 
         using level;
         
-        camera_matrix := make_translation_matrix4(-camera_position);
-        camera_matrix = multiply(rotation_matrix(Matrix4, camera_rotation), camera_matrix);
-        camera_matrix = multiply(camera_projection, camera_matrix);
-
-        imm_set_projection(camera_matrix);
+        imm_set_projection(camera_projection);
         
         // Draw the blocks
 
