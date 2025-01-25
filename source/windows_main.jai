@@ -323,17 +323,19 @@ main :: () {
         window_bottom_right := POINT.{x=client_rect.right, y=client_rect.bottom};
         ClientToScreen(window, *window_bottom_right);
 
-        window_x := window_top_left.x;
-        window_y := monitor_h - window_top_left.y - 1;
+
 
         window_w := window_bottom_right.x - window_top_left.x;
-        window_h := window_top_left.y - window_bottom_right.y;
+        window_h := window_bottom_right.y - window_top_left.y;
+
+        window_x := window_top_left.x;
+        window_y := monitor_h - window_bottom_right.y - 1;
 
         mouse_pos: POINT;
         GetCursorPos(*mouse_pos);
 
         global_mouse_x := mouse_pos.x;
-        global_mouse_y := monitor_h - mouse_pos.y; // Flip so we're in the cartesian plane
+        global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
 
         mouse_x := cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
         mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;

@@ -167,7 +167,7 @@ game_update : Game_Update : (
         context.game_context = *game_memory.game_context;
         using game_memory.game_context;
         using game_memory.game;
-
+        
         for input.events {
             if it.key == xx #char "1" && it.down {
 
@@ -202,14 +202,30 @@ game_update : Game_Update : (
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        imm_set_shader(block_shader);
-        imm_set_bitmap(block_bitmap);
+
 
         using level;
         
-        imm_set_projection(camera_projection);
+        camera_matrix := make_translation_matrix4(-camera_position);
+        camera_matrix = multiply(camera_projection, camera_matrix);
+
+        imm_set_projection(camera_matrix);
+
+        camera_to_world := inverse(camera_matrix);
+        camera_mouse_position := Vector4.{input.mouse_x, input.mouse_y, -1, 1}; // -1 for the OpenGL near plane
+        mouse_position_4 := (inverse(camera_matrix) * camera_mouse_position);
+        mouse_position := mouse_position_4.xyz / mouse_position_4.w;
+
+        mouse_ray := mouse_position - camera_position;
+        mouse_ray *= 5;
+        mouse_test_cube_position := camera_position + mouse_ray;
         
         // Draw the blocks
+
+        imm_set_shader(block_shader);
+        imm_set_bitmap(block_bitmap);
+
+        imm_cuboid(mouse_test_cube_position - .{0.1, 0.1, 0.1}, mouse_test_cube_position + .{0.1, 0.1, 0.1}, .{0, 1, 0, 1});
 
         for blocks {
             for :iterate_vector3i coord: it.size {
