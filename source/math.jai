@@ -1,36 +1,14 @@
-PI :: 3.141592653689793238;
+// I really would like to take the time to deeply understand all of the math that goes
+// into a 3D game, especially considering that math is currently my weakest point.
+// However, I have a tight deadline to get a functional demo of this game ready.
+// So, for the time being, we will bite the bullet and use the Jai standard math library.
+// All of the commented-out stuff is stuff I implemented before I decided to just use
+// the Jai standard library.
 
-Vector2 :: struct {
-    x, y: float;
-} 
-
-Vector3 :: struct {
-    x, y, z: float;
-}
+//          -berk, 25 - 1 - 2025
 
 Vector3i :: struct {
     x, y, z: s32;
-}
-
-Vector4 :: struct {
-    x, y, z, w: float;
-}
-
-normalize :: (v: Vector3) -> Vector3 {
-    length := sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-    return .{v.x/length, v.y/length, v.y/length};
-}
-
-operator - :: (v: Vector3) -> Vector3 {
-    return .{-v.x, -v.y, -v.z};
-}
-
-operator + :: (a: Vector3, b: Vector3) -> Vector3 {
-    return .{a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-operator - :: (a: Vector3, b: Vector3) -> Vector3 {
-    return .{a.x - b.x, a.y - b.y, a.z - b.z};
 }
 
 operator + :: (a: Vector3i, b: Vector3i) -> Vector3i {
@@ -43,6 +21,15 @@ operator - :: (a: Vector3i, b: Vector3i) -> Vector3i {
 
 operator == :: (a: Vector3i, b: Vector3i) -> bool {
     return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+make_left_handed_frustum_matrix :: (l: float, b: float, n: float, r: float, t: float, f: float) -> Matrix4 {
+    return .{
+        (2*n)/(r-l), 0,           -(r+l)/(r-l), 0,
+        0,           (2*n)/(t-b), -(t+b)/(t-b), 0,
+        0,           0,           (f+n)/(f-n),  -(2*f*n)/(f-n), 
+        0,           0,           1,            0
+    };
 }
 
 to_vector3 :: (v: Vector3i) -> Vector3 {
@@ -70,6 +57,37 @@ convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
     return coord.y * size.z * size.x + coord.z * size.x + coord.x;
 }
 
+/*
+PI :: 3.141592653689793238;
+
+Vector2 :: struct {
+    x, y: float;
+} 
+
+Vector3 :: struct {
+    x, y, z: float;
+}
+
+Vector4 :: struct {
+    x, y, z, w: float;
+}
+
+normalize :: (v: Vector3) -> Vector3 {
+    length := sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+    return .{v.x/length, v.y/length, v.y/length};
+}
+
+operator - :: (v: Vector3) -> Vector3 {
+    return .{-v.x, -v.y, -v.z};
+}
+
+operator + :: (a: Vector3, b: Vector3) -> Vector3 {
+    return .{a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+operator - :: (a: Vector3, b: Vector3) -> Vector3 {
+    return .{a.x - b.x, a.y - b.y, a.z - b.z};
+}
 
 Matrix4 :: struct {
     x_x, y_x, z_x, w_x,
@@ -205,3 +223,4 @@ to_matrix4 :: (r: Rotor) -> Matrix4 {
 inverse :: (r: Rotor) -> Rotor {
     return .{s=r.s, xy=-r.xy, yz=-r.yz, zx=-r.zx};
 }
+*/

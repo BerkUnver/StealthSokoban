@@ -5,7 +5,7 @@ Level :: struct {
     flags: enum {PULLING :: 1;};
     
     camera_position: Vector3;
-    camera_rotation: Rotor; // Rotates from the camera to the world.
+    camera_rotation: Quaternion; // Rotates from the camera to the world.
     camera_projection: Matrix4;
 
     collision: Collision;
@@ -152,8 +152,8 @@ init_camera :: (using level: *Level) {
     right := cast(float, NEAR * tan(FOV / 2));
     top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
 
-    camera_projection = frustum(-right, -top, NEAR, right, top, 1000);
-    camera_rotation = make_rotor(.{1, 0, 0}, xx (-PI / 3.0));
+    camera_projection = make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
+    set_from_axis_and_angle(*camera_rotation, .{1, 0, 0}, xx (-PI / 3.0));
     camera_position = .{0, 8, -4};
 }
 

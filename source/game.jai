@@ -1,8 +1,4 @@
-Math :: #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
-tan :: Math.tan;
-sin :: Math.sin;
-cos :: Math.cos;
-sqrt :: Math.sqrt;
+#import "Math"; // @TODO: DELETE THIS DEPENDENCY!
 
 #load "gl.jai";
 #load "shared.jai";
@@ -186,7 +182,15 @@ game_update : Game_Update : (
                     test_game_level_init(*level, *level_arena);
                 }
             } else {
-                level_update(*level, it);
+                if #complete mode == {
+                    case .GAME;
+                        level_update(*level, it);
+                    case .EDITOR;
+                        if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                            
+                        }
+                }
+                
             }
         }
 
@@ -203,10 +207,9 @@ game_update : Game_Update : (
 
         using level;
         
-        camera_matrix := matrix4_translate(-camera_position);
-        // camera_matrix = matmul(matrix4_rotate_x(cast(float, PI/10)), camera_matrix);
-        camera_matrix = matmul(to_matrix4(camera_rotation), camera_matrix);
-        camera_matrix = matmul(camera_projection, camera_matrix);
+        camera_matrix := make_translation_matrix4(-camera_position);
+        camera_matrix = multiply(rotation_matrix(Matrix4, camera_rotation), camera_matrix);
+        camera_matrix = multiply(camera_projection, camera_matrix);
 
         imm_set_projection(camera_matrix);
         

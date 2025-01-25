@@ -150,7 +150,7 @@ imm_flush :: () {
 
     projection_loc := glGetUniformLocation(shader, "projection");
     assert(projection_loc >= 0);
-    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection.x_x);
+    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
     
     bitmap_loc := glGetUniformLocation(shader, "bitmap");
     if bitmap_loc >= 0 glUniform1i(bitmap_loc, 0);
