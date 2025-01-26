@@ -249,7 +249,7 @@ game_update : Game_Update : (
 
 
 
-        raycast_x :: (col: *Collision, y: float, z: float, ray_start_x: float, ray_end_x: float) {
+        raycast_x :: (y: float, z: float, ray_start_x: float, ray_end_x: float) {
             if ray_start_x < ray_end_x {
                 for x_s32: cast(s32, floor(ray_start_x))..cast(s32, floor(ray_end_x)) {
                     x := cast(float, x_s32);
@@ -261,7 +261,57 @@ game_update : Game_Update : (
             }
         }
 
-        raycast_x(*collision, 1, 2, -2.5, 2.5);
+        raycast_zx :: (y: float, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float) {
+
+
+            assert(ray_start_z <= ray_end_z); // @TODO: Handle this
+            
+            z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
+
+            if z_steps == 0 { // They are in the same z row
+                raycast_x(y, floor(ray_start_z), ray_start_x, ray_end_x);
+            } else {
+                m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
+                b := ray_start_x - m * ray_start_z;
+
+                if z_steps == 1 { // They are in adjacent z rows
+                    z := floor(ray_end_z);
+                    x := m * z + b;
+                    raycast_x(y, floor(ray_start_z), ray_start_x, x);
+                    raycast_x(y, floor(ray_end_z), x, ray_end_x);
+                } else { // There is at least one z-row between the points
+                    first_z := ceil(ray_start_z);
+                    first_x := m * first_z + b;
+                    raycast_x(y, floor(ray_start_z), ray_start_x, first_x);
+                    
+                    // @Speed avoid recalculating this_z_start when it was the value of this_z_end last time we looped.
+                    for 0..z_steps-2 {
+                        this_z_start := first_z + cast(float, it);
+                        this_x_start := m * this_z_start + b;
+
+                        this_z_end := first_z + cast(float, it + 1);
+                        this_x_end := m * this_z_end + b;
+
+                        raycast_x(y, this_z_start, this_x_start, this_x_end);
+                    }
+                    
+                    end_z := floor(ray_end_z);
+                    end_x := m * end_z + b;
+                    raycast_x(y, end_z, end_x, ray_end_x);
+                }
+            }
+        }
+
+        raycast_zx(1, 
+            ray_start_x = -2.5,
+            ray_start_z = 0.5,
+            ray_end_x = 2.5,
+            ray_end_z = 2.5
+        );
+        
+        // ray_length_x := cos(_) * 5;
+        // ray_length_z := sin(_) * 5;
+
 
         imm_flush();
 
