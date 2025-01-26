@@ -113,6 +113,7 @@ remove_block_from_collision :: (col: *Collision, block: *Block) {
     }
 }
 
+
 add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vector3i, size: Vector3i, filled: [] bool, color: Vector4, moveable: bool) {
      assert(position.x >= level.collision.position.x
             && position.y >= level.collision.position.y

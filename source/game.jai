@@ -210,7 +210,8 @@ game_update : Game_Update : (
         camera_matrix = multiply(camera_projection, camera_matrix);
 
         imm_set_projection(camera_matrix);
-
+        
+        /*
         camera_to_world := inverse(camera_matrix);
         camera_mouse_position := Vector4.{input.mouse_x, input.mouse_y, -1, 1}; // -1 for the OpenGL near plane
         mouse_position_4 := (inverse(camera_matrix) * camera_mouse_position);
@@ -219,13 +220,12 @@ game_update : Game_Update : (
         mouse_ray := mouse_position - camera_position;
         mouse_ray *= 5;
         mouse_test_cube_position := camera_position + mouse_ray;
+        */
         
         // Draw the blocks
 
         imm_set_shader(block_shader);
         imm_set_bitmap(block_bitmap);
-
-        imm_cuboid(mouse_test_cube_position - .{0.1, 0.1, 0.1}, mouse_test_cube_position + .{0.1, 0.1, 0.1}, .{0, 1, 0, 1});
 
         for blocks {
             for :iterate_vector3i coord: it.size {
@@ -246,6 +246,23 @@ game_update : Game_Update : (
 
         imm_set_shader(player_shader);
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
+
+
+
+        raycast_x :: (col: *Collision, y: float, z: float, ray_start_x: float, ray_end_x: float) {
+            if ray_start_x < ray_end_x {
+                for x_s32: cast(s32, floor(ray_start_x))..cast(s32, floor(ray_end_x)) {
+                    x := cast(float, x_s32);
+                    start := Vector3.{xx x, y, z};
+                    end := Vector3.{x + 1, y + 1, z + 1};
+                    imm_cuboid_outline(start, end, 0.03, .{0.5, 0.5, 0.5, 1});
+                }
+            } else {
+            }
+        }
+
+        raycast_x(*collision, 1, 2, -2.5, 2.5);
+
         imm_flush();
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);

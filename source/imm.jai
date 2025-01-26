@@ -7,7 +7,7 @@ Vertex :: struct {
 Imm_State :: struct {
     vao: GLuint;
     vbo: GLuint;
-    vertices: [4096] Vertex;
+    vertices: [2400] Vertex;
     vertex_count: u32;
     projection: Matrix4;
     shader: GLuint;
@@ -204,6 +204,7 @@ imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
 
 
 imm_cuboid :: (b: Vector3, e: Vector3, color: Vector4) {
+    // @Speed make a different version of this if we're not using the UV coordinates.
     // b: beginning, the bottom corner of the cuboid
     // e: end, the top corner of the cuboid
 
@@ -248,11 +249,62 @@ imm_cuboid :: (b: Vector3, e: Vector3, color: Vector4) {
     imm_vertex(.{b.x, e.y, e.z}, color, .{0, 1});
 
     // Back face
-    imm_vertex(.{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0});
-    imm_vertex(.{b.x, b.y, e.z}, .{0, 1, 0, 1}, .{1, 0});
-    imm_vertex(.{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 1});
-    imm_vertex(.{e.x, b.y, e.z}, .{1, 0, 0, 1}, .{0, 0});
-    imm_vertex(.{b.x, e.y, e.z}, .{0, 0, 1, 1}, .{1, 1});
-    imm_vertex(.{e.x, e.y, e.z}, .{0, 1, 0, 1}, .{0, 1});
+    imm_vertex(.{e.x, b.y, e.z}, color, .{0, 0});
+    imm_vertex(.{b.x, b.y, e.z}, color, .{1, 0});
+    imm_vertex(.{b.x, e.y, e.z}, color, .{1, 1});
+    imm_vertex(.{e.x, b.y, e.z}, color, .{0, 0});
+    imm_vertex(.{b.x, e.y, e.z}, color, .{1, 1});
+    imm_vertex(.{e.x, e.y, e.z}, color, .{0, 1});
+}
 
+
+imm_cuboid_outline :: (start: Vector3, end: Vector3, width: float, color: Vector4) {
+    // @Speed reduce the number of duplicate vertices.
+    s0 := start;
+    s3 := end;
+
+    s10 := Vector3.{s3.x, s0.y, s0.z};
+    s11 := Vector3.{s0.x, s3.y, s0.z};
+    s12 := Vector3.{s0.x, s0.y, s3.z};
+
+    s20 := Vector3.{s0.x, s3.y, s3.z};
+    s21 := Vector3.{s3.x, s0.y, s3.z};
+    s22 := Vector3.{s3.x, s3.y, s0.z};
+
+    offset := Vector3.{width, width, width};
+
+    b0 := s0 - offset;
+
+    e10 := s10 + offset;
+    e11 := s11 + offset;
+    e12 := s12 + offset;
+
+    b10 := s10 - offset;
+    b11 := s11 - offset;
+    b12 := s12 - offset;
+
+    e20 := s20 + offset;
+    e21 := s21 + offset;
+    e22 := s22 + offset;
+
+    b20 := s20 - offset;
+    b21 := s21 - offset;
+    b22 := s22 - offset;
+
+    e3 := s3 + offset;
+
+    imm_cuboid(b0, e10, color);
+    imm_cuboid(b0, e11, color);
+    imm_cuboid(b0, e12, color);
+
+    imm_cuboid(b10, e21, color);
+    imm_cuboid(b10, e22, color);
+    imm_cuboid(b11, e20, color);
+    imm_cuboid(b11, e22, color);
+    imm_cuboid(b12, e20, color);
+    imm_cuboid(b12, e21, color);
+
+    imm_cuboid(b20, e3, color);
+    imm_cuboid(b21, e3, color);
+    imm_cuboid(b22, e3, color);
 }
