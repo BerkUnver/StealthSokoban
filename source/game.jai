@@ -160,7 +160,8 @@ game_init : Game_Init : (
 #program_export "game_update"
 game_update : Game_Update : (
     game_memory_: *void, 
-    input: *Input
+    input: *Input,
+    time_elapsed: float64
 ) #no_context {
     push_context {
         game_memory := cast(*Game_Memory, game_memory_);
@@ -302,15 +303,15 @@ game_update : Game_Update : (
             }
         }
 
-        raycast_zx(1, 
+        theta := cast(float, fmod_cycling(time_elapsed, PI / 2));
+        ray_length_x := cos(theta) * 5;
+        ray_length_z := sin(theta) * 5;
+        raycast_zx(1,
             ray_start_x = -2.5,
             ray_start_z = 0.5,
-            ray_end_x = 2.5,
-            ray_end_z = 2.5
+            ray_end_x = -2.5 + ray_length_x,
+            ray_end_z = 0.5 + ray_length_z
         );
-        
-        // ray_length_x := cos(_) * 5;
-        // ray_length_z := sin(_) * 5;
 
 
         imm_flush();

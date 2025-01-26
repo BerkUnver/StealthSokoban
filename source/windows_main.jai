@@ -280,6 +280,10 @@ main :: () {
 
     opengl_context := _wglCreateContextAttribsARB(dc, null, attributes.data);
     assert(wglMakeCurrent(dc, opengl_context) != 0);
+    
+    ticks_per_second_s64: s64;
+    assert(QueryPerformanceFrequency(xx *ticks_per_second_s64) != 0);
+    ticks_per_second := cast(float64, ticks_per_second_s64);
 
     //
     // Initialize the game state
@@ -346,8 +350,12 @@ main :: () {
             mouse_y = mouse_y
         };
 
+        ticks_since_start: s64;
+        assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
+        time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
+
         game_update := cast(Game_Update, GetProcAddress(windows.game_dll, "game_update"));
-        game_update(game_memory, *input);
+        game_update(game_memory, *input, time_elapsed);
         windows.input_events.count = 0;
 
         SwapBuffers(dc);

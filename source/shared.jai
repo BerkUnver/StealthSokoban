@@ -20,7 +20,8 @@ Game_Init :: #type (
 
 Game_Update :: #type (
     game_memory: *void,
-    input: *Input
+    input: *Input,
+    time_elapsed: float64
 ) #no_context;
 
 
