@@ -386,7 +386,6 @@ game_update : Game_Update : (
                     if y_steps == 1 {
                         x := ray_start.x + (ray_end.x - ray_start.x) * t;
                         z := ray_start.z + (ray_end.z - ray_start.z) * t;
-                        imm_cuboid(.{x - 0.1, y - 0.1, z - 0.1}, .{x + 0.1, y + 0.1, z + 0.1}, .{1, 0, 0, 1});
                         raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, x, z, *shade);
                         raycast_zx(floor(ray_end.y), x, z, ray_end.x, ray_end.z, *shade);
                     } else {
@@ -411,6 +410,41 @@ game_update : Game_Update : (
                         raycast_zx(y, current_ray_end_x, current_ray_end_z, ray_end.x, ray_end.z, *shade);
                     }
                 }
+            } else {
+                y_steps := cast(s32, floor(ray_start.y) - floor(ray_end.y));
+                
+                if y_steps == 0 {
+                    raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, *shade);
+                } else {
+                    y := floor(ray_start.y);
+                    t := (y - ray_start.y) / (ray_end.y - ray_start.y);
+
+                    if y_steps == 1 {
+                        x := ray_start.x + (ray_end.x - ray_start.x) * t;
+                        z := ray_start.z + (ray_end.z - ray_start.z) * t;
+                        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, x, z, *shade);
+                        raycast_zx(floor(ray_end.y), x, z, ray_end.x, ray_end.z, *shade);
+                    } else {
+                        current_ray_end_x := ray_start.x + (ray_end.x - ray_start.x) * t;
+                        current_ray_end_z := ray_start.z + (ray_end.z - ray_start.z) * t;
+
+                        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, current_ray_end_x, current_ray_end_z, *shade);
+
+                        for 0..y_steps-2 {
+                            y -= 1;
+                            t := (y - ray_start.y) / (ray_end.y - ray_start.y);
+                            current_ray_start_x := current_ray_end_x;
+                            current_ray_start_z := current_ray_end_z;
+                            current_ray_end_x = ray_start.x + (ray_end.x - ray_start.x) * t;
+                            current_ray_end_z = ray_start.z + (ray_end.z - ray_start.z) * t;
+
+                            raycast_zx(y, current_ray_start_x, current_ray_start_z, current_ray_end_x, current_ray_end_z, *shade);
+                        }
+
+                        y -= 1;
+                        raycast_zx(y, current_ray_end_x, current_ray_end_z, ray_end.x, ray_end.z, *shade);
+                    }
+                }
             }
         }
 
@@ -432,11 +466,11 @@ game_update : Game_Update : (
         */
 
         {
-            theta := cast(float, fmod_cycling(time_elapsed / 2, PI / 2));
-            RAY_LENGTH :: 1;
+            theta := cast(float, fmod_cycling(time_elapsed, TAU));
+            RAY_LENGTH :: 2;
             ray_length_y := sin(theta) * RAY_LENGTH;
             ray_length_z := cos(theta) * RAY_LENGTH;
-            ray_start := Vector3.{2.5, 1.5, 0.5};
+            ray_start := Vector3.{4.5, 1.5, 0.5};
             ray_end := Vector3.{ray_start.x, ray_start.y + ray_length_y, ray_start.z + ray_length_z};
             raycast(ray_start, ray_end);
             
