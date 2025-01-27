@@ -191,6 +191,10 @@ imm_set_projection :: (projection: Matrix4) {
     context.game_context.imm_state.projection = projection;
 }
 
+imm_get_projection :: () -> Matrix4 {
+    return context.game_context.imm_state.projection;
+}
+
 imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
     using context.game_context.imm_state;
     if vertex_count == vertices.count imm_flush();

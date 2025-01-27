@@ -85,6 +85,10 @@ make_left_handed_frustum_matrix :: (l: float, b: float, n: float, r: float, t: f
     };
 }
 
+get_angle :: (start: Vector3, end: Vector3) -> float {
+    return acos(dot(start, end) / (length(start) * length(end)));
+}
+
 /*
 PI :: 3.141592653689793238;
 
