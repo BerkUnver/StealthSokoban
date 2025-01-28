@@ -150,7 +150,7 @@ game_init : Game_Init : (
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         
-        test_game_level_init(*level, *level_arena);
+        test_level_init(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -177,21 +177,19 @@ game_update : Game_Update : (
 
                 if mode == .GAME {
                     mode = .EDITOR;
-                    test_editor_level_init(*level, *level_arena);
+                    test_level_init(*level, *level_arena);
+                    level.editor = .{};
                 } else {
                     mode = .GAME;
-                    test_game_level_init(*level, *level_arena);
+                    test_level_init(*level, *level_arena);
                 }
             } else {
                 if #complete mode == {
                     case .GAME;
-                        level_update(*level, it);
+                        level_gameplay_update(*level, it);
                     case .EDITOR;
-                        if it.key == .MOUSE_LEFT_BUTTON && it.down {
-                            
-                        }
+                        level_editor_update(*level, input.mouse_x, input.mouse_y, it);
                 }
-                
             }
         }
 
@@ -204,27 +202,11 @@ game_update : Game_Update : (
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
 
-
+        
         using level;
         
-        camera_matrix := make_translation_matrix4(-camera_position);
-        camera_matrix = multiply(camera_projection, camera_matrix);
-
+        // @TODO: Pull these out into separate routines
         imm_set_projection(camera_matrix);
-        
-        /*
-        camera_to_world := inverse(camera_matrix);
-        camera_mouse_position := Vector4.{input.mouse_x, input.mouse_y, -1, 1}; // -1 for the OpenGL near plane
-        mouse_position_4 := (inverse(camera_matrix) * camera_mouse_position);
-        mouse_position := mouse_position_4.xyz / mouse_position_4.w;
-
-        mouse_ray := mouse_position - camera_position;
-        mouse_ray *= 5;
-        mouse_test_cube_position := camera_position + mouse_ray;
-        */
-        
-        // Draw the blocks
-
         imm_set_shader(block_shader);
         imm_set_bitmap(block_bitmap);
 
@@ -247,8 +229,17 @@ game_update : Game_Update : (
 
         imm_set_shader(player_shader);
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
+        
+        if mode == .EDITOR {
+            b := editor.selected_block;
+            if b imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
+        }
+        imm_flush();
+        
 
-
+        // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
+        // This might be valuable for debugging.
+        /*
         {
             theta := cast(float, fmod_cycling(time_elapsed, TAU));
             RAY_LENGTH :: 2;
@@ -262,7 +253,7 @@ game_update : Game_Update : (
 
             raycast_visitor :: (position: Vector3, using data: Raycast_Data) -> bool {
                 coord := to_vector3i(position) - col.position;
-                if coord.x < 0 || coord.y < 0 || coord.z < 0 || coord.x >= col.size.x || coord.y >= col.size.y || coord.z >= col.size.z return false;
+                if !inside_positive_bounding_box(coord, col.size) return false;
 
                 index := convert_3d_coordinate_to_index(coord, col.size);
                 
@@ -312,8 +303,7 @@ game_update : Game_Update : (
             imm_flush();
             imm_set_projection(old_projection_matrix);
         }
-
-
+        */
 
         imm_flush();
 

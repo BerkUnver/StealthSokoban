@@ -54,6 +54,13 @@ convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
 }
 
 
+inside_positive_bounding_box :: (v: Vector3i, bbox: Vector3i) -> bool {
+    return
+        0 <= v.x && v.x < bbox.x &&
+        0 <= v.y && v.y < bbox.y &&
+        0 <= v.z && v.z < bbox.z;
+}
+
 make_y_rotation_matrix4 :: (r: float) -> Matrix4 {
     // Rotate about the y-axis
     sin_r := sin(r);

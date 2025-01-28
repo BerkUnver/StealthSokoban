@@ -6,8 +6,14 @@ Level :: struct {
     
     camera_position: Vector3;
     camera_projection: Matrix4;
+    camera_matrix: Matrix4; // The above premultiplied.
 
     collision: Collision;
+    
+    // Editor-only information. We may want to put this somewhere else.
+    editor: struct {
+        selected_block: *Block;
+    }
 }
 
 
@@ -37,9 +43,7 @@ Block :: struct {
 
 get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
     local_position := position - col.position;
-    if local_position.x < 0 || col.size.x <= local_position.x
-    || local_position.y < 0 || col.size.y <= local_position.y
-    || local_position.z < 0 || col.size.z <= local_position.z {
+    if !inside_positive_bounding_box(local_position, col.size) {
         return false, null;
     }
     
@@ -98,6 +102,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
     return true;
 }
 
+// @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
 raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T) -> terminate_raycast: bool, user_data: T)  {
     raycast_x :: (y_plane: float, z_plane: float, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
@@ -249,10 +254,13 @@ init_camera :: (using l: *Level) {
 
     camera_projection = multiply(frustum, rotation);
     camera_position = .{0, 8, -4};
+
+    camera_position_matrix := make_translation_matrix4(-camera_position);
+    camera_matrix = multiply(camera_projection, camera_position_matrix);
 }
 
 
-test_game_level_init :: (level: *Level, level_arena: *Memory_Arena) {
+test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
      
@@ -308,31 +316,7 @@ test_game_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     */
 }
 
-
-test_editor_level_init :: (level: *Level, level_arena: *Memory_Arena) {
-    T :: true;
-    F :: false;
-
-    level.player_position = .{0, 0, -1};
-    level.collision = make_collision(level_arena);
-    init_camera(level);
-
-    add_block_to_level(level, level_arena, 
-        position = .{-3, -1, -2},
-        size = .{6, 1, 4},
-        filled = .[
-            T, T, T, T, T, T,
-            T, T, T, T, T, T,
-            T, T, T, T, T, T,
-            T, T, T, T, T, T
-        ],
-        color = .{0, 0, 0.5, 1},
-        moveable = false
-    );
-}
-
-
-level_update :: (using level: *Level, event: Input_Event) { 
+level_gameplay_update :: (using level: *Level, event: Input_Event) { 
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
@@ -419,4 +403,37 @@ level_update :: (using level: *Level, event: Input_Event) {
 
         if !move_failed player_position = new_player_position;
     }
+}
+
+
+level_editor_update :: (using level: *Level, mouse_x: float, mouse_y: float, event: Input_Event) {
+    if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
+    
+    Raycast_Data :: struct {
+        block: *Block;
+        col: *Collision;
+    }
+    data := Raycast_Data.{col=*collision};
+    raycast_visitor :: (position: Vector3, using data: *Raycast_Data) -> bool {
+        coord := to_vector3i(position) - col.position;
+        if !inside_positive_bounding_box(coord, col.size) return false;
+
+        index := convert_3d_coordinate_to_index(coord, col.size);
+
+        filled := col.filled[index];
+        if !filled return false;
+        block = filled;
+        return true;
+    }
+
+    camera_to_world := inverse(camera_matrix);
+    camera_ray_end := Vector4.{mouse_x, mouse_y, 1, 1}; // 1 for the OpenGL far plane
+    ray_end_4 := (inverse(camera_matrix) * camera_ray_end);
+    ray_end := ray_end_4.xyz / ray_end_4.w;
+    
+    raycast(camera_position, ray_end, raycast_visitor, *data);
+
+    editor.selected_block = data.block;
+
+
 }
