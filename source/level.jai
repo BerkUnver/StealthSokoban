@@ -98,15 +98,13 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
     return true;
 }
 
-// Raycast :: struct {start: Vector3; end: Vector3;}
-// raycast :: (ray: Raycast, body: Code, for_flags: For_Flags) #expand {
-raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T), user_data: T) {
-    raycast_x :: (y_plane: float, z_plane: float, ray_start_x: float, ray_end_x: float, user_data: T) {
+raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T) -> terminate_raycast: bool, user_data: T)  {
+    raycast_x :: (y_plane: float, z_plane: float, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
         x := floor(ray_start_x);
         start := Vector3.{x, y_plane, z_plane};
-        inline visitor(start, user_data);
+        if inline visitor(start, user_data) return true;
 
         i : s32 = 0;
         dir := cast(s32, sign(x_steps));
@@ -114,16 +112,18 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
             i += dir;
             start.x += dir;
 
-            inline visitor(start, user_data);
+            if inline visitor(start, user_data) return true;
         }
+
+        return false;
     }
 
 
-    raycast_zx :: (y_plane: float, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) {
+    raycast_zx :: (y_plane: float, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) -> bool {
         z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
 
         if z_steps == 0 {
-            raycast_x(y_plane, floor(ray_start_z), ray_start_x, ray_end_x, user_data);
+            return raycast_x(y_plane, floor(ray_start_z), ray_start_x, ray_end_x, user_data);
         } else {
             m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
             b := ray_start_x - m * ray_start_z;
@@ -133,7 +133,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
 
             x := m * z + b;
 
-            raycast_x(y_plane, z_plane, ray_start_x, x, user_data);
+            if raycast_x(y_plane, z_plane, ray_start_x, x, user_data) return true;
             
             i := 0;
             dir := sign(z_steps);
@@ -145,11 +145,11 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
                 z += dir;
                 old_x := x;
                 x = m * z + b;
-                raycast_x(y_plane, z_plane, old_x, x, user_data);
+                if raycast_x(y_plane, z_plane, old_x, x, user_data) return true;
             }
             
             z_plane += dir;
-            raycast_x(y_plane, z_plane, x, ray_end_x, user_data);
+            return raycast_x(y_plane, z_plane, x, ray_end_x, user_data);
         }
     }
     
@@ -167,7 +167,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
         x := ray_start.x + ray_length.x * t;
         z := ray_start.z + ray_length.z * t;
 
-        raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data);
+        if raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data) return;
         
         i := 0;
         dir := sign(y_steps);
@@ -182,7 +182,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
             x = ray_start.x + ray_length.x * t;
             z = ray_start.z + ray_length.z * t;
 
-            raycast_zx(y_plane, old_x, old_z, x, z, user_data);
+            if raycast_zx(y_plane, old_x, old_z, x, z, user_data) return;
         }
 
         y_plane += dir;

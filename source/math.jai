@@ -28,6 +28,10 @@ to_vector3 :: (v: Vector3i) -> Vector3 {
     return .{xx v.x, xx v.y, xx v.z};
 }
 
+to_vector3i :: (v: Vector3) -> Vector3i {
+    return .{xx v.x, xx v.y, xx v.z};
+}
+
 iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
     #assert for_flags == 0;
 

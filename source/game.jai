@@ -254,19 +254,39 @@ game_update : Game_Update : (
             RAY_LENGTH :: 2;
             ray_length_y := sin(theta) * RAY_LENGTH;
             ray_length_z := cos(theta) * RAY_LENGTH;
-            ray_start := Vector3.{4.5, 1.5, 0.5};
-            ray_end := Vector3.{ray_start.x, ray_start.y + ray_length_y, ray_start.z + ray_length_z};
 
-            test_cuboid :: (position: Vector3, shade: *float) {
-                s := shade.*;
-                color := Vector4.{s, s, s, 1};
+            Raycast_Data :: struct {
+                shade: *float;
+                col: *Collision;
+            }
+
+            raycast_visitor :: (position: Vector3, using data: Raycast_Data) -> bool {
+                coord := to_vector3i(position) - col.position;
+                if coord.x < 0 || coord.y < 0 || coord.z < 0 || coord.x >= col.size.x || coord.y >= col.size.y || coord.z >= col.size.z return false;
+
+                index := convert_3d_coordinate_to_index(coord, col.size);
+                
+                color: Vector4 = ---;
+
+                filled := col.filled[index] != null;
+                if filled {
+                    color = Vector4.{0, 1, 0, 1};
+                } else {
+                    s := shade.*;
+                    color = Vector4.{s, s, s, 1};
+                }
                 shade.* *= 0.8;
+
                 end := position + Vector3.{1, 1, 1};
                 imm_cuboid_outline(position, end, 0.03, color);
+
+                return filled;
             }
             
             shade := 1.0;
-            raycast(ray_start, ray_end, test_cuboid, *shade);
+            ray_start := Vector3.{1.5, 1.5, 0.5};
+            ray_end := Vector3.{ray_start.x, ray_start.y + ray_length_y, ray_start.z + ray_length_z};
+            raycast(ray_start, ray_end, raycast_visitor, .{shade=*shade, col=*collision});
             
 
             imm_flush();
