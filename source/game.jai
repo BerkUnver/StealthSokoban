@@ -6,6 +6,7 @@
 #load "helpers.jai";
 #load "math.jai";
 #load "level.jai";
+#load "editor.jai";
 
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
@@ -28,6 +29,7 @@ Game :: struct {
     
     mode: Game_Mode;
     level: Level;
+    editor: Editor;
     level_arena: Memory_Arena;
 }
 
@@ -178,7 +180,7 @@ game_update : Game_Update : (
                 if mode == .GAME {
                     mode = .EDITOR;
                     test_level_init(*level, *level_arena);
-                    level.editor = .{};
+                    editor = .{};
                 } else {
                     mode = .GAME;
                     test_level_init(*level, *level_arena);
@@ -186,9 +188,9 @@ game_update : Game_Update : (
             } else {
                 if #complete mode == {
                     case .GAME;
-                        level_gameplay_update(*level, it);
+                        level_update(*level, it);
                     case .EDITOR;
-                        level_editor_update(*level, input.mouse_x, input.mouse_y, it);
+                        editor_update(*level, *editor, input.mouse_x, input.mouse_y, it);
                 }
             }
         }

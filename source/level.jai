@@ -9,11 +9,6 @@ Level :: struct {
     camera_matrix: Matrix4; // The above premultiplied.
 
     collision: Collision;
-    
-    // Editor-only information. We may want to put this somewhere else.
-    editor: struct {
-        selected_block: *Block;
-    }
 }
 
 
@@ -316,7 +311,7 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     */
 }
 
-level_gameplay_update :: (using level: *Level, event: Input_Event) { 
+level_update :: (using level: *Level, event: Input_Event) { 
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
@@ -406,34 +401,3 @@ level_gameplay_update :: (using level: *Level, event: Input_Event) {
 }
 
 
-level_editor_update :: (using level: *Level, mouse_x: float, mouse_y: float, event: Input_Event) {
-    if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
-    
-    Raycast_Data :: struct {
-        block: *Block;
-        col: *Collision;
-    }
-    data := Raycast_Data.{col=*collision};
-    raycast_visitor :: (position: Vector3, using data: *Raycast_Data) -> bool {
-        coord := to_vector3i(position) - col.position;
-        if !inside_positive_bounding_box(coord, col.size) return false;
-
-        index := convert_3d_coordinate_to_index(coord, col.size);
-
-        filled := col.filled[index];
-        if !filled return false;
-        block = filled;
-        return true;
-    }
-
-    camera_to_world := inverse(camera_matrix);
-    camera_ray_end := Vector4.{mouse_x, mouse_y, 1, 1}; // 1 for the OpenGL far plane
-    ray_end_4 := (inverse(camera_matrix) * camera_ray_end);
-    ray_end := ray_end_4.xyz / ray_end_4.w;
-    
-    raycast(camera_position, ray_end, raycast_visitor, *data);
-
-    editor.selected_block = data.block;
-
-
-}
