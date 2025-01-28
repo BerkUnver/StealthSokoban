@@ -249,121 +249,6 @@ game_update : Game_Update : (
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
 
 
-
-        raycast_x :: (y_index: float, z_index: float, ray_start_x: float, ray_end_x: float, shade: *float) {
-            test_cuboid :: (start: Vector3, end: Vector3, shade: *float) {
-                s := shade.*;
-                color := Vector4.{s, s, s, 1};
-                shade.* *= 0.8;
-                imm_cuboid_outline(start, end, 0.03, color);
-            }
-            
-            x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
-
-            x := floor(ray_start_x);
-            start := Vector3.{x, y_index, z_index};
-            end := Vector3.{x + 1, y_index + 1, z_index + 1};
-            test_cuboid(start, end, shade);
-
-            i : s32 = 0;
-            dir := cast(s32, sign(x_steps));
-            while i != x_steps {
-                i += dir;
-                start.x += dir;
-                end.x += dir;
-                test_cuboid(start, end, shade);
-            }
-        }
-        
-        raycast_zx :: (y: float, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, shade: *float) {
-            z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
-
-            if z_steps == 0 {
-                raycast_x(y, floor(ray_start_z), ray_start_x, ray_end_x, shade);
-            } else {
-                m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
-                b := ray_start_x - m * ray_start_z;
-                
-                z_index := floor(ray_start_z);
-                z := z_index + cast(s32, z_steps > 0);
-
-                x := m * z + b;
-
-                raycast_x(y, z_index, ray_start_x, x, shade);
-                
-                i := 0;
-                dir := sign(z_steps);
-                range_end := z_steps - dir; // Every cube except the last one
-
-                while i != range_end {
-                    i += dir;
-                    z_index += dir;
-                    z += dir;
-                    old_x := x;
-                    x = m * z + b;
-                    raycast_x(y, z_index, old_x, x, shade);
-                }
-                
-                z_index += dir;
-                raycast_x(y, z_index, x, ray_end_x, shade);
-            }
-        }
-
-        raycast :: (ray_start: Vector3, ray_end: Vector3) {
-            shade := 1.0;
-
-            y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
-
-            if y_steps == 0 {
-                raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, *shade);
-            } else {
-                ray_length := ray_end - ray_start;
-
-                y_index := floor(ray_start.y);
-                y := y_index + cast(s32, y_steps > 0);
-                t := (y - ray_start.y) / ray_length.y;
-
-                x := ray_start.x + ray_length.x * t;
-                z := ray_start.z + ray_length.z * t;
-
-                raycast_zx(y_index, ray_start.x, ray_start.z, x, z, *shade);
-                
-                i := 0;
-                dir := sign(y_steps);
-                range_end := y_steps - dir;
-                while i != range_end {
-                    i += dir;
-                    y_index += dir;
-                    y += dir;
-                    t := (y - ray_start.y) / ray_length.y;
-                    old_x := x;
-                    old_z := z;
-                    x = ray_start.x + ray_length.x * t;
-                    z = ray_start.z + ray_length.z * t;
-
-                    raycast_zx(y_index, old_x, old_z, x, z, *shade);
-                }
-
-                y_index += dir;
-                raycast_zx(y_index, x, z, ray_end.x, ray_end.z, *shade);
-            }
-        }
-
-        {
-            theta := cast(float, fmod_cycling(time_elapsed, TAU));
-            RAY_LENGTH :: 2;
-            shade := 1.0;
-            ray_length_x := cos(theta) * RAY_LENGTH;
-            ray_length_z := sin(theta) * RAY_LENGTH;
-            raycast_zx(1,
-                ray_start_x = -2.5,
-                ray_start_z = 0.5,
-                ray_end_x = -2.5 + ray_length_x,
-                ray_end_z = 0.5 + ray_length_z,
-                shade = *shade
-            );
-        }
-
         {
             theta := cast(float, fmod_cycling(time_elapsed, TAU));
             RAY_LENGTH :: 2;
@@ -371,7 +256,17 @@ game_update : Game_Update : (
             ray_length_z := cos(theta) * RAY_LENGTH;
             ray_start := Vector3.{4.5, 1.5, 0.5};
             ray_end := Vector3.{ray_start.x, ray_start.y + ray_length_y, ray_start.z + ray_length_z};
-            raycast(ray_start, ray_end);
+
+            test_cuboid :: (position: Vector3, shade: *float) {
+                s := shade.*;
+                color := Vector4.{s, s, s, 1};
+                shade.* *= 0.8;
+                end := position + Vector3.{1, 1, 1};
+                imm_cuboid_outline(position, end, 0.03, color);
+            }
+            
+            shade := 1.0;
+            raycast(ray_start, ray_end, test_cuboid, *shade);
             
 
             imm_flush();
