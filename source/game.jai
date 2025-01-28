@@ -250,7 +250,7 @@ game_update : Game_Update : (
 
 
 
-        raycast_x :: (y: float, z: float, ray_start_x: float, ray_end_x: float, shade: *float) {
+        raycast_x :: (y_index: float, z_index: float, ray_start_x: float, ray_end_x: float, shade: *float) {
             test_cuboid :: (start: Vector3, end: Vector3, shade: *float) {
                 s := shade.*;
                 color := Vector4.{s, s, s, 1};
@@ -258,200 +258,100 @@ game_update : Game_Update : (
                 imm_cuboid_outline(start, end, 0.03, color);
             }
             
-            // @Cleanup Figure out how to combine these two very similar branches
-            if ray_start_x < ray_end_x {
-                x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
-                
-                if x_steps == 0 {
-                    x := floor(ray_start_x);
-                    start := Vector3.{x, y, z};
-                    end := Vector3.{x + 1, y + 1, z + 1};
-                    test_cuboid(start, end, shade);
-                } else {
-                    x := floor(ray_start_x);
-                    start := Vector3.{x, y, z};
-                    end := Vector3.{x + 1, y + 1, z + 1};
-                    test_cuboid(start, end, shade);
+            x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
-                    for 0..x_steps-1 {
-                        start.x += 1;
-                        end.x += 1;
-                        test_cuboid(start, end, shade);
-                    }
-                }
-            } else {
-                x_steps := cast(s32, floor(ray_start_x) - floor(ray_end_x));
+            x := floor(ray_start_x);
+            start := Vector3.{x, y_index, z_index};
+            end := Vector3.{x + 1, y_index + 1, z_index + 1};
+            test_cuboid(start, end, shade);
 
-                if x_steps == 0 {
-                    x := floor(ray_start_x);
-                    start := Vector3.{x, y, z};
-                    end := Vector3.{x + 1, y + 1, z + 1};
-                    test_cuboid(start, end, shade);
-                } else {
-                    x := floor(ray_start_x);
-                    start := Vector3.{x, y, z};
-                    end := Vector3.{x + 1, y + 1, z + 1};
-                    test_cuboid(start, end, shade);
-
-                    for 0..x_steps-1 {
-                        start.x -= 1;
-                        end.x -= 1;
-                        test_cuboid(start, end, shade);
-                    }
-                }
+            i : s32 = 0;
+            dir := cast(s32, sign(x_steps));
+            while i != x_steps {
+                i += dir;
+                start.x += dir;
+                end.x += dir;
+                test_cuboid(start, end, shade);
             }
         }
-
+        
         raycast_zx :: (y: float, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, shade: *float) {
+            z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
 
-            // @Cleanup Figure out how to combine these two very similar branches
-            if ray_start_z <= ray_end_z {
-                z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
-
-                if z_steps == 0 { // They are in the same z row
-                    raycast_x(y, floor(ray_start_z), ray_start_x, ray_end_x, shade);
-                } else {
-                    m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
-                    b := ray_start_x - m * ray_start_z;
-                    
-                    if z_steps == 1 { // They are in adjacent z rows
-                        z := floor(ray_end_z);
-                        x := m * z + b;
-                        raycast_x(y, floor(ray_start_z), ray_start_x, x, shade);
-                        raycast_x(y, floor(ray_end_z), x, ray_end_x, shade);
-                    } else { // There is at least one z-row between the points
-                        z := ceil(ray_start_z);
-                        current_ray_end_x := m * z + b;
-                        raycast_x(y, floor(ray_start_z), ray_start_x, current_ray_end_x, shade);
-                        
-                        for 0..z_steps-2 {
-                            z_start := z;
-                            z += 1;
-                            current_ray_start_x := current_ray_end_x;
-                            current_ray_end_x = m * z + b;
-
-                            raycast_x(y, z_start, current_ray_start_x, current_ray_end_x, shade);
-                        }
-                        
-                        raycast_x(y, z, current_ray_end_x, ray_end_x, shade);
-                    }
-                }
+            if z_steps == 0 {
+                raycast_x(y, floor(ray_start_z), ray_start_x, ray_end_x, shade);
             } else {
-                z_steps := cast(s32, floor(ray_start_z) - floor(ray_end_z));
+                m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
+                b := ray_start_x - m * ray_start_z;
+                
+                z_index := floor(ray_start_z);
+                z := z_index + cast(s32, z_steps > 0);
 
-                if z_steps == 0 {
-                    raycast_x(y, floor(ray_start_z), ray_start_x, ray_end_x, shade);
-                } else {
-                    m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
-                    b := ray_start_x - m * ray_start_z;
+                x := m * z + b;
 
-                    if z_steps == 1 {
-                        z := floor(ray_start_z);
-                        x := m * z + b;
-                        raycast_x(y, floor(ray_start_z), ray_start_x, x, shade);
-                        raycast_x(y, floor(ray_end_z), x, ray_end_x, shade);
-                    } else {
-                        z := floor(ray_start_z);
-                        current_ray_end_x := m * z + b;
-                        raycast_x(y, floor(ray_start_z), ray_start_x, current_ray_end_x, shade);
+                raycast_x(y, z_index, ray_start_x, x, shade);
+                
+                i := 0;
+                dir := sign(z_steps);
+                range_end := z_steps - dir; // Every cube except the last one
 
-                        for 0..z_steps-2 {
-                            z -= 1;
-                            current_ray_start_x := current_ray_end_x;
-                            current_ray_end_x = m * z + b;
-
-                            raycast_x(y, z, current_ray_start_x, current_ray_end_x, shade);
-                        }
-                        
-                        z -= 1;
-                        raycast_x(y, z, current_ray_end_x, ray_end_x, shade);
-                    }
+                while i != range_end {
+                    i += dir;
+                    z_index += dir;
+                    z += dir;
+                    old_x := x;
+                    x = m * z + b;
+                    raycast_x(y, z_index, old_x, x, shade);
                 }
+                
+                z_index += dir;
+                raycast_x(y, z_index, x, ray_end_x, shade);
             }
         }
 
         raycast :: (ray_start: Vector3, ray_end: Vector3) {
-
             shade := 1.0;
 
-            if ray_start.y < ray_end.y {
-                y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
+            y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
 
-                if y_steps == 0 {
-                    raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, *shade);
-                } else {
-                    y := ceil(ray_start.y);
-                    t := (y - ray_start.y) / (ray_end.y - ray_start.y);
-
-                    if y_steps == 1 {
-                        x := ray_start.x + (ray_end.x - ray_start.x) * t;
-                        z := ray_start.z + (ray_end.z - ray_start.z) * t;
-                        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, x, z, *shade);
-                        raycast_zx(floor(ray_end.y), x, z, ray_end.x, ray_end.z, *shade);
-                    } else {
-                        current_ray_end_x := ray_start.x + (ray_end.x - ray_start.x) * t;
-                        current_ray_end_z := ray_start.z + (ray_end.z - ray_start.z) * t;
-
-                        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, current_ray_end_x, current_ray_end_z, *shade);
-
-                        for 0..y_steps-2 {
-                            y_start := y;
-                            y += 1;
-                            t := (y_start - ray_start.y) / (ray_end.y - ray_start.y);
-
-                            current_ray_start_x := current_ray_end_x;
-                            current_ray_start_z := current_ray_end_z;
-                            current_ray_end_x = ray_start.x + (ray_end.x - ray_start.x) * t;
-                            current_ray_end_z = ray_start.z + (ray_end.z - ray_start.z) * t;
-
-                            raycast_zx(y_start, current_ray_start_x, current_ray_start_z, current_ray_end_x, current_ray_end_z, *shade);
-                        }
-
-                        raycast_zx(y, current_ray_end_x, current_ray_end_z, ray_end.x, ray_end.z, *shade);
-                    }
-                }
+            if y_steps == 0 {
+                raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, *shade);
             } else {
-                y_steps := cast(s32, floor(ray_start.y) - floor(ray_end.y));
+                ray_length := ray_end - ray_start;
+
+                y_index := floor(ray_start.y);
+                y := y_index + cast(s32, y_steps > 0);
+                t := (y - ray_start.y) / ray_length.y;
+
+                x := ray_start.x + ray_length.x * t;
+                z := ray_start.z + ray_length.z * t;
+
+                raycast_zx(y_index, ray_start.x, ray_start.z, x, z, *shade);
                 
-                if y_steps == 0 {
-                    raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, *shade);
-                } else {
-                    y := floor(ray_start.y);
-                    t := (y - ray_start.y) / (ray_end.y - ray_start.y);
+                i := 0;
+                dir := sign(y_steps);
+                range_end := y_steps - dir;
+                while i != range_end {
+                    i += dir;
+                    y_index += dir;
+                    y += dir;
+                    t := (y - ray_start.y) / ray_length.y;
+                    old_x := x;
+                    old_z := z;
+                    x = ray_start.x + ray_length.x * t;
+                    z = ray_start.z + ray_length.z * t;
 
-                    if y_steps == 1 {
-                        x := ray_start.x + (ray_end.x - ray_start.x) * t;
-                        z := ray_start.z + (ray_end.z - ray_start.z) * t;
-                        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, x, z, *shade);
-                        raycast_zx(floor(ray_end.y), x, z, ray_end.x, ray_end.z, *shade);
-                    } else {
-                        current_ray_end_x := ray_start.x + (ray_end.x - ray_start.x) * t;
-                        current_ray_end_z := ray_start.z + (ray_end.z - ray_start.z) * t;
-
-                        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, current_ray_end_x, current_ray_end_z, *shade);
-
-                        for 0..y_steps-2 {
-                            y -= 1;
-                            t := (y - ray_start.y) / (ray_end.y - ray_start.y);
-                            current_ray_start_x := current_ray_end_x;
-                            current_ray_start_z := current_ray_end_z;
-                            current_ray_end_x = ray_start.x + (ray_end.x - ray_start.x) * t;
-                            current_ray_end_z = ray_start.z + (ray_end.z - ray_start.z) * t;
-
-                            raycast_zx(y, current_ray_start_x, current_ray_start_z, current_ray_end_x, current_ray_end_z, *shade);
-                        }
-
-                        y -= 1;
-                        raycast_zx(y, current_ray_end_x, current_ray_end_z, ray_end.x, ray_end.z, *shade);
-                    }
+                    raycast_zx(y_index, old_x, old_z, x, z, *shade);
                 }
+
+                y_index += dir;
+                raycast_zx(y_index, x, z, ray_end.x, ray_end.z, *shade);
             }
         }
 
-        /*
         {
-            theta := cast(float, fmod_cycling(time_elapsed / 2, TAU));
-            RAY_LENGTH :: 1;
+            theta := cast(float, fmod_cycling(time_elapsed, TAU));
+            RAY_LENGTH :: 2;
             shade := 1.0;
             ray_length_x := cos(theta) * RAY_LENGTH;
             ray_length_z := sin(theta) * RAY_LENGTH;
@@ -463,7 +363,6 @@ game_update : Game_Update : (
                 shade = *shade
             );
         }
-        */
 
         {
             theta := cast(float, fmod_cycling(time_elapsed, TAU));

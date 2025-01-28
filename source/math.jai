@@ -89,6 +89,12 @@ get_angle :: (start: Vector3, end: Vector3) -> float {
     return acos(dot(start, end) / (length(start) * length(end)));
 }
 
+sign :: (t: $T) -> T {
+    // @TODO: Do we want to use funny branchless bit tricks for this?
+    if t < 0 return -1;
+    return 1;
+}
+
 /*
 PI :: 3.141592653689793238;
 
