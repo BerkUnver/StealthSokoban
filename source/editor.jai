@@ -10,6 +10,31 @@ Editor :: struct {
 
 
 editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
+    camera_to_world := inverse(get_camera_matrix(level));
+    
+    move_camera := true;
+    move_camera_dir: Vector3;
+    if event.key == {
+        case xx #char "W";
+            move_camera_dir.z = 1;
+        case xx #char "A";
+            move_camera_dir.x = -1;
+        case xx #char "S";
+            move_camera_dir.z = -1;
+        case xx #char "D";
+            move_camera_dir.x = 1;
+        case xx #char "Q";
+            move_camera_dir.y = 1;
+        case xx #char "E";
+            move_camera_dir.y = -1;
+        case;
+            move_camera = false;
+    }
+
+    if move_camera {
+        rotate(*move_camera_dir, inverse(camera_rotation));
+        camera_position += move_camera_dir;
+    }
     
     // You hold down keys to enter different modes. Your default mode is selection.
     if event.key == xx #char "E" {
@@ -37,7 +62,7 @@ editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Edit
                     return true;
                 }
 
-                ray_end := multiply_homogeneous(inverse(camera_matrix), .{mouse_x, mouse_y, 1});
+                ray_end := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 1});
                 raycast(camera_position, ray_end, raycast_visitor, *data);
 
                 editor.selected_block = data.block;
@@ -71,7 +96,7 @@ editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Edit
                 }
                 
                 data := Raycast_Data.{col=*collision};
-                ray_end := multiply_homogeneous(inverse(camera_matrix), .{mouse_x, mouse_y, 1});
+                ray_end := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 1});
                 raycast(camera_position, ray_end, raycast_visitor, *data);
                 
                 block := data.collided_block;
@@ -88,7 +113,9 @@ editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Edit
                         collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
                         assert(!collision.filled[collision_index]);
                         collision.filled[collision_index] = block;
-                    } else {
+                    } else if inside_positive_bounding_box(data.previous_coord - collision.position, collision.size) {
+                        // @TODO: :EditorCollision figure out how collision in the editor is going to work.
+
                         // @Speed We could do it without removing the block.
                         remove_block_from_collision(*collision, block);
                         old := block.filled;

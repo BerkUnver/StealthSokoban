@@ -208,7 +208,7 @@ game_update : Game_Update : (
         using level;
         
         // @TODO: Pull these out into separate routines
-        imm_set_projection(camera_matrix);
+        imm_set_projection(get_camera_matrix(*level));
         imm_set_shader(block_shader);
         imm_set_bitmap(block_bitmap);
 

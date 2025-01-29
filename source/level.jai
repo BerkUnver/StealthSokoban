@@ -5,8 +5,8 @@ Level :: struct {
     flags: enum {PULLING :: 1;};
 
     camera_position: Vector3;
+    camera_rotation: Quaternion;
     camera_projection: Matrix4;
-    camera_matrix: Matrix4; // The above premultiplied.
 
     collision: Collision;
 }
@@ -24,6 +24,26 @@ Collision :: struct {
     // Consider coming back to this.
     // @TODO Implement a bit array for better cache coherency.
 }
+
+
+// :EditorCollision
+/*
+I have arrived at a bit of a conundrum. Currently, in the game, each collision cube
+is only allowed to be occupied by one thing. This makes sense for the gameplay mode.
+However, in the editor, this makes less sense. Once we start adding multi-extrusion
+and especially dragging, we may want to allow multiple things to overlap in the
+editor, and have a visual warning if they do. This would require a different 
+collision data structure for the editor than the game. We need a collision data
+structure in the editor so we can pick individual level elements with the mouse
+cursor (though this may eventually change to using the meshes of each entity) and
+so warning us about overlaps is fast.
+
+A lot of this seems to be predicting things in the future that don't exist in the
+game yet. THE GOAL IS TO GET TO A MINIMALLY WORKING LEVEL EDITOR AS FAST AS
+POSSIBLE SO I CAN START DESIGNING LEVELS! ALWAYS KEEP THAT IN MIND!
+
+            -berk, 28 - 1 - 2025
+*/
 
 
 Block :: struct {
@@ -67,6 +87,7 @@ make_collision :: (level_arena: *Memory_Arena) -> Collision {
 add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
     offset := block.position - col.position;
     assert(inside_positive_bounding_box(offset, col.size));
+    assert(inside_positive_bounding_box(offset + block.size, col.size));
 
     // @Speed we could just detect when the failure happens and unwind what we've
     // already added instead of first checking, then adding.
@@ -90,6 +111,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
 
     return true;
 }
+
 
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
 raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T) -> terminate_raycast: bool, user_data: T)  {
@@ -239,14 +261,16 @@ init_camera :: (using l: *Level) {
     right := cast(float, NEAR * tan(FOV / 2));
     top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
     
-    rotation := make_x_rotation_matrix4(xx (PI / 3));
-    frustum  := make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
-
-    camera_projection = multiply(frustum, rotation);
+    camera_projection = make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
+    set_from_axis_and_angle(*camera_rotation, .{1, 0, 0},  -PI / 3);
+    // :Quaternion Why is the angle negative (correct) instead of positive?
+    // I would think that it would have to be inverse to convert from world space to camera space.
     camera_position = .{0, 8, -4};
+}
 
-    camera_position_matrix := make_translation_matrix4(-camera_position);
-    camera_matrix = multiply(camera_projection, camera_position_matrix);
+
+get_camera_matrix :: (using l: *Level) -> Matrix4 {
+    return multiply(camera_projection, multiply(rotation_matrix(Matrix4, camera_rotation), make_translation_matrix4(-camera_position)));
 }
 
 

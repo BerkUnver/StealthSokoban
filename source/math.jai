@@ -125,6 +125,10 @@ max :: (a: $T, b: T) -> T {
     return ifx a > b then a else b;
 }
 
+inverse :: (using q: Quaternion) -> Quaternion {
+    return .{x=-x, y=-y, z=-z, w=w};
+}
+
 
 /*
 PI :: 3.141592653689793238;
