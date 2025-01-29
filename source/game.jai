@@ -151,7 +151,7 @@ game_init : Game_Init : (
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-        
+        mode = .EDITOR;
         test_level_init(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -232,7 +232,8 @@ game_update : Game_Update : (
         imm_set_shader(player_shader);
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
         
-        if mode == .EDITOR {
+        // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
+        if mode == .EDITOR && editor.mode == .SELECTION {
             b := editor.selected_block;
             if b imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
         }

@@ -1,9 +1,9 @@
 Level :: struct {
     blocks: Fixed_Array(32, Block);
-    
+
     player_position: Vector3i;
     flags: enum {PULLING :: 1;};
-    
+
     camera_position: Vector3;
     camera_projection: Matrix4;
     camera_matrix: Matrix4; // The above premultiplied.
@@ -18,7 +18,7 @@ Collision :: struct {
 
     filled: [] *Block;
     // @TODO This is stored x-major, then z, then y.
-    // This makes sense from the perspective of wanting to be 
+    // This makes sense from the perspective of wanting to be
     // able to type levels directly into code for this initial
     // development period, but may make less sense later.
     // Consider coming back to this.
@@ -41,7 +41,7 @@ get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *B
     if !inside_positive_bounding_box(local_position, col.size) {
         return false, null;
     }
-    
+
     index := convert_3d_coordinate_to_index(local_position, col.size);
     return true, col.filled[index];
 }
@@ -71,12 +71,12 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
     if block.position.x + block.size.x > col.position.x + col.size.x return false;
     if block.position.y + block.size.y > col.position.y + col.size.y return false;
     if block.position.z + block.size.z > col.position.z + col.size.z return false;
-    
+
     offset := block.position - col.position;
 
     // @Speed we could just detect when the failure happens and unwind what we've
     // already added instead of first checking, then adding.
-    
+
     for :iterate_vector3i block.size {
         filled := block.filled[it_index];
         if !filled continue;
@@ -235,6 +235,7 @@ add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vect
 
      assert(add_block_to_collision(*level.collision, block));
 }
+
 
 
 init_camera :: (using l: *Level) {

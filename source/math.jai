@@ -108,6 +108,14 @@ sign :: (t: $T) -> T {
     return 1;
 }
 
+
+multiply_homogeneous :: (m: Matrix4, v_: Vector3) -> Vector3 {
+    v := Vector4.{v_.x, v_.y, v_.z, 1};
+    result_4 := m * v;
+    return result_4.xyz / result_4.w;
+}
+
+
 /*
 PI :: 3.141592653689793238;
 
