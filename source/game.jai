@@ -19,7 +19,7 @@ Game_Context :: struct {
 
 Game_Memory :: struct {
     game_context: Game_Context;
-    game: Game;
+    using game: Game;
 }
 
 Game :: struct {
@@ -190,7 +190,7 @@ game_update : Game_Update : (
                     case .GAME;
                         level_update(*level, it);
                     case .EDITOR;
-                        editor_update(*level, *editor, input.mouse_x, input.mouse_y, it);
+                        editor_update(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
                 }
             }
         }

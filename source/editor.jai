@@ -9,7 +9,7 @@ Editor :: struct {
 }
 
 
-editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
+editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
     
     // You hold down keys to enter different modes. Your default mode is selection.
     if event.key == xx #char "E" {
@@ -83,13 +83,56 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
                         block.filled[block_index] = true;
 
                         collision_coord := data.previous_coord - collision.position;
-                        assert(inside_positive_bounding_box(collision_coord, collision.size));
+                        assert(inside_positive_bounding_box(collision_coord, collision.size)); // Any block that's part of the level should _ALWAYS_ be within the bounds of the collision grid.
 
                         collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
                         assert(!collision.filled[collision_index]);
                         collision.filled[collision_index] = block;
                     } else {
-                        // @TODO: Fill in what to do if we need to resize the array.
+                        // @Speed We could do it without removing the block.
+                        remove_block_from_collision(*collision, block);
+                        old := block.filled;
+                    
+                        new_position := Vector3i.{
+                            min(data.previous_coord.x, block.position.x),
+                            min(data.previous_coord.y, block.position.y),
+                            min(data.previous_coord.z, block.position.z)
+                        };
+                        
+                        new_end := Vector3i.{
+                            max(data.previous_coord.x + 1, block.position.x + block.size.x),
+                            max(data.previous_coord.y + 1, block.position.y + block.size.y),
+                            max(data.previous_coord.z + 1, block.position.z + block.size.z)
+                        };
+
+                        new_size := new_end - new_position;
+
+                        success, new_filled := arena_alloc_array(level_arena, new_size.x * new_size.y * new_size.z, bool);
+                        assert(success);
+                        
+                        block_y_chunk := block.size.x * block.size.z;
+                        
+                        // @Speed we could rip the x-rows in with one memcpy
+                        for :iterate_vector3i block.size {
+                            filled := block.filled[it_index];
+                            new_filled_coord := it + block.position - new_position;
+                            assert(inside_positive_bounding_box(new_filled_coord, new_size));
+                            new_index := convert_3d_coordinate_to_index(new_filled_coord, new_size);
+                            new_filled[new_index] = block.filled[it_index];
+                        }
+
+                        {
+                            coord := data.previous_coord - new_position;
+                            assert(inside_positive_bounding_box(coord, new_size));
+                            index := convert_3d_coordinate_to_index(coord, new_size);
+                            new_filled[index] = true;
+                        }
+
+                        block.position = new_position;
+                        block.size = new_size;
+                        block.filled = new_filled;
+
+                        assert(add_block_to_collision(*collision, block));
                     }
                 }
         }

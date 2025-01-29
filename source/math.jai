@@ -35,7 +35,7 @@ to_vector3i :: (v: Vector3) -> Vector3i {
 iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
     #assert for_flags == 0;
 
-    y_chunk := v.x * v.y;
+    y_chunk := v.x * v.z;
     for `y_index: 0..v.y-1 {
         y_offset := y_index * y_chunk;
         for `z_index: 0..v.z-1 {
@@ -48,6 +48,7 @@ iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
         }
     }
 }
+
 
 convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
     return coord.y * size.z * size.x + coord.z * size.x + coord.x;
@@ -113,6 +114,15 @@ multiply_homogeneous :: (m: Matrix4, v_: Vector3) -> Vector3 {
     v := Vector4.{v_.x, v_.y, v_.z, 1};
     result_4 := m * v;
     return result_4.xyz / result_4.w;
+}
+
+
+min :: (a: $T, b: T) -> T {
+    return ifx a < b then a else b;
+}
+
+max :: (a: $T, b: T) -> T {
+    return ifx a > b then a else b;
 }
 
 

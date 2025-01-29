@@ -65,14 +65,8 @@ make_collision :: (level_arena: *Memory_Arena) -> Collision {
 
 
 add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
-    if block.position.x < col.position.x return false;
-    if block.position.y < col.position.y return false;
-    if block.position.z < col.position.z return false;
-    if block.position.x + block.size.x > col.position.x + col.size.x return false;
-    if block.position.y + block.size.y > col.position.y + col.size.y return false;
-    if block.position.z + block.size.z > col.position.z + col.size.z return false;
-
     offset := block.position - col.position;
+    assert(inside_positive_bounding_box(offset, col.size));
 
     // @Speed we could just detect when the failure happens and unwind what we've
     // already added instead of first checking, then adding.
