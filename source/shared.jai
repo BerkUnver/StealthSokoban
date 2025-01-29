@@ -14,7 +14,7 @@ Game_Init :: #type (
     game_memory: *void,
     game_memory_size: u64,
     gl_extension_loader: (*u8) -> *void #c_call,
-    debug_print: (string),
+    os_print: (string),
     level_arena_memory: *void
 ) #no_context;
 
@@ -119,4 +119,78 @@ assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #e
     }
 
     if !condition && assert_stack_trace(message, loc) debug_break();
+}
+
+format_print :: (printer: (string), s: string, args: ..Any) {
+    buffer: [4096] u8 = ---;
+    buffer_index := 0;
+    arg_index := 0;
+    for 0..s.count-1 {
+        if s[it] == #char "%" {
+            assert(arg_index < args.count);
+            arg := args[arg_index];
+            
+            if arg.type == type_info(string) {
+                arg_str := cast(*string, arg.value_pointer).*;
+                assert(buffer_index + arg_str.count < buffer.count);
+                memcpy(buffer.data + buffer_index, arg_str.data, arg_str.count);
+                buffer_index += arg_str.count;
+            } else if arg.type.type == .INTEGER {
+                negative: bool;
+                arg_u64: u64;
+
+                if arg.type == type_info(u32) {
+                    arg_u64 = xx cast(*u32, arg.value_pointer).*;
+                } else if arg.type == type_info(u64) {
+                    arg_u64 = cast(*u64, arg.value_pointer).*;
+                } else if arg.type == type_info(s32) {
+                    arg_s32 := xx cast(*s32, arg.value_pointer).*;
+                    if arg_s32 < 0 {
+                        arg_u64 = xx -arg_s32;
+                        negative = true;
+                    } else {
+                        arg_u64 = xx arg_s32;
+                    }
+                }
+                
+                if arg_u64 == 0 {
+                    assert(buffer_index < buffer.count);
+                    buffer[buffer_index] = #char "0";
+                    buffer_index += 1;
+                } else {
+                    if negative {
+                        assert(buffer_index < buffer.count);
+                        buffer[buffer_index] = #char "-";
+                        buffer_index += 1;
+                    }
+                    
+                    divisor: u64 = 1;
+                    digit_count := 1;
+                    while true {
+                        if arg_u64 / divisor < 10 break;
+                        divisor *= 10;
+                        digit_count += 1;
+                    }
+                    
+                    assert(buffer_index + digit_count <= buffer.count);
+
+                    remainder := arg_u64;
+                    while divisor {
+                        buffer[buffer_index] = cast(u8, #char "0" + remainder / divisor);
+                        remainder = remainder % divisor;
+                        divisor /= 10;
+                        buffer_index += 1;
+                    }
+                }
+            } else assert(false);
+
+            arg_index += 1;
+        } else {
+            assert(buffer_index < buffer.count);
+            buffer[buffer_index] = s[it];
+            buffer_index += 1;
+        }
+
+    }
+    printer(.{buffer_index, buffer.data});
 }

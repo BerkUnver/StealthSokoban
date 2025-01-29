@@ -7,7 +7,6 @@
 
 windows: struct {
     stdout: HANDLE;
-    game_dll: HMODULE;
     input_events: Fixed_Array(Input.EVENT_COUNT, Input_Event);
 }
 
@@ -284,23 +283,49 @@ main :: () {
     ticks_per_second_s64: s64;
     assert(QueryPerformanceFrequency(xx *ticks_per_second_s64) != 0);
     ticks_per_second := cast(float64, ticks_per_second_s64);
+    
+
+    { // Set working directory to exe directory
+        // @TODO: Get rid of MAX_PATH
+        exe_path: [MAX_PATH] u8;
+        GetModuleFileNameA(null, exe_path.data, exe_path.count);
+
+        index := 0;
+        last_path_index := -1;
+        while exe_path[index] != #char "\0" {
+            if exe_path[index] == #char "\\" last_path_index = index;
+            index += 1;
+        }
+        exe_path[last_path_index] = #char "\0";
+        assert(SetCurrentDirectoryA(exe_path.data) != 0);
+    }
+
 
     //
     // Initialize the game state
     //
     
-    SetCurrentDirectoryA("..\\assets\\");
-
     GAME_MEMORY_SIZE :: 1 << 24; // @TODO: See how much of this memory is actually used!
 
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
-    windows.game_dll = LoadLibraryA("stealth_sokoban_game.dll"); 
-    assert(windows.game_dll != null);
+    
+    GAME_DLL_NAME_FRESH :: "stealth_sokoban_game_fresh.dll";
+    GAME_DLL_NAME :: "stalth_sokoban_game.dll";
+    
+    dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
+    if dll_attrs != INVALID_FILE_ATTRIBUTES {
+        DeleteFileA(GAME_DLL_NAME);
+        assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
+    }
+    game_dll := LoadLibraryA(GAME_DLL_NAME);
+    assert(game_dll != null);
     
     level_arena := VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE);
-    game_init := cast(Game_Init, GetProcAddress(windows.game_dll, "game_init"));
+    game_init := cast(Game_Init, GetProcAddress(game_dll, "game_init"));
     assert(game_init != null);
-    game_init(game_memory, GAME_MEMORY_SIZE, wglGetProcAddress, print, level_arena);
+    game_init(game_memory, GAME_MEMORY_SIZE, wglGetProcAddress, os_print, level_arena);
+    game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
+    assert(game_update != null);
     
     while main_loop := true {
         message: MSG;
@@ -315,8 +340,24 @@ main :: () {
             TranslateMessage(*message);
             DispatchMessageA(*message);
         }
-
         
+        new_dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
+        if new_dll_attrs != INVALID_FILE_ATTRIBUTES {
+            if MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME_FRESH) == 0 {
+                // @Hack this is to prevent us from trying to move the file
+                // when the compiler has locked it because it's writing to it.
+                assert(cast(u32, GetLastError()) == ERROR_SHARING_VIOLATION);
+            } else {
+                assert(FreeLibrary(game_dll) != 0);
+                assert(DeleteFileA(GAME_DLL_NAME) != 0);
+                assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
+                game_dll = LoadLibraryA(GAME_DLL_NAME);
+                assert(game_dll != null);
+                game_update = GetProcAddress(game_dll, "game_update");
+                assert(game_update != null);
+            }
+        }
+
         monitor_h := GetSystemMetrics(SM_CYSCREEN);
 
         client_rect: RECT;
@@ -354,7 +395,6 @@ main :: () {
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
-        game_update := cast(Game_Update, GetProcAddress(windows.game_dll, "game_update"));
         game_update(game_memory, *input, time_elapsed);
         windows.input_events.count = 0;
 
@@ -362,8 +402,11 @@ main :: () {
     }
 }
 
+print :: (s: string, args: ..Any) {
+    format_print(os_print, s, ..args);
+}
 
-print :: (s: string) {
+os_print :: (s: string) {
     WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
     FlushFileBuffers(windows.stdout); 
     // This function is for debug output. We don't care about performance, so we flush every time we call this.

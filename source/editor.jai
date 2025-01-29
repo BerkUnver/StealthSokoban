@@ -161,7 +161,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 }
 
 editor_update :: (level: *Level, editor: *Editor, dt: float) {
-    CAMERA_SPEED :: 120.0 / 60.0;
+    CAMERA_SPEED :: 240.0 / 60.0;
     camera_movement := rotate(to_vector3(editor.camera_direction), inverse(level.camera_rotation)) * dt * CAMERA_SPEED;
     level.camera_position += camera_movement;
 }

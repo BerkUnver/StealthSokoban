@@ -11,7 +11,7 @@
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
-    debug_print: (string);
+    os_print: (string);
     imm_state: Imm_State;
 }
 
@@ -45,7 +45,7 @@ game_init : Game_Init : (
     game_memory_: *void,
     game_memory_size: u64,
     gl_extension_loader: (*u8) -> *void #c_call,
-    debug_print_: (string),
+    os_print_: (string),
     level_arena_memory: *void
 ) #no_context {
     game_memory := cast(*Game_Memory, game_memory_);
@@ -57,7 +57,7 @@ game_init : Game_Init : (
 
 
         
-        debug_print = debug_print_;
+        os_print = os_print_;
 
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
