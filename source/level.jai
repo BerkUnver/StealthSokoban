@@ -330,7 +330,7 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     */
 }
 
-level_update :: (using level: *Level, event: Input_Event) { 
+level_handle_input :: (using level: *Level, event: Input_Event) { 
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;

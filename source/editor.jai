@@ -6,36 +6,30 @@ Editor_Mode :: enum {
 Editor :: struct {
     mode: Editor_Mode;
     selected_block: *Block; // This should be valid even if we are not in the selection mode.
+
+    camera_direction: Vector3i;
 }
 
 
-editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
+editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
     camera_to_world := inverse(get_camera_matrix(level));
     
-    move_camera := true;
-    move_camera_dir: Vector3;
+    move_camera_sign := ifx event.down then cast(s32, 1) else cast(s32, -1);
     if event.key == {
         case xx #char "W";
-            move_camera_dir.z = 1;
+            editor.camera_direction.z += move_camera_sign;
         case xx #char "A";
-            move_camera_dir.x = -1;
+            editor.camera_direction.x -= move_camera_sign;
         case xx #char "S";
-            move_camera_dir.z = -1;
+            editor.camera_direction.z -= move_camera_sign;
         case xx #char "D";
-            move_camera_dir.x = 1;
+            editor.camera_direction.x += move_camera_sign;
         case xx #char "Q";
-            move_camera_dir.y = 1;
+            editor.camera_direction.y += move_camera_sign;
         case xx #char "E";
-            move_camera_dir.y = -1;
-        case;
-            move_camera = false;
+            editor.camera_direction.y -= move_camera_sign;
     }
 
-    if move_camera {
-        rotate(*move_camera_dir, inverse(camera_rotation));
-        camera_position += move_camera_dir;
-    }
-    
     // You hold down keys to enter different modes. Your default mode is selection.
     if event.key == xx #char "E" {
         if event.down editor.mode = .EXTRUSION;
@@ -166,3 +160,8 @@ editor_update :: (using level: *Level, level_arena: *Memory_Arena, editor: *Edit
     }
 }
 
+editor_update :: (level: *Level, editor: *Editor, dt: float) {
+    CAMERA_SPEED :: 120.0 / 60.0;
+    camera_movement := rotate(to_vector3(editor.camera_direction), inverse(level.camera_rotation)) * dt * CAMERA_SPEED;
+    level.camera_position += camera_movement;
+}

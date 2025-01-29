@@ -31,6 +31,8 @@ Game :: struct {
     level: Level;
     editor: Editor;
     level_arena: Memory_Arena;
+
+    time_elapsed: float64;
 }
 
 Game_Mode :: enum {
@@ -163,7 +165,7 @@ game_init : Game_Init : (
 game_update : Game_Update : (
     game_memory_: *void, 
     input: *Input,
-    time_elapsed: float64
+    time_elapsed_: float64
 ) #no_context {
     push_context {
         game_memory := cast(*Game_Memory, game_memory_);
@@ -188,13 +190,22 @@ game_update : Game_Update : (
             } else {
                 if #complete mode == {
                     case .GAME;
-                        level_update(*level, it);
+                        level_handle_input(*level, it);
                     case .EDITOR;
-                        editor_update(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
+                        editor_handle_input(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
                 }
             }
         }
+        
+        dt: float;
+        if time_elapsed == 0 { // We're on the first tick. Set dt to something reasonable.
+            dt = 1 / 60;
+        } else {
+            dt = cast(float, time_elapsed_ - time_elapsed);
+        }
+        time_elapsed = time_elapsed_;
 
+        if mode == .EDITOR editor_update(*level, *editor, dt);
 
         // :GLDebugProcHotloadingHack
         // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
