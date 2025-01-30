@@ -47,6 +47,7 @@ Key :: enum {
     // 0 - 9: Ascii '0' - '9'
     // Space: Ascii ' '
     MOUSE_LEFT_BUTTON :: 256;
+    MOUSE_RIGHT_BUTTON;
 }
 
 
@@ -121,8 +122,7 @@ assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #e
     if !condition && assert_stack_trace(message, loc) debug_break();
 }
 
-format_print :: (printer: (string), s: string, args: ..Any) {
-    buffer: [4096] u8 = ---;
+format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: string {
     buffer_index := 0;
     arg_index := 0;
     for 0..s.count-1 {
@@ -190,7 +190,7 @@ format_print :: (printer: (string), s: string, args: ..Any) {
             buffer[buffer_index] = s[it];
             buffer_index += 1;
         }
-
     }
-    printer(.{buffer_index, buffer.data});
+    assert(arg_index == args.count);
+    return .{buffer_index, buffer.data}, .{buffer.count - buffer_index, buffer.data + buffer_index};
 }

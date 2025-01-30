@@ -5,7 +5,8 @@ Level :: struct {
     flags: enum {PULLING :: 1;};
 
     camera_position: Vector3;
-    camera_rotation: Quaternion;
+    camera_pitch: float;
+    camera_yaw: float;
     camera_projection: Matrix4;
 
     collision: Collision;
@@ -262,15 +263,17 @@ init_camera :: (using l: *Level) {
     top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
     
     camera_projection = make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
-    set_from_axis_and_angle(*camera_rotation, .{1, 0, 0},  -PI / 3);
-    // :Quaternion Why is the angle negative (correct) instead of positive?
-    // I would think that it would have to be inverse to convert from world space to camera space.
+    camera_pitch = -PI / 3;
     camera_position = .{0, 8, -4};
 }
 
 
 get_camera_matrix :: (using l: *Level) -> Matrix4 {
-    return multiply(camera_projection, multiply(rotation_matrix(Matrix4, camera_rotation), make_translation_matrix4(-camera_position)));
+    position_matrix := make_translation_matrix4(-camera_position);
+    pitch_matrix := make_x_rotation_matrix4(-camera_pitch);
+    yaw_matrix := make_y_rotation_matrix4(-camera_yaw);
+
+    return multiply(camera_projection, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
 }
 
 

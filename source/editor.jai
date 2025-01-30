@@ -1,13 +1,19 @@
 Editor_Mode :: enum {
     SELECTION;
     EXTRUSION;
+    CAMERA_ROTATION;
 }
 
 Editor :: struct {
     mode: Editor_Mode;
     selected_block: *Block; // This should be valid even if we are not in the selection mode.
-
-    camera_direction: Vector3i;
+    
+    union {
+        camera_rotation: struct {
+            previous_mouse_position: Vector2;
+        }
+    }
+    camera_direction: Vector3;
 }
 
 
@@ -31,9 +37,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
     }
 
     // You hold down keys to enter different modes. Your default mode is selection.
-    if event.key == xx #char "E" {
+    if event.key == xx #char "X" {
         if event.down editor.mode = .EXTRUSION;
         else if editor.mode == .EXTRUSION editor.mode = .SELECTION;
+    } else if event.key == .MOUSE_RIGHT_BUTTON {
+        if event.down {
+            editor.mode = .CAMERA_ROTATION;
+            editor.camera_rotation.previous_mouse_position = .{mouse_x, mouse_y};
+        } else if editor.mode == .CAMERA_ROTATION {
+            editor.mode = .SELECTION;
+        }
     } else {
         if editor.mode == {
             case .SELECTION;
@@ -160,8 +173,31 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
     }
 }
 
-editor_update :: (level: *Level, editor: *Editor, dt: float) {
+
+editor_update :: (level: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
     CAMERA_SPEED :: 240.0 / 60.0;
-    camera_movement := rotate(to_vector3(editor.camera_direction), inverse(level.camera_rotation)) * dt * CAMERA_SPEED;
-    level.camera_position += camera_movement;
+    pitch_matrix := make_x_rotation_matrix4(-level.camera_pitch);
+    yaw_matrix := make_y_rotation_matrix4(-level.camera_yaw);
+    camera_matrix := inverse(multiply(pitch_matrix, yaw_matrix)); 
+    
+    camera_direction_4 := Vector4.{editor.camera_direction.x, editor.camera_direction.y, editor.camera_direction.z, 1};
+    camera_movement := camera_matrix * camera_direction_4 * (dt * CAMERA_SPEED);
+    level.camera_position += camera_movement.xyz;
+
+    if editor.mode == {
+        case .CAMERA_ROTATION;
+            using editor.camera_rotation;
+            
+            PITCH_SPEED :: 50;
+            YAW_SPEED :: 100;
+            mouse := Vector2.{mouse_x, mouse_y};
+            mouse_movement := previous_mouse_position - mouse;
+            previous_mouse_position = mouse;
+            
+            level.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
+            level.camera_yaw = fmod_cycling(level.camera_yaw, TAU);
+
+            level.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
+            clamp(*level.camera_pitch, -PI/2, PI/2);
+    }
 }

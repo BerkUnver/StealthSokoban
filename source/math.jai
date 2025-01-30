@@ -98,8 +98,13 @@ make_left_handed_frustum_matrix :: (l: float, b: float, n: float, r: float, t: f
 }
 
 
-get_angle :: (start: Vector3, end: Vector3) -> float {
-    return acos(dot(start, end) / (length(start) * length(end)));
+get_angle :: (start: Vector2, end: Vector2) -> float {
+    v := atan2(end.y, end.x) - atan2(start.y, start.x);
+    return fmod_cycling(v + PI, TAU) - PI;
+}
+
+get_angle :: (v: Vector2) -> float {
+    return fmod_cycling(atan2(v.y, v.x) + PI, TAU) - PI;
 }
 
 
@@ -125,8 +130,33 @@ max :: (a: $T, b: T) -> T {
     return ifx a > b then a else b;
 }
 
-inverse :: (using q: Quaternion) -> Quaternion {
-    return .{x=-x, y=-y, z=-z, w=w};
+clamp :: (value: $T, minimum: T, maximum: T) -> T {
+    v := min(value, maximum);
+    v = max(value, minimum);
+    return v;
+}
+
+clamp :: (value: *$T, min: T, max: T) {
+    value.* = clamp(value.*, min, max);
+}
+
+
+make_quaternion :: (from_: Vector3, to_: Vector3) -> Quaternion {
+    // Formula from here: https://jacquesheunis.com/post/rotors/
+    from := normalize(from_);
+    to := normalize(to_);
+    halfway := normalize(from + to);
+
+    wedge_x := (to.x * from.y) - (to.y * from.x);
+    wedge_y := (to.y * from.z) - (to.z * from.y);
+    wedge_z := (to.z * from.x) - (to.x * from.z);
+
+    return .{
+        z = -wedge_x,
+        x = -wedge_y,
+        y = -wedge_z,
+        w = dot(from, halfway)
+    };
 }
 
 

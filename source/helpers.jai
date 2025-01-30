@@ -39,5 +39,8 @@ arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := 
 }
 
 print :: (s: string, args: ..Any) {
-    format_print(context.game_context.os_print, s, ..args);
+    buf: [4096] u8;
+    buf_str := string.{buf.count, buf.data};
+    buf_str = format_print(buf_str, s, ..args);
+    context.game_context.os_print(buf_str);
 }

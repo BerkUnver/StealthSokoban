@@ -205,7 +205,7 @@ game_update : Game_Update : (
         }
         time_elapsed = time_elapsed_;
 
-        if mode == .EDITOR editor_update(*level, *editor, dt);
+        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
 
         // :GLDebugProcHotloadingHack
         // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.

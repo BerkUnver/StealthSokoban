@@ -8,6 +8,7 @@
 windows: struct {
     stdout: HANDLE;
     input_events: Fixed_Array(Input.EVENT_COUNT, Input_Event);
+    mouse_buttons_down: enum { LEFT :: 1; RIGHT :: 2; };
 }
 
 
@@ -71,15 +72,34 @@ main :: () {
                         return 0;
 
                     case WM_LBUTTONDOWN;
+                        windows.mouse_buttons_down |= .LEFT;
+                        SetCapture(window);
                         event := append(*input_events);
                         if event event.* = .{key=.MOUSE_LEFT_BUTTON, down=true};
                         return 0;
 
+                    case WM_RBUTTONDOWN;
+                        windows.mouse_buttons_down |= .RIGHT;
+                        SetCapture(window);
+                        event := append(*input_events);
+                        if event event.* = .{key=.MOUSE_RIGHT_BUTTON, down=true};
+                        return 0;
+
+
                     case WM_LBUTTONUP;
+                        windows.mouse_buttons_down &= ~.LEFT;
+                        if !windows.mouse_buttons_down ReleaseCapture();
                         event := append(*input_events);
                         if event event.* = .{key=.MOUSE_LEFT_BUTTON, down=false};
                         return 0;
                         
+                    case WM_RBUTTONUP;
+                        windows.mouse_buttons_down &= ~.RIGHT;
+                        if !windows.mouse_buttons_down ReleaseCapture();
+                        event := append(*input_events);
+                        if event event.* = .{key=.MOUSE_RIGHT_BUTTON, down=false};
+                        return 0;
+
                     case WM_CLOSE;
                         PostQuitMessage(0);
                         return 0;
@@ -403,7 +423,10 @@ main :: () {
 }
 
 print :: (s: string, args: ..Any) {
-    format_print(os_print, s, ..args);
+    buf: [4096] u8;
+    buf_str := string.{buf.count, buf.data};
+    buf_str = format_print(buf_str, s, ..args);
+    os_print(buf_str);
 }
 
 os_print :: (s: string) {
