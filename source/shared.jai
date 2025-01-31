@@ -48,6 +48,8 @@ Key :: enum {
     // Space: Ascii ' '
     MOUSE_LEFT_BUTTON :: 256;
     MOUSE_RIGHT_BUTTON;
+    F_BASE :: MOUSE_RIGHT_BUTTON;
+    F12 :: F_BASE + 12;
 }
 
 

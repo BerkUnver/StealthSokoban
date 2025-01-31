@@ -31,6 +31,8 @@ main :: () {
                     || #char "0" <= keycode && keycode <= #char "9"
                     || #char " " == keycode {
                         return true, xx keycode;
+                    } else if 0x6f < keycode && keycode <= 0x7B {
+                        return true, xx (xx Key.F_BASE + keycode - 0x6f);
                     }
 
                     return false, 0;

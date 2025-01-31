@@ -104,6 +104,7 @@ game_init : Game_Init : (
 
         glClearColor(0, 0, 0, 1);
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
 
        
         //
@@ -174,7 +175,7 @@ game_update : Game_Update : (
         using game_memory.game;
         
         for input.events {
-            if it.key == xx #char "1" && it.down {
+            if it.key == Key.F_BASE + 1 && it.down {
 
                 clear_arena(*level_arena);
                 memset(*level, 0, size_of(type_of(level)));
@@ -219,9 +220,9 @@ game_update : Game_Update : (
         using level;
         
         // @TODO: Pull these out into separate routines
-        imm_set_projection(get_camera_matrix(*level));
-        imm_set_shader(block_shader);
-        imm_set_bitmap(block_bitmap);
+        imm_state.projection = get_camera_matrix(*level);
+        imm_state.shader = block_shader;
+        imm_state.bitmap = block_bitmap;
 
         for blocks {
             for :iterate_vector3i coord: it.size {
@@ -240,15 +241,30 @@ game_update : Game_Update : (
         player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
         player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
 
-        imm_set_shader(player_shader);
+        imm_state.shader = player_shader;
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
+
         
         // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
-        if mode == .EDITOR && editor.mode == .SELECTION {
-            b := editor.selected_block;
-            if b imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
+        if mode == .EDITOR {
+            if editor.mode == {
+                case .SELECTION;
+                    b := editor.selected_block;
+                    if b imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
+                case .DRAG_X;
+                    /*
+                    if editor.selected_block {
+                        x_axis := Vector3.{1, 0, 0};
+                        camera_to_block := camera_position - block.position;
+                        up := cross(x, camera_to_block); // The "up" vector from the perspective of the camera
+                        normal := cross(up, x); // Normal to 
+                    }
+                    */
+            }
         }
         imm_flush();
+
+        draw_arrow(.{-2, 2, 2}, .{2, 2, 4}, 0.03, .{0, 1, 0, 1});
         
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

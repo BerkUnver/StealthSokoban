@@ -147,9 +147,9 @@ make_quaternion :: (from_: Vector3, to_: Vector3) -> Quaternion {
     to := normalize(to_);
     halfway := normalize(from + to);
 
-    wedge_x := (to.x * from.y) - (to.y * from.x);
-    wedge_y := (to.y * from.z) - (to.z * from.y);
-    wedge_z := (to.z * from.x) - (to.x * from.z);
+    wedge_x := (halfway.x * from.y) - (halfway.y * from.x);
+    wedge_y := (halfway.y * from.z) - (halfway.z * from.y);
+    wedge_z := (halfway.z * from.x) - (halfway.x * from.z);
 
     return .{
         z = -wedge_x,

@@ -1,5 +1,8 @@
 Editor_Mode :: enum {
     SELECTION;
+    DRAG_X;
+    DRAG_Y;
+    DRAG_Z;
     EXTRUSION;
     CAMERA_ROTATION;
 }
@@ -11,6 +14,11 @@ Editor :: struct {
     union {
         camera_rotation: struct {
             previous_mouse_position: Vector2;
+        }
+        drag_x: struct {
+            dragging: bool;
+            drag_mouse_start: Vector2;
+            drag_block_start: s32;
         }
     }
     camera_direction: Vector3;
@@ -37,7 +45,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
     }
 
     // You hold down keys to enter different modes. Your default mode is selection.
-    if event.key == xx #char "X" {
+    if event.key == xx #char "1" {
+        if event.down editor.mode = .DRAG_X;
+        else if editor.mode == .DRAG_X editor.mode = .SELECTION;
+    } else if event.key == xx #char "2" {
+        if event.down editor.mode = .DRAG_Y;
+        else if editor.mode == .DRAG_Y editor.mode = .SELECTION;
+    } else if event.key == xx #char "3" {
+        if event.down editor.mode = .DRAG_Z;
+        else if editor.mode == .DRAG_Z editor.mode = .SELECTION;
+    } else if event.key == xx #char "X" {
         if event.down editor.mode = .EXTRUSION;
         else if editor.mode == .EXTRUSION editor.mode = .SELECTION;
     } else if event.key == .MOUSE_RIGHT_BUTTON {
@@ -73,6 +90,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 raycast(camera_position, ray_end, raycast_visitor, *data);
 
                 editor.selected_block = data.block;
+
+            case .DRAG_X;
+                /*
+                if event.key != .MOUSE_LEFT_BUTTON || !event.down || !editor.selected_block return;
+                using editor.drag_x;
+
+                dragging = true;
+                drag_mouse_start = .{mouse_x, mouse_y};
+                drag_block_start = editor.selected_block.position.x;
+                */
 
             case .EXTRUSION;
                 if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
@@ -185,6 +212,16 @@ editor_update :: (level: *Level, editor: *Editor, mouse_x: float, mouse_y: float
     level.camera_position += camera_movement.xyz;
 
     if editor.mode == {
+        case .DRAG_X;
+            using editor.drag_x;
+
+            mouse_start: Vector3;
+            mouse_start.xy = drag_mouse_start;
+            mouse_start.z = -1;
+
+            mouse := Vector3.{mouse_x, mouse_y, -1};
+
+
         case .CAMERA_ROTATION;
             using editor.camera_rotation;
             

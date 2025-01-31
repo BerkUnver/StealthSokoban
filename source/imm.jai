@@ -179,22 +179,6 @@ imm_flush :: () {
     vertex_count = 0;
 }
 
-imm_set_shader :: (shader: GLuint) {
-    context.game_context.imm_state.shader = shader; 
-}
-
-imm_set_bitmap :: (bitmap: GLuint) {
-    context.game_context.imm_state.bitmap = bitmap;
-}
-
-imm_set_projection :: (projection: Matrix4) {
-    context.game_context.imm_state.projection = projection;
-}
-
-imm_get_projection :: () -> Matrix4 {
-    return context.game_context.imm_state.projection;
-}
-
 imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
     using context.game_context.imm_state;
     if vertex_count == vertices.count imm_flush();
@@ -311,4 +295,59 @@ imm_cuboid_outline :: (start: Vector3, end: Vector3, width: float, color: Vector
     imm_cuboid(b20, e3, color);
     imm_cuboid(b21, e3, color);
     imm_cuboid(b22, e3, color);
+}
+
+
+// @TODO Make sure we set the player_shader! (Rename it to color_shader, put it in the global game data)
+// @TODO Make a version of imm_vertex that doesn't require uvs!
+draw_arrow :: (start: Vector3, end: Vector3, radius: float, color: Vector4) {
+    using context.game_context;
+    difference := end - start;
+    rot_quaternion := make_quaternion(Vector3.{1, 0, 0}, difference);
+    rot_matrix := rotation_matrix(Matrix4, rot_quaternion);
+    offset_matrix := make_translation_matrix4(start);
+    
+    old_matrix := imm_state.projection;
+    defer imm_state.projection = old_matrix;
+
+    imm_state.projection = old_matrix * multiply(offset_matrix, rot_matrix);
+    
+    cuboid_start := Vector3.{0, -radius, -radius};
+
+    arrow_length := length(difference);
+    arrow_head_radius := radius * 3;
+    arrow_head_length := radius * 6;
+    cuboid_end_x := arrow_length - arrow_head_length;
+    cuboid_end := Vector3.{cuboid_end_x, radius, radius};
+
+    imm_cuboid(cuboid_start, cuboid_end, color);
+
+    // arrow head
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{arrow_length, 0, 0}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
+    
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{arrow_length, 0, 0}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color, .{});
+
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{arrow_length, 0, 0}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
+
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{arrow_length, 0, 0}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color, .{});
+    
+    // Face behind arrow head
+
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
+
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color, .{});
+
+    imm_flush();
 }
