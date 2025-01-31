@@ -13,6 +13,10 @@ Game_Context :: struct {
     using gl_extensions: GL_Extensions;
     os_print: (string);
     imm_state: Imm_State;
+
+    block_shader: GLuint;
+    block_bitmap: GLuint;
+    color_shader: GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -22,11 +26,7 @@ Game_Memory :: struct {
     using game: Game;
 }
 
-Game :: struct {
-    block_shader: GLuint;
-    block_bitmap: GLuint;
-    player_shader: GLuint;
-    
+Game :: struct { 
     mode: Game_Mode;
     level: Level;
     editor: Editor;
@@ -122,8 +122,8 @@ game_init : Game_Init : (
 
         block_shader = register_shader(BLOCK_SHADER);
         assert(block_shader != 0);
-        player_shader = register_shader(PLAYER_SHADER);
-        assert(player_shader != 0);
+        color_shader = register_shader(PLAYER_SHADER);
+        assert(color_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -230,7 +230,7 @@ game_update : Game_Update : (
                 if !filled continue;
                 begin := to_vector3(it.position + coord);
                 end := begin + Vector3.{1,1,1};
-                imm_cuboid(begin, end, it.color);
+                imm_cuboid_with_uvs(begin, end, it.color);
             }
         }
 
@@ -241,7 +241,7 @@ game_update : Game_Update : (
         player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
         player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
 
-        imm_state.shader = player_shader;
+        imm_state.shader = color_shader;
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
 
         

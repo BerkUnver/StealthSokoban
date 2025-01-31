@@ -179,20 +179,87 @@ imm_flush :: () {
     vertex_count = 0;
 }
 
-imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
+
+imm_vertex_ptr :: () -> *Vertex {
     using context.game_context.imm_state;
     if vertex_count == vertices.count imm_flush();
-    vertices[vertex_count] = .{
-        position=position,
-        color=color,
-        uv=uv,
-    };
+    v := *vertices[vertex_count];
     vertex_count += 1;
+    return v;
+}
+
+
+imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
+    v := imm_vertex_ptr();
+    v.position = position;
+    v.color = color;
+    v.uv = uv;
+}
+
+
+imm_vertex :: (position: Vector3, color: Vector4) {
+    v := imm_vertex_ptr();
+    v.position = position;
+    v.color = color;
 }
 
 
 imm_cuboid :: (b: Vector3, e: Vector3, color: Vector4) {
-    // @Speed make a different version of this if we're not using the UV coordinates.
+    // b: beginning, the bottom corner of the cuboid
+    // e: end, the top corner of the cuboid
+
+    // Front face
+    imm_vertex(.{b.x, b.y, b.z}, color);
+    imm_vertex(.{e.x, b.y, b.z}, color);
+    imm_vertex(.{e.x, e.y, b.z}, color);
+    imm_vertex(.{b.x, b.y, b.z}, color);
+    imm_vertex(.{e.x, e.y, b.z}, color);
+    imm_vertex(.{b.x, e.y, b.z}, color);
+    
+    // Right face
+    imm_vertex(.{e.x, b.y, b.z}, color);
+    imm_vertex(.{e.x, b.y, e.z}, color);
+    imm_vertex(.{e.x, e.y, e.z}, color);
+    imm_vertex(.{e.x, b.y, b.z}, color);
+    imm_vertex(.{e.x, e.y, e.z}, color);
+    imm_vertex(.{e.x, e.y, b.z}, color);
+    
+    // Top face
+    imm_vertex(.{b.x, e.y, b.z}, color);
+    imm_vertex(.{e.x, e.y, b.z}, color);
+    imm_vertex(.{e.x, e.y, e.z}, color);
+    imm_vertex(.{b.x, e.y, b.z}, color);
+    imm_vertex(.{e.x, e.y, e.z}, color);
+    imm_vertex(.{b.x, e.y, e.z}, color);
+    
+    // Bottom face
+    imm_vertex(.{e.x, b.y, b.z}, color);
+    imm_vertex(.{b.x, b.y, b.z}, color);
+    imm_vertex(.{b.x, b.y, e.z}, color);
+    imm_vertex(.{e.x, b.y, b.z}, color);
+    imm_vertex(.{b.x, b.y, e.z}, color);
+    imm_vertex(.{e.x, b.y, e.z}, color);
+
+    // Left face
+    imm_vertex(.{b.x, b.y, e.z}, color);
+    imm_vertex(.{b.x, b.y, b.z}, color);
+    imm_vertex(.{b.x, e.y, b.z}, color);
+    imm_vertex(.{b.x, b.y, e.z}, color);
+    imm_vertex(.{b.x, e.y, b.z}, color);
+    imm_vertex(.{b.x, e.y, e.z}, color);
+
+    // Back face
+    imm_vertex(.{e.x, b.y, e.z}, color);
+    imm_vertex(.{b.x, b.y, e.z}, color);
+    imm_vertex(.{b.x, e.y, e.z}, color);
+    imm_vertex(.{e.x, b.y, e.z}, color);
+    imm_vertex(.{b.x, e.y, e.z}, color);
+    imm_vertex(.{e.x, e.y, e.z}, color);
+}
+
+
+imm_cuboid_with_uvs :: (b: Vector3, e: Vector3, color: Vector4) {
+    // @Copypasta imm_cuboid but with uvs
     // b: beginning, the bottom corner of the cuboid
     // e: end, the top corner of the cuboid
 
@@ -298,7 +365,6 @@ imm_cuboid_outline :: (start: Vector3, end: Vector3, width: float, color: Vector
 }
 
 
-// @TODO Make sure we set the player_shader! (Rename it to color_shader, put it in the global game data)
 // @TODO Make a version of imm_vertex that doesn't require uvs!
 draw_arrow :: (start: Vector3, end: Vector3, radius: float, color: Vector4) {
     using context.game_context;
@@ -309,8 +375,11 @@ draw_arrow :: (start: Vector3, end: Vector3, radius: float, color: Vector4) {
     
     old_matrix := imm_state.projection;
     defer imm_state.projection = old_matrix;
+    // Changing the projection without telling the user is probably bad,
+    // so I'll restore it after we're done.
 
     imm_state.projection = old_matrix * multiply(offset_matrix, rot_matrix);
+    imm_state.shader = context.game_context.color_shader;
     
     cuboid_start := Vector3.{0, -radius, -radius};
 
