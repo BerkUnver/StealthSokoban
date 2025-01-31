@@ -270,10 +270,17 @@ init_camera :: (using l: *Level) {
 
 get_camera_matrix :: (using l: *Level) -> Matrix4 {
     position_matrix := make_translation_matrix4(-camera_position);
-    pitch_matrix := make_x_rotation_matrix4(-camera_pitch);
-    yaw_matrix := make_y_rotation_matrix4(-camera_yaw);
+    pitch_matrix := make_x_rotation_matrix(Matrix4, -camera_pitch);
+    yaw_matrix := make_y_rotation_matrix(Matrix4, -camera_yaw);
 
     return multiply(camera_projection, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
+}
+
+
+get_camera_to_world_rotation_matrix :: (using l: *Level) -> Matrix3 {
+    yaw_matrix := make_y_rotation_matrix(Matrix3, camera_yaw);
+    pitch_matrix := make_x_rotation_matrix(Matrix3, camera_pitch);
+    return multiply(yaw_matrix, pitch_matrix);
 }
 
 

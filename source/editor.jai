@@ -92,14 +92,12 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 editor.selected_block = data.block;
 
             case .DRAG_X;
-                /*
                 if event.key != .MOUSE_LEFT_BUTTON || !event.down || !editor.selected_block return;
                 using editor.drag_x;
 
                 dragging = true;
                 drag_mouse_start = .{mouse_x, mouse_y};
                 drag_block_start = editor.selected_block.position.x;
-                */
 
             case .EXTRUSION;
                 if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
@@ -203,13 +201,8 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
 editor_update :: (level: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
     CAMERA_SPEED :: 240.0 / 60.0;
-    pitch_matrix := make_x_rotation_matrix4(-level.camera_pitch);
-    yaw_matrix := make_y_rotation_matrix4(-level.camera_yaw);
-    camera_matrix := inverse(multiply(pitch_matrix, yaw_matrix)); 
-    
-    camera_direction_4 := Vector4.{editor.camera_direction.x, editor.camera_direction.y, editor.camera_direction.z, 1};
-    camera_movement := camera_matrix * camera_direction_4 * (dt * CAMERA_SPEED);
-    level.camera_position += camera_movement.xyz;
+    camera_movement := get_camera_to_world_rotation_matrix(level) * editor.camera_direction * (dt * CAMERA_SPEED);
+    level.camera_position += camera_movement;
 
     if editor.mode == {
         case .DRAG_X;

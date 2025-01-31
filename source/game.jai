@@ -244,28 +244,29 @@ game_update : Game_Update : (
         imm_state.shader = color_shader;
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
 
+        imm_flush();
         
         // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
         if mode == .EDITOR {
             if editor.mode == {
                 case .SELECTION;
                     b := editor.selected_block;
-                    if b imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
+                    if b {
+                        imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
+                        imm_flush();
+                    }
                 case .DRAG_X;
-                    /*
                     if editor.selected_block {
                         x_axis := Vector3.{1, 0, 0};
-                        camera_to_block := camera_position - block.position;
-                        up := cross(x, camera_to_block); // The "up" vector from the perspective of the camera
-                        normal := cross(up, x); // Normal to 
+                        block_position := to_vector3(editor.selected_block.position);
+                        draw_arrow(block_position, block_position + x_axis, .{0, 1, 0, 1});
+
+                        camera_up := get_camera_to_world_rotation_matrix(*level) * Vector3.{0, 1, 0};
+                        draw_arrow(block_position, block_position + camera_up, .{1, 0, 0, 1});
                     }
-                    */
             }
         }
-        imm_flush();
 
-        draw_arrow(.{-2, 2, 2}, .{2, 2, 4}, 0.03, .{0, 1, 0, 1});
-        
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
         // This might be valuable for debugging.
@@ -309,29 +310,7 @@ game_update : Game_Update : (
             ray_end := Vector3.{ray_start.x, ray_start.y + ray_length_y, ray_start.z + ray_length_z};
             raycast(ray_start, ray_end, raycast_visitor, .{shade=*shade, col=*collision});
             
-
             imm_flush();
-            old_projection_matrix := imm_get_projection();
-            translation_matrix := make_translation_matrix4(ray_start);
-            
-            ray := ray_end - ray_start;
-            axis := cross(Vector3.{0, 0, RAY_LENGTH}, ray);
-            angle := get_angle(Vector3.{0, 0, RAY_LENGTH}, ray);
-
-            rotation_quaternion: Quaternion;
-            set_from_axis_and_angle(*rotation_quaternion, axis, angle);
-            rotation_matrix := Matrix4_Identity;
-            set_rotation(*rotation_matrix, rotation_quaternion);
-            imm_set_projection(multiply(old_projection_matrix, multiply(translation_matrix, rotation_matrix)));
-            
-            RAY_RADIUS :: 0.02;
-            ray_cuboid_start := Vector3.{-RAY_RADIUS, -RAY_RADIUS, -RAY_RADIUS};
-            ray_length := length(ray);
-            ray_cuboid_end := Vector3.{RAY_RADIUS, RAY_RADIUS, ray_length + RAY_RADIUS};
-            imm_cuboid(ray_cuboid_start, ray_cuboid_end, .{0, 1, 0, 1});
-
-            imm_flush();
-            imm_set_projection(old_projection_matrix);
         }
         */
 

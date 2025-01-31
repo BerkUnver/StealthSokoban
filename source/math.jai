@@ -62,29 +62,34 @@ inside_positive_bounding_box :: (v: Vector3i, bbox: Vector3i) -> bool {
         0 <= v.z && v.z < bbox.z;
 }
 
-make_y_rotation_matrix4 :: (r: float) -> Matrix4 {
+make_y_rotation_matrix :: ($T: Type, r: float) -> T {
     // Rotate about the y-axis
     sin_r := sin(r);
     cos_r := cos(r);
-    return .{
-        cos_r, 0, -sin_r, 0,
-        0,     1, 0,      0,
-        sin_r, 0, cos_r,  0,
-        0,     0, 0,      1
-    };
+
+    m: T;
+    m._11 = cos_r; m._13 = -sin_r;
+    m._22 = 1;
+    m._31 = sin_r; m._33 = cos_r;
+
+    #if T == Matrix4 m._44 = 1;
+    
+    return m;
 }
 
 
-make_x_rotation_matrix4 :: (r: float) -> Matrix4 {
+make_x_rotation_matrix :: ($T: Type, r: float) -> T {
     sin_r := sin(r);
     cos_r := cos(r);
+    
+    m: T;
+    m._11 = 1;
+    m._22 = cos_r; m._23 = sin_r;
+    m._32 = -sin_r; m._33 = cos_r;
 
-    return .{
-        1, 0,      0,     0,
-        0, cos_r,  sin_r, 0,
-        0, -sin_r, cos_r, 0,
-        0, 0,      0,     1
-    };
+    #if T == Matrix4 m._44 = 1;
+
+    return m;
 }
 
 
