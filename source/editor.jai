@@ -25,8 +25,8 @@ Editor :: struct {
 }
 
 
-editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
-    camera_to_world := inverse(get_camera_matrix(level));
+editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
+    camera_to_world := inverse(get_camera_matrix(l));
     
     move_camera_sign := ifx event.down then cast(s32, 1) else cast(s32, -1);
     if event.key == {
@@ -92,12 +92,17 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 editor.selected_block = data.block;
 
             case .DRAG_X;
-                if event.key != .MOUSE_LEFT_BUTTON || !event.down || !editor.selected_block return;
-                using editor.drag_x;
+                if event.key == .MOUSE_LEFT_BUTTON && editor.selected_block {
+                    using editor.drag_x;
 
-                dragging = true;
-                drag_mouse_start = .{mouse_x, mouse_y};
-                drag_block_start = editor.selected_block.position.x;
+                    if event.down {
+                        dragging = true;
+                        drag_mouse_start = .{mouse_x, mouse_y};
+                        drag_block_start = editor.selected_block.position.x;
+                    } else {
+                        dragging = false;
+                    }
+                }
 
             case .EXTRUSION;
                 if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
@@ -140,7 +145,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                         block.filled[block_index] = true;
 
                         collision_coord := data.previous_coord - collision.position;
-                        assert(inside_positive_bounding_box(collision_coord, collision.size)); // Any block that's part of the level should _ALWAYS_ be within the bounds of the collision grid.
+                        assert(inside_positive_bounding_box(collision_coord, collision.size)); // Any block that's part of the l should _ALWAYS_ be within the bounds of the collision grid.
 
                         collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
                         assert(!collision.filled[collision_index]);
@@ -199,21 +204,75 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 }
 
 
-editor_update :: (level: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
+editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
     CAMERA_SPEED :: 240.0 / 60.0;
-    camera_movement := get_camera_to_world_rotation_matrix(level) * editor.camera_direction * (dt * CAMERA_SPEED);
-    level.camera_position += camera_movement;
+    camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
+    camera_movement := camera_to_world_rotation_matrix * editor.camera_direction * (dt * CAMERA_SPEED);
+    l.camera_position += camera_movement;
 
     if editor.mode == {
+        case .SELECTION;
+            b := editor.selected_block;
+            // @BUG If the camera moves, the outline won't be drawn in the right place!
+            if b {
+                imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
+                imm_flush();
+            }
+            
         case .DRAG_X;
             using editor.drag_x;
 
-            mouse_start: Vector3;
-            mouse_start.xy = drag_mouse_start;
-            mouse_start.z = -1;
+            if dragging {
+                camera_to_world := inverse(get_camera_matrix(l));
+                initial_mouse_position := multiply_homogeneous(camera_to_world, .{drag_mouse_start.x, drag_mouse_start.y, 0});
+                mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
+                
+                block_position := to_vector3(editor.selected_block.position);
 
-            mouse := Vector3.{mouse_x, mouse_y, -1};
+                camera_up := camera_to_world_rotation_matrix * Vector3.{0, 1, 0};
+                draw_arrow(block_position, block_position + camera_up, .{0, 0, 1, 1});
+                draw_arrow(block_position, block_position + Vector3.{1, 0, 0}, .{0, 0, 1, 1});
+                normal := cross(camera_up, .{1, 0, 0});
 
+                intersection_parallel, intersection := get_intersection_between_line_and_plane(
+                    line_point = l.camera_position,
+                    line_direction = mouse_position - l.camera_position,
+                    plane_point = block_position,
+                    plane_normal = normal);
+
+                initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
+                    line_point = l.camera_position,
+                    line_direction = initial_mouse_position - l.camera_position,
+                    plane_point = block_position,
+                    plane_normal = normal);
+                
+                using context.game_context;
+
+                // If the difference between either of the intersections and the initial positions are this high,
+                // then that means the x-axis is almost parallel to the normal vector of the camera.
+                // (Perhaps we could do a dot product instead?)
+                // In this case, don't do anything to we don't get polluted with infinities.
+                
+                camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
+                if initial_intersection_parallel
+                || intersection_parallel
+                || abs(dot(camera_normal, Vector3.{1, 0, 0})) > 0.99 { // They are almost parallel.
+                    editor.selected_block.position.x = drag_block_start;
+                } else {
+                    imm_state.shader = color_shader;
+                    imm_cuboid(intersection - Vector3.{0.1, 0.1, 0.1}, intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
+                    imm_cuboid(initial_intersection - Vector3.{0.1, 0.1, 0.1}, initial_intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
+                    imm_flush();
+
+                    x_movement := intersection.x - initial_intersection.x;
+                    new_x := round(cast(float, drag_block_start) + x_movement);
+                    editor.selected_block.position.x = xx new_x;
+
+                    print("new_x: %\n", new_x);
+                }
+
+                // @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
+            }
 
         case .CAMERA_ROTATION;
             using editor.camera_rotation;
@@ -224,10 +283,10 @@ editor_update :: (level: *Level, editor: *Editor, mouse_x: float, mouse_y: float
             mouse_movement := previous_mouse_position - mouse;
             previous_mouse_position = mouse;
             
-            level.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
-            level.camera_yaw = fmod_cycling(level.camera_yaw, TAU);
+            l.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
+            l.camera_yaw = fmod_cycling(l.camera_yaw, TAU);
 
-            level.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
-            clamp(*level.camera_pitch, -PI/2, PI/2);
+            l.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
+            clamp(*l.camera_pitch, -PI/2, PI/2);
     }
 }

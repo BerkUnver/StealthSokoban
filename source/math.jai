@@ -62,6 +62,7 @@ inside_positive_bounding_box :: (v: Vector3i, bbox: Vector3i) -> bool {
         0 <= v.z && v.z < bbox.z;
 }
 
+
 make_y_rotation_matrix :: ($T: Type, r: float) -> T {
     // Rotate about the y-axis
     sin_r := sin(r);
@@ -113,6 +114,15 @@ get_angle :: (v: Vector2) -> float {
 }
 
 
+get_intersection_between_line_and_plane :: (line_point: Vector3, line_direction: Vector3, plane_point: Vector3, plane_normal: Vector3) -> parallel: bool, Vector3 {
+    denominator := dot(plane_normal, line_direction);
+    if denominator == 0 return true, .{};
+
+    t := (dot(plane_normal, plane_point) - dot(plane_normal, line_point)) / dot(plane_normal, line_direction);
+    return false, line_point + line_direction * t;
+}
+
+
 sign :: (t: $T) -> T {
     // @TODO: Do we want to use funny branchless bit tricks for this?
     if t < 0 return -1;
@@ -143,6 +153,10 @@ clamp :: (value: $T, minimum: T, maximum: T) -> T {
 
 clamp :: (value: *$T, min: T, max: T) {
     value.* = clamp(value.*, min, max);
+}
+
+round :: (v: $T) -> s64 {
+    return xx floor(v + 0.5);
 }
 
 

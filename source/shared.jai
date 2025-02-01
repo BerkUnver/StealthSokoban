@@ -184,8 +184,14 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
                         buffer_index += 1;
                     }
                 }
-            } else assert(false);
+            } else if arg.type == type_info(bool) {
+                arg_bool := cast(*bool, arg.value_pointer).*;
+                str := ifx arg_bool "true" else "false";
 
+                assert(buffer_index + str.count <= buffer.count);
+                memcpy(*buffer[buffer_index], str.data, str.count);
+                buffer_index += str.count;
+            }
             arg_index += 1;
         } else {
             assert(buffer_index < buffer.count);

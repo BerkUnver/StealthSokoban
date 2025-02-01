@@ -206,7 +206,6 @@ game_update : Game_Update : (
         }
         time_elapsed = time_elapsed_;
 
-        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
 
         // :GLDebugProcHotloadingHack
         // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
@@ -216,11 +215,17 @@ game_update : Game_Update : (
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
 
-        
+        imm_state.projection = get_camera_matrix(*level); // Is it really a good idea to rely on no one changing this?
+        // Is it a good idea to draw when we update the editor?
+        // Maybe...
+        // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
+        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
+        // @TODO This is dumb. Just in case the projection changes during the editor update. Remove.
+        imm_state.projection = get_camera_matrix(*level); // Is it really a good idea to rely on no one changing this?
+
         using level;
         
         // @TODO: Pull these out into separate routines
-        imm_state.projection = get_camera_matrix(*level);
         imm_state.shader = block_shader;
         imm_state.bitmap = block_bitmap;
 
@@ -245,28 +250,6 @@ game_update : Game_Update : (
         imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
 
         imm_flush();
-        
-        // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
-        if mode == .EDITOR {
-            if editor.mode == {
-                case .SELECTION;
-                    b := editor.selected_block;
-                    if b {
-                        imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
-                        imm_flush();
-                    }
-                case .DRAG_X;
-                    if editor.selected_block {
-                        x_axis := Vector3.{1, 0, 0};
-                        block_position := to_vector3(editor.selected_block.position);
-                        draw_arrow(block_position, block_position + x_axis, .{0, 1, 0, 1});
-
-                        camera_up := get_camera_to_world_rotation_matrix(*level) * Vector3.{0, 1, 0};
-                        draw_arrow(block_position, block_position + camera_up, .{1, 0, 0, 1});
-                    }
-            }
-        }
-
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
         // This might be valuable for debugging.
