@@ -1,33 +1,106 @@
 Editor_Mode :: enum {
-    SELECTION;
     DRAG_X;
-    DRAG_Y;
-    DRAG_Z;
     EXTRUSION;
-    CAMERA_ROTATION;
+}
+
+Editor_Selection_Mode :: enum {
+    IDLE; // The user isn't doing anything. We can select new entities, rotate the camera, etc.
+    CAMERA; // The camera is moving.
+    LOCKED; // The user is using the current mode.
+    // DON'T ALLOW CHANGING CAMERA ANGLE / CURRENTLY SELECTED BLOCK.
+    // It could mess up what they're working on.
 }
 
 Editor :: struct {
     mode: Editor_Mode;
-    selected_block: *Block; // This should be valid even if we are not in the selection mode.
+    selection_mode: Editor_Selection_Mode;
+    selection: union {
+        camera: struct {
+            rotating: bool;
+            rotating_previous_mouse_position: Vector2;
+            moving_direction: Vector3;
+        }
+    }
+
+    selected_block: *Block;
     
     union {
-        camera_rotation: struct {
-            previous_mouse_position: Vector2;
-        }
         drag_x: struct {
             dragging: bool;
             drag_mouse_start: Vector2;
             drag_block_start: s32;
         }
     }
-    camera_direction: Vector3;
 }
 
 
 editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
     camera_to_world := inverse(get_camera_matrix(l));
-    
+
+    if editor.selection_mode == .IDLE {
+        if event.key == .MOUSE_RIGHT_BUTTON && event.down {
+            editor.selection_mode = .CAMERA;
+            editor.selection.camera = .{
+                rotating = true,
+                rotating_previous_mouse_position = .{mouse_x, mouse_y}
+            };
+        } else {
+            moving_direction: Vector3;
+            if event.key == {
+                case xx #char "W";
+                    moving_direction.z = ifx event.down then 1.0;
+                case xx #char "A";
+                    moving_direction.x = ifx event.down then -1.0;
+                case xx #char "S";
+                    moving_direction.z = ifx event.down then -1.0;
+                case xx #char "D";
+                    moving_direction.x = ifx event.down then 1.0;
+                case xx #char "Q";
+                    moving_direction.y = ifx event.down then 1.0;
+                case xx #char "E";
+                    moving_direction.y = ifx event.down then -1.0;
+            }
+            if moving_direction != Vector3.{} {
+                editor.selection_mode = .CAMERA;
+                editor.selection.camera = .{
+                    moving_direction = moving_direction
+                };
+            }
+        }
+    } else if editor.selection_mode == .CAMERA {
+        using editor.selection.camera; if event.key == {
+            case .MOUSE_RIGHT_BUTTON;
+                if rotating && !event.down {
+                    rotating = false;
+                }
+
+                if !rotating && event.down {
+                    rotating = true;
+                    rotating_previous_mouse_position = .{mouse_x, mouse_y};
+                }
+            case xx #char "W";
+                moving_direction.z += ifx event.down then 1.0 else -1.0;
+            case xx #char "A";
+                moving_direction.x += ifx event.down then -1.0 else 1.0;
+            case xx #char "S";
+                moving_direction.z += ifx event.down then -1.0 else 1.0;
+            case xx #char "D";
+                moving_direction.x += ifx event.down then 1.0 else -1.0;
+            case xx #char "Q";
+                moving_direction.y += ifx event.down then 1.0 else -1.0;
+            case xx #char "E";
+                moving_direction.y += ifx event.down then -1.0 else 1.0;
+        }
+        
+        // The user has released all keys.
+        // :AltTab this might not be true on Windows.
+        if !rotating && moving_direction == .{} {
+            editor.selection_mode = .IDLE;
+        }
+    }
+
+
+    /*
     move_camera_sign := ifx event.down then cast(s32, 1) else cast(s32, -1);
     if event.key == {
         case xx #char "W";
@@ -44,7 +117,7 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
             editor.camera_direction.y -= move_camera_sign;
     }
 
-    // You hold down keys to enter different modes. Your default mode is selection.
+
     if event.key == xx #char "1" {
         if event.down editor.mode = .DRAG_X;
         else if editor.mode == .DRAG_X editor.mode = .SELECTION;
@@ -201,10 +274,35 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 }
         }
     }
+    */
 }
 
 
 editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
+    if editor.selection_mode == {
+        case .CAMERA;
+            using editor.selection.camera;
+            if rotating {
+                PITCH_SPEED :: 50;
+                YAW_SPEED :: 100;
+                mouse := Vector2.{mouse_x, mouse_y};
+                mouse_movement := rotating_previous_mouse_position - mouse;
+                rotating_previous_mouse_position = mouse;
+                
+                l.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
+                l.camera_yaw = fmod_cycling(l.camera_yaw, TAU);
+
+                l.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
+                clamp(*l.camera_pitch, -PI/2, PI/2);
+            }
+
+            CAMERA_SPEED :: 240.0 / 60.0;
+            camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
+            camera_movement := camera_to_world_rotation_matrix * moving_direction * (dt * CAMERA_SPEED);
+            l.camera_position += camera_movement;
+    }
+
+    /*
     CAMERA_SPEED :: 240.0 / 60.0;
     camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
     camera_movement := camera_to_world_rotation_matrix * editor.camera_direction * (dt * CAMERA_SPEED);
@@ -289,4 +387,5 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
             l.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
             clamp(*l.camera_pitch, -PI/2, PI/2);
     }
+    */
 }

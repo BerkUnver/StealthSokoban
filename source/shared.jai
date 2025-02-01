@@ -127,6 +127,30 @@ assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #e
 format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: string {
     buffer_index := 0;
     arg_index := 0;
+    
+    expand_to_s64 :: (value: *void, info: *Type_Info) -> s64 {
+        check :: (T: Type) #expand {
+            if `info == type_info(T) `return xx cast(*T, `value).*;
+        }
+
+        check(s8);
+        check(u8);
+        check(s16);
+        check(u16);
+        check(s32);
+        check(u32);
+        check(s64);
+
+        assert(false);
+        return 0;
+    }
+
+    print_string :: (buffer: string, index: int, str: string) -> new_index: int {
+        assert(index + str.count < buffer.count);
+        memcpy(buffer.data + index, str.data, str.count);
+        return index + str.count;
+    }
+
     for 0..s.count-1 {
         if s[it] == #char "%" {
             assert(arg_index < args.count);
@@ -134,27 +158,23 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
             
             if arg.type == type_info(string) {
                 arg_str := cast(*string, arg.value_pointer).*;
-                assert(buffer_index + arg_str.count < buffer.count);
-                memcpy(buffer.data + buffer_index, arg_str.data, arg_str.count);
-                buffer_index += arg_str.count;
+                buffer_index = print_string(buffer, buffer_index, arg_str);
             } else if arg.type.type == .INTEGER {
                 negative: bool;
                 arg_u64: u64;
 
-                if arg.type == type_info(u32) {
-                    arg_u64 = xx cast(*u32, arg.value_pointer).*;
-                } else if arg.type == type_info(u64) {
+                if arg.type == type_info(u64) {
                     arg_u64 = cast(*u64, arg.value_pointer).*;
-                } else if arg.type == type_info(s32) {
-                    arg_s32 := xx cast(*s32, arg.value_pointer).*;
-                    if arg_s32 < 0 {
-                        arg_u64 = xx -arg_s32;
+                } else {
+                    arg_s64 := expand_to_s64(arg.value_pointer, arg.type);
+                    if arg_s64 < 0 {
                         negative = true;
+                        arg_u64 = xx -arg_s64;
                     } else {
-                        arg_u64 = xx arg_s32;
+                        arg_u64 = xx arg_s64;
                     }
                 }
-                
+
                 if arg_u64 == 0 {
                     assert(buffer_index < buffer.count);
                     buffer[buffer_index] = #char "0";
@@ -187,10 +207,21 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
             } else if arg.type == type_info(bool) {
                 arg_bool := cast(*bool, arg.value_pointer).*;
                 str := ifx arg_bool "true" else "false";
-
-                assert(buffer_index + str.count <= buffer.count);
-                memcpy(*buffer[buffer_index], str.data, str.count);
-                buffer_index += str.count;
+                buffer_index = print_string(buffer, buffer_index, str);
+            } else if arg.type.type == .ENUM {
+                info := cast(*Type_Info_Enum, arg.type);
+                // @TODO: Figure out how u64 enums work (info.values type is [] s64)
+                arg_s64 := expand_to_s64(arg.value_pointer, info.internal_type);
+                found := false;
+                for info.values {
+                    if it == arg_s64 {
+                        str := info.names[it_index];
+                        buffer_index = print_string(buffer, buffer_index, str);
+                        found = true;
+                        break;
+                    }
+                }
+                assert(found); // @TODO: Print "(Type_Name) value" or something like that.
             }
             arg_index += 1;
         } else {
