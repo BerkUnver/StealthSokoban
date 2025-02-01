@@ -207,6 +207,9 @@ game_update : Game_Update : (
         time_elapsed = time_elapsed_;
 
 
+        // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
+        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
+
         // :GLDebugProcHotloadingHack
         // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
         stack_context := context;
@@ -215,15 +218,17 @@ game_update : Game_Update : (
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
 
-        imm_state.projection = get_camera_matrix(*level); // Is it really a good idea to rely on no one changing this?
-        // Is it a good idea to draw when we update the editor?
-        // Maybe...
-        // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
-        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
-        // @TODO This is dumb. Just in case the projection changes during the editor update. Remove.
-        imm_state.projection = get_camera_matrix(*level); // Is it really a good idea to rely on no one changing this?
+        imm_state.projection = get_camera_matrix(*level);
 
         using level;
+
+        if editor.selected_block {
+            imm_state.shader = color_shader;
+            begin := to_vector3(editor.selected_block.position);
+            end := begin + to_vector3(editor.selected_block.size);
+            imm_cuboid_outline(begin, end, 0.03, .{0, 1, 0, 1});
+            imm_flush();
+        }
         
         // @TODO: Pull these out into separate routines
         imm_state.shader = block_shader;

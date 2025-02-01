@@ -1,6 +1,5 @@
 Editor_Mode :: enum {
     DRAG_X;
-    EXTRUSION;
 }
 
 Editor_Selection_Mode :: enum {
@@ -21,14 +20,13 @@ Editor :: struct {
             moving_direction: Vector3;
         }
     }
-
-    selected_block: *Block;
+    
+    selected_block: *Block; // DO NOT MODIFY THIS IF selection_mode != .IDLE.
     
     union {
         drag_x: struct {
-            dragging: bool;
-            drag_mouse_start: Vector2;
-            drag_block_start: s32;
+            mouse_start: Vector2;
+            block_start_x: s32;
         }
     }
 }
@@ -37,111 +35,46 @@ Editor :: struct {
 editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
     camera_to_world := inverse(get_camera_matrix(l));
 
-    if editor.selection_mode == .IDLE {
-        if event.key == .MOUSE_RIGHT_BUTTON && event.down {
-            editor.selection_mode = .CAMERA;
-            editor.selection.camera = .{
-                rotating = true,
-                rotating_previous_mouse_position = .{mouse_x, mouse_y}
-            };
-        } else {
-            moving_direction: Vector3;
-            if event.key == {
-                case xx #char "W";
-                    moving_direction.z = ifx event.down then 1.0;
-                case xx #char "A";
-                    moving_direction.x = ifx event.down then -1.0;
-                case xx #char "S";
-                    moving_direction.z = ifx event.down then -1.0;
-                case xx #char "D";
-                    moving_direction.x = ifx event.down then 1.0;
-                case xx #char "Q";
-                    moving_direction.y = ifx event.down then 1.0;
-                case xx #char "E";
-                    moving_direction.y = ifx event.down then -1.0;
-            }
-            if moving_direction != Vector3.{} {
+    if editor.selection_mode == {
+        case .IDLE;
+            if event.key == .MOUSE_RIGHT_BUTTON && event.down {
                 editor.selection_mode = .CAMERA;
                 editor.selection.camera = .{
-                    moving_direction = moving_direction
+                    rotating = true,
+                    rotating_previous_mouse_position = .{mouse_x, mouse_y}
                 };
+                return;
             }
-        }
-    } else if editor.selection_mode == .CAMERA {
-        using editor.selection.camera; if event.key == {
-            case .MOUSE_RIGHT_BUTTON;
-                if rotating && !event.down {
-                    rotating = false;
+            
+            // Check to see if the camera is moving
+            {
+                moving_direction: Vector3;
+                if event.key == {
+                    case xx #char "W";
+                        moving_direction.z = ifx event.down then 1.0;
+                    case xx #char "A";
+                        moving_direction.x = ifx event.down then -1.0;
+                    case xx #char "S";
+                        moving_direction.z = ifx event.down then -1.0;
+                    case xx #char "D";
+                        moving_direction.x = ifx event.down then 1.0;
+                    case xx #char "Q";
+                        moving_direction.y = ifx event.down then 1.0;
+                    case xx #char "E";
+                        moving_direction.y = ifx event.down then -1.0;
                 }
 
-                if !rotating && event.down {
-                    rotating = true;
-                    rotating_previous_mouse_position = .{mouse_x, mouse_y};
+                if moving_direction != Vector3.{} {
+                    editor.selection_mode = .CAMERA;
+                    editor.selection.camera = .{
+                        moving_direction = moving_direction
+                    };
+                    return;
                 }
-            case xx #char "W";
-                moving_direction.z += ifx event.down then 1.0 else -1.0;
-            case xx #char "A";
-                moving_direction.x += ifx event.down then -1.0 else 1.0;
-            case xx #char "S";
-                moving_direction.z += ifx event.down then -1.0 else 1.0;
-            case xx #char "D";
-                moving_direction.x += ifx event.down then 1.0 else -1.0;
-            case xx #char "Q";
-                moving_direction.y += ifx event.down then 1.0 else -1.0;
-            case xx #char "E";
-                moving_direction.y += ifx event.down then -1.0 else 1.0;
-        }
-        
-        // The user has released all keys.
-        // :AltTab this might not be true on Windows.
-        if !rotating && moving_direction == .{} {
-            editor.selection_mode = .IDLE;
-        }
-    }
+            }
 
 
-    /*
-    move_camera_sign := ifx event.down then cast(s32, 1) else cast(s32, -1);
-    if event.key == {
-        case xx #char "W";
-            editor.camera_direction.z += move_camera_sign;
-        case xx #char "A";
-            editor.camera_direction.x -= move_camera_sign;
-        case xx #char "S";
-            editor.camera_direction.z -= move_camera_sign;
-        case xx #char "D";
-            editor.camera_direction.x += move_camera_sign;
-        case xx #char "Q";
-            editor.camera_direction.y += move_camera_sign;
-        case xx #char "E";
-            editor.camera_direction.y -= move_camera_sign;
-    }
-
-
-    if event.key == xx #char "1" {
-        if event.down editor.mode = .DRAG_X;
-        else if editor.mode == .DRAG_X editor.mode = .SELECTION;
-    } else if event.key == xx #char "2" {
-        if event.down editor.mode = .DRAG_Y;
-        else if editor.mode == .DRAG_Y editor.mode = .SELECTION;
-    } else if event.key == xx #char "3" {
-        if event.down editor.mode = .DRAG_Z;
-        else if editor.mode == .DRAG_Z editor.mode = .SELECTION;
-    } else if event.key == xx #char "X" {
-        if event.down editor.mode = .EXTRUSION;
-        else if editor.mode == .EXTRUSION editor.mode = .SELECTION;
-    } else if event.key == .MOUSE_RIGHT_BUTTON {
-        if event.down {
-            editor.mode = .CAMERA_ROTATION;
-            editor.camera_rotation.previous_mouse_position = .{mouse_x, mouse_y};
-        } else if editor.mode == .CAMERA_ROTATION {
-            editor.mode = .SELECTION;
-        }
-    } else {
-        if editor.mode == {
-            case .SELECTION;
-                if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
-                
+            if event.key == .MOUSE_LEFT_BUTTON && event.down {
                 Raycast_Data :: struct {
                     block: *Block;
                     col: *Collision;
@@ -163,23 +96,11 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 raycast(camera_position, ray_end, raycast_visitor, *data);
 
                 editor.selected_block = data.block;
+                return;
+            }
 
-            case .DRAG_X;
-                if event.key == .MOUSE_LEFT_BUTTON && editor.selected_block {
-                    using editor.drag_x;
 
-                    if event.down {
-                        dragging = true;
-                        drag_mouse_start = .{mouse_x, mouse_y};
-                        drag_block_start = editor.selected_block.position.x;
-                    } else {
-                        dragging = false;
-                    }
-                }
-
-            case .EXTRUSION;
-                if event.key != .MOUSE_LEFT_BUTTON || !event.down return;
-
+            if event.key == xx #char "X" && event.down {
                 Raycast_Data :: struct {
                     previous_coord_exists: bool;
                     previous_coord: Vector3i;
@@ -272,9 +193,57 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                         assert(add_block_to_collision(*collision, block));
                     }
                 }
-        }
+                return;
+            }
+
+            if event.key == xx #char "1" && event.down && editor.selected_block {
+                editor.selection_mode = .LOCKED;
+                editor.drag_x = .{
+                    mouse_start = .{mouse_x, mouse_y},
+                    block_start_x = editor.selected_block.position.x
+                };
+                return;
+            }
+
+        case .CAMERA;
+            using editor.selection.camera; if event.key == {
+                case .MOUSE_RIGHT_BUTTON;
+                    if rotating && !event.down {
+                        rotating = false;
+                    }
+
+                    if !rotating && event.down {
+                        rotating = true;
+                        rotating_previous_mouse_position = .{mouse_x, mouse_y};
+                    }
+                case xx #char "W";
+                    moving_direction.z += ifx event.down then 1.0 else -1.0;
+                case xx #char "A";
+                    moving_direction.x += ifx event.down then -1.0 else 1.0;
+                case xx #char "S";
+                    moving_direction.z += ifx event.down then -1.0 else 1.0;
+                case xx #char "D";
+                    moving_direction.x += ifx event.down then 1.0 else -1.0;
+                case xx #char "Q";
+                    moving_direction.y += ifx event.down then 1.0 else -1.0;
+                case xx #char "E";
+                    moving_direction.y += ifx event.down then -1.0 else 1.0;
+            }
+            
+            // The user has released all keys.
+            // :AltTab this might not be true on Windows.
+            if !rotating && moving_direction == .{} {
+                editor.selection_mode = .IDLE;
+            }
+
+        case .LOCKED;
+            if #complete editor.mode == {
+                case .DRAG_X;
+                    if event.key == xx #char "1" && !event.down {
+                        editor.selection_mode = .IDLE;
+                    }
+            }
     }
-    */
 }
 
 
@@ -297,95 +266,64 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
             }
 
             CAMERA_SPEED :: 240.0 / 60.0;
-            camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
-            camera_movement := camera_to_world_rotation_matrix * moving_direction * (dt * CAMERA_SPEED);
+            camera_movement := get_camera_to_world_rotation_matrix(l) * moving_direction * (dt * CAMERA_SPEED);
             l.camera_position += camera_movement;
-    }
 
-    /*
-    CAMERA_SPEED :: 240.0 / 60.0;
-    camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
-    camera_movement := camera_to_world_rotation_matrix * editor.camera_direction * (dt * CAMERA_SPEED);
-    l.camera_position += camera_movement;
+        case .LOCKED;
+            if editor.mode == {
+                case .DRAG_X; 
+                    using editor.drag_x;
 
-    if editor.mode == {
-        case .SELECTION;
-            b := editor.selected_block;
-            // @BUG If the camera moves, the outline won't be drawn in the right place!
-            if b {
-                imm_cuboid_outline(to_vector3(b.position), to_vector3(b.position + b.size), 0.03, .{0, 1, 0, 1});
-                imm_flush();
+                    camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
+                    camera_to_world := inverse(get_camera_matrix(l));
+                    initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
+                    mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
+                    
+                    block_position := to_vector3(editor.selected_block.position);
+
+                    camera_up := camera_to_world_rotation_matrix * Vector3.{0, 1, 0};
+                    draw_arrow(block_position, block_position + camera_up, .{0, 0, 1, 1});
+                    draw_arrow(block_position, block_position + Vector3.{1, 0, 0}, .{0, 0, 1, 1});
+                    normal := cross(camera_up, .{1, 0, 0});
+
+                    intersection_parallel, intersection := get_intersection_between_line_and_plane(
+                        line_point = l.camera_position,
+                        line_direction = mouse_position - l.camera_position,
+                        plane_point = block_position,
+                        plane_normal = normal);
+
+                    initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
+                        line_point = l.camera_position,
+                        line_direction = initial_mouse_position - l.camera_position,
+                        plane_point = block_position,
+                        plane_normal = normal);
+                    
+                    using context.game_context;
+
+                    // If the difference between either of the intersections and the initial positions are this high,
+                    // then that means the x-axis is almost parallel to the normal vector of the camera.
+                    // (Perhaps we could do a dot product instead?)
+                    // In this case, don't do anything to we don't get polluted with infinities.
+                    
+                    camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
+                    if initial_intersection_parallel
+                    || intersection_parallel
+                    || abs(dot(camera_normal, Vector3.{1, 0, 0})) > 0.99 { // They are almost parallel.
+                        editor.selected_block.position.x = block_start_x;
+                    } else {
+                        imm_state.shader = color_shader;
+                        imm_cuboid(intersection - Vector3.{0.1, 0.1, 0.1}, intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
+                        imm_cuboid(initial_intersection - Vector3.{0.1, 0.1, 0.1}, initial_intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
+                        imm_flush();
+
+                        x_movement := intersection.x - initial_intersection.x;
+                        new_x := round(cast(float, block_start_x) + x_movement);
+                        editor.selected_block.position.x = xx new_x;
+
+                        print("new_x: %\n", new_x);
+                    }
+
+                    // @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
             }
-            
-        case .DRAG_X;
-            using editor.drag_x;
-
-            if dragging {
-                camera_to_world := inverse(get_camera_matrix(l));
-                initial_mouse_position := multiply_homogeneous(camera_to_world, .{drag_mouse_start.x, drag_mouse_start.y, 0});
-                mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
-                
-                block_position := to_vector3(editor.selected_block.position);
-
-                camera_up := camera_to_world_rotation_matrix * Vector3.{0, 1, 0};
-                draw_arrow(block_position, block_position + camera_up, .{0, 0, 1, 1});
-                draw_arrow(block_position, block_position + Vector3.{1, 0, 0}, .{0, 0, 1, 1});
-                normal := cross(camera_up, .{1, 0, 0});
-
-                intersection_parallel, intersection := get_intersection_between_line_and_plane(
-                    line_point = l.camera_position,
-                    line_direction = mouse_position - l.camera_position,
-                    plane_point = block_position,
-                    plane_normal = normal);
-
-                initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
-                    line_point = l.camera_position,
-                    line_direction = initial_mouse_position - l.camera_position,
-                    plane_point = block_position,
-                    plane_normal = normal);
-                
-                using context.game_context;
-
-                // If the difference between either of the intersections and the initial positions are this high,
-                // then that means the x-axis is almost parallel to the normal vector of the camera.
-                // (Perhaps we could do a dot product instead?)
-                // In this case, don't do anything to we don't get polluted with infinities.
-                
-                camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
-                if initial_intersection_parallel
-                || intersection_parallel
-                || abs(dot(camera_normal, Vector3.{1, 0, 0})) > 0.99 { // They are almost parallel.
-                    editor.selected_block.position.x = drag_block_start;
-                } else {
-                    imm_state.shader = color_shader;
-                    imm_cuboid(intersection - Vector3.{0.1, 0.1, 0.1}, intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
-                    imm_cuboid(initial_intersection - Vector3.{0.1, 0.1, 0.1}, initial_intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
-                    imm_flush();
-
-                    x_movement := intersection.x - initial_intersection.x;
-                    new_x := round(cast(float, drag_block_start) + x_movement);
-                    editor.selected_block.position.x = xx new_x;
-
-                    print("new_x: %\n", new_x);
-                }
-
-                // @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
-            }
-
-        case .CAMERA_ROTATION;
-            using editor.camera_rotation;
-            
-            PITCH_SPEED :: 50;
-            YAW_SPEED :: 100;
-            mouse := Vector2.{mouse_x, mouse_y};
-            mouse_movement := previous_mouse_position - mouse;
-            previous_mouse_position = mouse;
-            
-            l.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
-            l.camera_yaw = fmod_cycling(l.camera_yaw, TAU);
-
-            l.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
-            clamp(*l.camera_pitch, -PI/2, PI/2);
     }
-    */
 }
