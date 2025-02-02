@@ -124,12 +124,12 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
 
 
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
-raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T) -> terminate_raycast: bool, user_data: T) -> collided: bool {
-    raycast_x :: (y_plane: float, z_plane: float, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
+raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T) -> collided: bool {
+    raycast_x :: (y_plane: s32, z_plane: s32, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
-        x := floor(ray_start_x);
-        start := Vector3.{x, y_plane, z_plane};
+        x := cast(s32, floor(ray_start_x));
+        start := Vector3i.{x, y_plane, z_plane};
         if inline visitor(start, user_data) return true;
 
         i : s32 = 0;
@@ -145,16 +145,16 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
     }
 
 
-    raycast_zx :: (y_plane: float, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) -> bool {
+    raycast_zx :: (y_plane: s32, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) -> bool {
         z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
 
         if z_steps == 0 {
-            return raycast_x(y_plane, floor(ray_start_z), ray_start_x, ray_end_x, user_data);
+            return raycast_x(y_plane, xx floor(ray_start_z), ray_start_x, ray_end_x, user_data);
         } else {
             m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
             b := ray_start_x - m * ray_start_z;
             
-            z_plane := floor(ray_start_z);
+            z_plane := cast(s32, floor(ray_start_z));
             z := z_plane + cast(s32, z_steps > 0);
 
             x := m * z + b;
@@ -182,12 +182,12 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
     y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
     
     if y_steps == 0 {
-        if raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data) return true;
+        if raycast_zx(xx floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data) return true;
         return false;
     } else {
         ray_length := ray_end - ray_start;
 
-        y_plane := floor(ray_start.y);
+        y_plane := cast(s32, floor(ray_start.y));
         y := y_plane + cast(s32, y_steps > 0);
         t := (y - ray_start.y) / ray_length.y;
 
@@ -304,9 +304,47 @@ set_player_position :: (using level: *Level, position: Vector3i) {
     for :iterate_vector3i collision.size {
         if collision.viewed[it_index] == .VISIBLE collision.viewed[it_index] = .SEEN;
     }
+
+    /*
+    // @TODO: Make this not recursive!
+    flood_fill :: (position: Vector3i, collision: *Collision, end: Vector3) {
+        success, index := get_3d_index(position, collision.position, collision.size);
+        if !success return;
+
+        visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
+            success, index := get_3d_index(position, collision.position, collision.size);
+            if !success return false;
+            return collision.filled[index] != null;
+        }
+        
+        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+
+        if raycast(start, end, visitor, collision) return;
+
+        collision.filled[index] = .VISIBLE;
+
+        px := position; px.x += 1;
+        nx := position; nx.x -= 1;
+        py := position; py.y += 1;
+        ny := position; ny.y -= 1;
+        pz := position; pz.z += 1;
+        nz := position; pz.z -= 1;
+
+        if nx.x >= collision.position.x flood_fill(nx, collision, end);
+        if ny.y >= collision.position.y flood_fill(ny, collision, end);
+        if nz.z >= collision.position.z flood_fill(nz, collision, end);
+
+        if px.x < collision.position.x + collision.size.x flood_fill(px, collision, end);
+        if py.y < collision.position.y + collision.size.y flood_fill(py, collision, end);
+        if pz.z < collision.position.z + collision.size.z flood_fill(pz, collision, end);
+    }
     
-    visitor :: (position: Vector3, collision: *Collision) -> terminate_raycast: bool {
-        success, index := get_3d_index(to_vector3i(position), collision.position, collision.size);
+    end := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+    flood_fill(position, collision, end);
+    */
+
+    visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
+        success, index := get_3d_index(position, collision.position, collision.size);
         if !success return false;
         return collision.filled[index] != null;
     }

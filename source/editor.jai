@@ -2,6 +2,7 @@ Editor_Mode :: enum {
     DRAG_X;
 }
 
+
 Editor_Selection_Mode :: enum {
     IDLE; // The user isn't doing anything. We can select new entities, rotate the camera, etc.
     CAMERA; // The camera is moving.
@@ -9,6 +10,7 @@ Editor_Selection_Mode :: enum {
     // DON'T ALLOW CHANGING CAMERA ANGLE / CURRENTLY SELECTED BLOCK.
     // It could mess up what they're working on.
 }
+
 
 Editor :: struct {
     mode: Editor_Mode;
@@ -80,8 +82,8 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                     col: *Collision;
                 }
                 data := Raycast_Data.{col=*collision};
-                raycast_visitor :: (position: Vector3, using data: *Raycast_Data) -> bool {
-                    success, index := get_3d_index(to_vector3i(position), col.position, col.size);
+                raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
+                    success, index := get_3d_index(position, col.position, col.size);
                     if !success return false;
                     filled := col.filled[index];
                     if !filled return false;
@@ -105,14 +107,13 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                     col: *Collision;
                 }
 
-                raycast_visitor :: (position: Vector3, using data: *Raycast_Data) -> bool {
-                    coord := to_vector3i(position);
-                    success, index := get_3d_index(coord, col.position, col.size);
+                raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
+                    success, index := get_3d_index(position, col.position, col.size);
                     if !success return false;
                     filled := col.filled[index];
                     if !filled {
                         previous_coord_exists = true;
-                        previous_coord = coord;
+                        previous_coord = position;
                         return false;
                     } else {
                         collided_block = filled;
