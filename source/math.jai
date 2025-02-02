@@ -50,7 +50,7 @@ iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
 }
 
 
-convert_3d_coordinate_to_index :: (coord: Vector3i, size: Vector3i) -> s64 {
+get_3d_index_unchecked :: (coord: Vector3i, size: Vector3i) -> s64 {
     return coord.y * size.z * size.x + coord.z * size.x + coord.x;
 }
 
@@ -60,6 +60,13 @@ inside_positive_bounding_box :: (v: Vector3i, bbox: Vector3i) -> bool {
         0 <= v.x && v.x < bbox.x &&
         0 <= v.y && v.y < bbox.y &&
         0 <= v.z && v.z < bbox.z;
+}
+
+
+get_3d_index :: (position: Vector3i, array_position: Vector3i, array_size: Vector3i) -> bool, s64 {
+    coord := position - array_position;
+    if !inside_positive_bounding_box(coord, array_size) return false, 0;
+    return true, get_3d_index_unchecked(coord, array_size);
 }
 
 

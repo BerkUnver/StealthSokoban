@@ -142,8 +142,6 @@ imm_flush :: () {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bitmap);
 
-    if vao != 0 glDeleteVertexArrays(1, *vao);
-    glGenVertexArrays(1, *vao);
     glBindVertexArray(vao);
     
     glUseProgram(shader);

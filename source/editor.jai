@@ -81,11 +81,8 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 }
                 data := Raycast_Data.{col=*collision};
                 raycast_visitor :: (position: Vector3, using data: *Raycast_Data) -> bool {
-                    collision_coord := to_vector3i(position) - col.position;
-                    if !inside_positive_bounding_box(collision_coord, col.size) return false;
-
-                    index := convert_3d_coordinate_to_index(collision_coord, col.size);
-
+                    success, index := get_3d_index(to_vector3i(position), col.position, col.size);
+                    if !success return false;
                     filled := col.filled[index];
                     if !filled return false;
                     block = filled;
@@ -110,11 +107,8 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
 
                 raycast_visitor :: (position: Vector3, using data: *Raycast_Data) -> bool {
                     coord := to_vector3i(position);
-                    collision_coord := coord - col.position;
-
-                    if !inside_positive_bounding_box(collision_coord, col.size) return false;
-
-                    index := convert_3d_coordinate_to_index(collision_coord, col.size);
+                    success, index := get_3d_index(coord, col.position, col.size);
+                    if !success return false;
                     filled := col.filled[index];
                     if !filled {
                         previous_coord_exists = true;
@@ -132,16 +126,13 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 
                 block := data.collided_block;
                 if block && data.previous_coord_exists {
-                    block_coord := data.previous_coord - block.position;
-
-                    if inside_positive_bounding_box(block_coord, block.size) {
-                        block_index := convert_3d_coordinate_to_index(block_coord, block.size);
+                    block_success, block_index := get_3d_index(data.previous_coord, block.position, block.size);
+                    if block_success {
                         block.filled[block_index] = true;
+                        
+                        collision_success, collision_index := get_3d_index(data.previous_coord, collision.position, collision.size);
+                        assert(collision_success); // Any block that's part of the level should _ALWAYS_ be within the bounds of the collision grid.
 
-                        collision_coord := data.previous_coord - collision.position;
-                        assert(inside_positive_bounding_box(collision_coord, collision.size)); // Any block that's part of the l should _ALWAYS_ be within the bounds of the collision grid.
-
-                        collision_index := convert_3d_coordinate_to_index(collision_coord, collision.size);
                         assert(!collision.filled[collision_index]);
                         collision.filled[collision_index] = block;
                     } else if inside_positive_bounding_box(data.previous_coord - collision.position, collision.size) {
@@ -165,24 +156,21 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
 
                         new_size := new_end - new_position;
 
-                        success, new_filled := arena_alloc_array(level_arena, new_size.x * new_size.y * new_size.z, bool);
-                        assert(success);
+                        new_filled := arena_alloc_array(level_arena, new_size.x * new_size.y * new_size.z, bool);
                         
                         block_y_chunk := block.size.x * block.size.z;
                         
                         // @Speed we could rip the x-rows in with one memcpy
                         for :iterate_vector3i block.size {
                             filled := block.filled[it_index];
-                            new_filled_coord := it + block.position - new_position;
-                            assert(inside_positive_bounding_box(new_filled_coord, new_size));
-                            new_index := convert_3d_coordinate_to_index(new_filled_coord, new_size);
+                            success, new_index := get_3d_index(it + block.position, new_position, new_size);
+                            assert(success);
                             new_filled[new_index] = block.filled[it_index];
                         }
 
                         {
-                            coord := data.previous_coord - new_position;
-                            assert(inside_positive_bounding_box(coord, new_size));
-                            index := convert_3d_coordinate_to_index(coord, new_size);
+                            success, index := get_3d_index(data.previous_coord, new_position, new_size);
+                            assert(success);
                             new_filled[index] = true;
                         }
 
@@ -319,11 +307,9 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                         x_movement := intersection.x - initial_intersection.x;
                         new_x := round(cast(float, block_start_x) + x_movement);
                         editor.selected_block.position.x = xx new_x;
-
-                        print("new_x: %\n", new_x);
                     }
 
-                    // @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
+                    // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
             }
     }
 }

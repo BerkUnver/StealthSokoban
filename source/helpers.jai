@@ -28,14 +28,14 @@ clear_arena :: inline (arena: *Memory_Arena) {
 }
 
 
-arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := true) -> bool #must, [] T #must {
+arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := true) -> [] T #must {
     assert(count >= 0); // You would think this wouldn't happen but I had a bug here.
     byte_count := size_of(T) * count;
-    if arena.count - arena.current < byte_count return false, .{};
+    assert(arena.count - arena.current >= byte_count);
     ret := arena.data + arena.current;
     arena.current += byte_count;
     #if zero_init memset(ret, 0, byte_count);
-    return true, .{data=xx ret, count=count};
+    return .{data=xx ret, count=count};
 }
 
 print :: (s: string, args: ..Any) {

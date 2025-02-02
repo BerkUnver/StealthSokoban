@@ -1,8 +1,10 @@
 Level :: struct {
     blocks: Fixed_Array(32, Block);
 
-    player_position: Vector3i;
+    player_position: Vector3i; // Don't set directly. Use set_player_position.
     flags: enum {PULLING :: 1;};
+    entrance: Vector3i;
+    exit: Vector3i;
 
     camera_position: Vector3;
     camera_pitch: float;
@@ -18,12 +20,20 @@ Collision :: struct {
     size: Vector3i;
 
     filled: [] *Block;
+    viewed: [] View_State;
+    // This is stored SOA because we don't want to touch these at the same time.
     // @TODO This is stored x-major, then z, then y.
     // This makes sense from the perspective of wanting to be
     // able to type levels directly into code for this initial
     // development period, but may make less sense later.
     // Consider coming back to this.
-    // @TODO Implement a bit array for better cache coherency.
+}
+
+
+View_State :: enum u8 {
+    HIDDEN;
+    SEEN;
+    VISIBLE;
 }
 
 
@@ -57,13 +67,10 @@ Block :: struct {
     // @TODO Make a bit array data structure for better cache coherency
 }
 
-get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
-    local_position := position - col.position;
-    if !inside_positive_bounding_box(local_position, col.size) {
-        return false, null;
-    }
 
-    index := convert_3d_coordinate_to_index(local_position, col.size);
+get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
+    success, index := get_3d_index(position, col.position, col.size);
+    if !success return false, null;
     return true, col.filled[index];
 }
 
@@ -74,13 +81,15 @@ make_collision :: (level_arena: *Memory_Arena) -> Collision {
     size := END - START;
     collision_array_size := size.x * size.y * size.z;
 
-    success, collision_memory := arena_alloc_array(level_arena, collision_array_size, *Block);
-    assert(success);
+    filled := arena_alloc_array(level_arena, collision_array_size, *Block);
+
+    viewed := arena_alloc_array(level_arena, collision_array_size, View_State);
 
     return Collision.{
         position = START,
         size = size,
-        filled = collision_memory
+        filled = filled,
+        viewed = viewed
     };
 }
 
@@ -97,7 +106,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
         filled := block.filled[it_index];
         if !filled continue;
         collision_coord := it + offset;
-        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        collision_index := get_3d_index_unchecked(collision_coord, col.size);
         block_already_there := col.filled[collision_index];
         if block_already_there return false;
     }
@@ -106,7 +115,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
         filled := block.filled[it_index];
         if !filled continue;
         collision_coord := it + offset;
-        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        collision_index := get_3d_index_unchecked(collision_coord, col.size);
         col.filled[collision_index] = block;
     }
 
@@ -115,7 +124,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
 
 
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
-raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T) -> terminate_raycast: bool, user_data: T)  {
+raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, user_data: $T) -> terminate_raycast: bool, user_data: T) -> collided: bool {
     raycast_x :: (y_plane: float, z_plane: float, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
@@ -173,7 +182,8 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
     y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
     
     if y_steps == 0 {
-        raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data);
+        if raycast_zx(floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data) return true;
+        return false;
     } else {
         ray_length := ray_end - ray_start;
 
@@ -184,7 +194,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
         x := ray_start.x + ray_length.x * t;
         z := ray_start.z + ray_length.z * t;
 
-        if raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data) return;
+        if raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data) return true;
         
         i := 0;
         dir := sign(y_steps);
@@ -199,11 +209,12 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3, 
             x = ray_start.x + ray_length.x * t;
             z = ray_start.z + ray_length.z * t;
 
-            if raycast_zx(y_plane, old_x, old_z, x, z, user_data) return;
+            if raycast_zx(y_plane, old_x, old_z, x, z, user_data) return true;
         }
 
         y_plane += dir;
-        raycast_zx(y_plane, x, z, ray_end.x, ray_end.z, user_data);
+        if raycast_zx(y_plane, x, z, ray_end.x, ray_end.z, user_data) return true;
+        return false; // We made it to the end of the raycast.
     }
 }
 
@@ -215,7 +226,7 @@ remove_block_from_collision :: (col: *Collision, block: *Block) {
         absolute_coord := block.position + it;
         collision_coord := absolute_coord - col.position;
 
-        collision_index := convert_3d_coordinate_to_index(collision_coord, col.size);
+        collision_index := get_3d_index_unchecked(collision_coord, col.size);
         block_already_there := col.filled[collision_index];
         assert(block_already_there == block);
         col.filled[collision_index] = null;
@@ -235,8 +246,7 @@ add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vect
     
      // Do we need more elegant failure cases here?
 
-     success, filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
-     assert(success);
+     filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
      memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
 
      block := append(*level.blocks);
@@ -255,7 +265,7 @@ add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vect
 
 
 
-init_camera :: (using l: *Level) {
+init_camera :: (using level: *Level) {
     FOV :: PI / 3;
     NEAR :: 0.1;
 
@@ -268,7 +278,7 @@ init_camera :: (using l: *Level) {
 }
 
 
-get_camera_matrix :: (using l: *Level) -> Matrix4 {
+get_camera_matrix :: (using level: *Level) -> Matrix4 {
     position_matrix := make_translation_matrix4(-camera_position);
     pitch_matrix := make_x_rotation_matrix(Matrix4, -camera_pitch);
     yaw_matrix := make_y_rotation_matrix(Matrix4, -camera_yaw);
@@ -277,10 +287,38 @@ get_camera_matrix :: (using l: *Level) -> Matrix4 {
 }
 
 
-get_camera_to_world_rotation_matrix :: (using l: *Level) -> Matrix3 {
+get_camera_to_world_rotation_matrix :: (using level: *Level) -> Matrix3 {
     yaw_matrix := make_y_rotation_matrix(Matrix3, camera_yaw);
     pitch_matrix := make_x_rotation_matrix(Matrix3, camera_pitch);
     return multiply(yaw_matrix, pitch_matrix);
+}
+
+
+set_player_position :: (using level: *Level, position: Vector3i) {
+    success, index := get_3d_index(position, collision.position, collision.size);
+    assert(success);
+    assert(!collision.filled[index]);
+    
+    player_position = position;
+
+    for :iterate_vector3i collision.size {
+        if collision.viewed[it_index] == .VISIBLE collision.viewed[it_index] = .SEEN;
+    }
+    
+    visitor :: (position: Vector3, collision: *Collision) -> terminate_raycast: bool {
+        success, index := get_3d_index(to_vector3i(position), collision.position, collision.size);
+        if !success return false;
+        return collision.filled[index] != null;
+    }
+    
+    test := Vector3i.{1, 0, 0};
+    end := to_vector3(player_position) + Vector3.{0.5, 0.5, 0.5};
+    start := end + to_vector3(test);
+
+    if !raycast(start, end, visitor, *collision) {
+        success, index := get_3d_index(player_position + test, collision.position, collision.size);
+        if success collision.viewed[index] = .VISIBLE;
+    }
 }
 
 
@@ -288,8 +326,9 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
      
-    level.player_position = .{0, 0, -1};
     level.collision = make_collision(level_arena);
+    level.entrance = .{-3, 0, -2};
+    level.exit = .{2, 0, -1};
     init_camera(level);
 
     add_block_to_level(level, level_arena, 
@@ -301,7 +340,7 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
             T, T, T, T, T, T,
             T, T, T, T, T, T
         ],
-        color = .{1, 0, 0, 1},
+        color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
         moveable = false
     );
     
@@ -314,7 +353,8 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
             F, F, F, F, F, F,
             T, T, T, T, T, T
         ],
-        color = .{1, 143.0/255.0, 0, 1},
+        color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
+        // .{1, 143.0/255.0, 0, 1} Orange color that I liked
         moveable = false
     );
 
@@ -338,9 +378,11 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
         moveable = true
     };
     */
+
+    set_player_position(level, level.entrance);
 }
 
-level_handle_input :: (using level: *Level, event: Input_Event) { 
+level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
@@ -425,7 +467,13 @@ level_handle_input :: (using level: *Level, event: Input_Event) {
             }
         }
 
-        if !move_failed player_position = new_player_position;
+        if !move_failed {
+            set_player_position(level, new_player_position);
+            if player_position == exit {
+                clear_arena(level_arena);
+                test_level_init(level, level_arena);
+            }
+        }
     }
 }
 

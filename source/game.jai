@@ -153,8 +153,8 @@ game_init : Game_Init : (
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        mode = .EDITOR;
+        
+        mode = .GAME;
         test_level_init(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -191,7 +191,7 @@ game_update : Game_Update : (
             } else {
                 if #complete mode == {
                     case .GAME;
-                        level_handle_input(*level, it);
+                        level_handle_input(*level, *level_arena, it);
                     case .EDITOR;
                         editor_handle_input(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
                 }
@@ -222,7 +222,7 @@ game_update : Game_Update : (
 
         using level;
 
-        if editor.selected_block {
+        if mode == .EDITOR && editor.selected_block {
             imm_state.shader = color_shader;
             begin := to_vector3(editor.selected_block.position);
             end := begin + to_vector3(editor.selected_block.size);
@@ -247,12 +247,43 @@ game_update : Game_Update : (
         imm_flush();
         
         
-        player_corner := to_vector3(player_position);
-        player_begin := player_corner + Vector3.{0.2, 0.2, 0.2};
-        player_end   := player_corner + Vector3.{0.8, 0.8, 0.8};
+
 
         imm_state.shader = color_shader;
-        imm_cuboid(player_begin, player_end, .{1, 1, 1, 1});
+        
+        { // Draw the player
+            corner := to_vector3(player_position);
+            begin := corner + Vector3.{0.2, 0.2, 0.2};
+            end   := corner + Vector3.{0.8, 0.8, 0.8};
+            imm_cuboid(begin, end, .{1, 1, 1, 1});
+        }
+        
+        // @TODO Make a mesh for this
+        { // Draw the entrance
+            corner := to_vector3(entrance);
+            begin := corner + Vector3.{0.15, 0, 0.15};
+            end   := corner + Vector3.{0.85, 0.1, 0.85};
+            imm_cuboid(begin, end, .{75.0/255.0, 228.0/255.0, 1, 1});
+        }
+
+        // @TODO Make a mesh for this
+        { // Draw the exit
+            corner := to_vector3(exit);
+            begin := corner + Vector3.{0.15, 0, 0.15};
+            end   := corner + Vector3.{0.85, 0.1, 0.85};
+            imm_cuboid(begin, end, .{146.0/255.0, 1, 118.0/255.0, 1});
+        }
+
+        for :iterate_vector3i collision.size {
+            if collision.viewed[it_index] == {
+                case .VISIBLE;
+                    begin := to_vector3(collision.position + it);
+                    imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
+                case .SEEN;
+                    begin := to_vector3(collision.position + it);
+                    imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
+            }
+        }
 
         imm_flush();
 
@@ -271,10 +302,8 @@ game_update : Game_Update : (
             }
 
             raycast_visitor :: (position: Vector3, using data: Raycast_Data) -> bool {
-                coord := to_vector3i(position) - col.position;
-                if !inside_positive_bounding_box(coord, col.size) return false;
-
-                index := convert_3d_coordinate_to_index(coord, col.size);
+                success, index := get_3d_index(to_vector3i(position), col.position, col.size);
+                if !success return false;
                 
                 color: Vector4 = ---;
 
@@ -301,8 +330,6 @@ game_update : Game_Update : (
             imm_flush();
         }
         */
-
-        imm_flush();
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
