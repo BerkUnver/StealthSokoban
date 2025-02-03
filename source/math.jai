@@ -9,6 +9,8 @@
 
 Vector3i :: struct {
     x, y, z: s32;
+    #place x;
+    component: [3] s32;
 }
 
 operator + :: (a: Vector3i, b: Vector3i) -> Vector3i {

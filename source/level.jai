@@ -305,11 +305,13 @@ set_player_position :: (using level: *Level, position: Vector3i) {
         if collision.viewed[it_index] == .VISIBLE collision.viewed[it_index] = .SEEN;
     }
 
+
+    // @TODO: Make this not recursive. It causes a stack overflow.
     /*
-    // @TODO: Make this not recursive!
     flood_fill :: (position: Vector3i, collision: *Collision, end: Vector3) {
         success, index := get_3d_index(position, collision.position, collision.size);
         if !success return;
+        if collision.viewed[index] == .VISIBLE return;
 
         visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
             success, index := get_3d_index(position, collision.position, collision.size);
@@ -321,26 +323,25 @@ set_player_position :: (using level: *Level, position: Vector3i) {
 
         if raycast(start, end, visitor, collision) return;
 
-        collision.filled[index] = .VISIBLE;
+        collision.viewed[index] = .VISIBLE;
 
         px := position; px.x += 1;
         nx := position; nx.x -= 1;
         py := position; py.y += 1;
         ny := position; ny.y -= 1;
         pz := position; pz.z += 1;
-        nz := position; pz.z -= 1;
+        nz := position; nz.z -= 1;
 
-        if nx.x >= collision.position.x flood_fill(nx, collision, end);
-        if ny.y >= collision.position.y flood_fill(ny, collision, end);
-        if nz.z >= collision.position.z flood_fill(nz, collision, end);
+        flood_fill(nx, collision, end);
+        flood_fill(ny, collision, end);
+        flood_fill(nz, collision, end);
 
-        if px.x < collision.position.x + collision.size.x flood_fill(px, collision, end);
-        if py.y < collision.position.y + collision.size.y flood_fill(py, collision, end);
-        if pz.z < collision.position.z + collision.size.z flood_fill(pz, collision, end);
+        flood_fill(px, collision, end);
+        flood_fill(py, collision, end);
+        flood_fill(pz, collision, end);
     }
     
-    end := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
-    flood_fill(position, collision, end);
+    flood_fill(position, *collision, to_vector3(position) + Vector3.{0.5, 0.5, 0.5});
     */
 
     visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {

@@ -1,5 +1,5 @@
 Editor_Mode :: enum {
-    DRAG_X;
+    DRAG;
 }
 
 
@@ -26,9 +26,10 @@ Editor :: struct {
     selected_block: *Block; // DO NOT MODIFY THIS IF selection_mode != .IDLE.
     
     union {
-        drag_x: struct {
+        drag: struct {
             mouse_start: Vector2;
-            block_start_x: s32;
+            block_start: Vector3i;
+            index: u8;
         }
     }
 }
@@ -184,13 +185,29 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 }
                 return;
             }
+            
 
-            if event.key == xx #char "1" && event.down && editor.selected_block {
-                editor.selection_mode = .LOCKED;
-                editor.drag_x = .{
-                    mouse_start = .{mouse_x, mouse_y},
-                    block_start_x = editor.selected_block.position.x
+            enable_drag :: (index: u8) #expand {
+                `editor.selection_mode = .LOCKED;
+                `editor.drag = .{
+                    mouse_start = .{`mouse_x, `mouse_y},
+                    block_start = `editor.selected_block.position,
+                    index = index
                 };
+            }
+
+            if event.key == xx #char "1" && event.down {
+                enable_drag(0);
+                return;
+            }
+
+            if event.key == xx #char "2" && event.down {
+                enable_drag(1);
+                return;
+            }
+
+            if event.key == xx #char "3" && event.down {
+                enable_drag(2);
                 return;
             }
 
@@ -227,8 +244,11 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
 
         case .LOCKED;
             if #complete editor.mode == {
-                case .DRAG_X;
-                    if event.key == xx #char "1" && !event.down {
+                case .DRAG;
+                    using editor.drag;
+                    if !event.down && ((index == 0 && event.key == xx #char "1")
+                                    || (index == 1 && event.key == xx #char "2")
+                                    || (index == 2 && event.key == xx #char "3")) {
                         editor.selection_mode = .IDLE;
                     }
             }
@@ -260,8 +280,8 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
 
         case .LOCKED;
             if editor.mode == {
-                case .DRAG_X; 
-                    using editor.drag_x;
+                case .DRAG; 
+                    using editor.drag;
 
                     camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
                     camera_to_world := inverse(get_camera_matrix(l));
@@ -270,10 +290,21 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                     
                     block_position := to_vector3(editor.selected_block.position);
 
-                    camera_up := camera_to_world_rotation_matrix * Vector3.{0, 1, 0};
-                    draw_arrow(block_position, block_position + camera_up, .{0, 0, 1, 1});
-                    draw_arrow(block_position, block_position + Vector3.{1, 0, 0}, .{0, 0, 1, 1});
-                    normal := cross(camera_up, .{1, 0, 0});
+                    axis: Vector3;
+                    axis.component[index] = 1;
+
+
+                    camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
+                    draw_arrow(block_position, block_position + camera_normal, .{1, 1, 0, 1});
+                    draw_arrow(block_position, block_position + axis, .{1, 1, 0, 1});
+                    
+                    // When we do cross(camera_normal, axis) we get a vector that runs parallel to the camera plane
+                    // We cross that with the axis to get the normal of the plane formed by the axis and that parallel vector.
+                    normal := cross(normalize(cross(camera_normal, axis)), axis);
+                    // We don't need to normalize again because the parallel vector and the axis are already perpendicular.
+                    // @TODO: Establish defined behavior for when the axis and the camera_normal are parallel.
+                    // We should still be able to drag, and it looks like that is working right now, but I'm not sure why.
+
 
                     intersection_parallel, intersection := get_intersection_between_line_and_plane(
                         line_point = l.camera_position,
@@ -289,25 +320,21 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                     
                     using context.game_context;
 
-                    // If the difference between either of the intersections and the initial positions are this high,
-                    // then that means the x-axis is almost parallel to the normal vector of the camera.
-                    // (Perhaps we could do a dot product instead?)
-                    // In this case, don't do anything to we don't get polluted with infinities.
-                    
-                    camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
                     if initial_intersection_parallel
                     || intersection_parallel
-                    || abs(dot(camera_normal, Vector3.{1, 0, 0})) > 0.99 { // They are almost parallel.
-                        editor.selected_block.position.x = block_start_x;
+                    || abs(intersection.component[index] - initial_intersection.component[index]) > 1000
+                    // Prevent the block from flying to infinity when the camera is almost parallel and close to the axis
+                    || dot(intersection - l.camera_position, camera_normal - l.camera_position) <= 0 { // Prevent the block from going behind the camera when the intersection point is behind the camera
+                        editor.selected_block.position.component[index] = block_start.component[index];
                     } else {
                         imm_state.shader = color_shader;
                         imm_cuboid(intersection - Vector3.{0.1, 0.1, 0.1}, intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
                         imm_cuboid(initial_intersection - Vector3.{0.1, 0.1, 0.1}, initial_intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
                         imm_flush();
 
-                        x_movement := intersection.x - initial_intersection.x;
-                        new_x := round(cast(float, block_start_x) + x_movement);
-                        editor.selected_block.position.x = xx new_x;
+                        movement := intersection.component[index] - initial_intersection.component[index];
+                        new_position_component := cast(s32, round(cast(float, block_start.component[index]) + movement));
+                        editor.selected_block.position.component[index] = new_position_component;
                     }
 
                     // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!

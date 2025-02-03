@@ -154,7 +154,7 @@ game_init : Game_Init : (
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         
-        mode = .GAME;
+        mode = .EDITOR;
         test_level_init(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -208,7 +208,6 @@ game_update : Game_Update : (
 
 
         // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
-        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
 
         // :GLDebugProcHotloadingHack
         // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
@@ -217,6 +216,8 @@ game_update : Game_Update : (
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
+        imm_state.projection = get_camera_matrix(*level);
+        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
 
         imm_state.projection = get_camera_matrix(*level);
 
@@ -274,14 +275,16 @@ game_update : Game_Update : (
             imm_cuboid(begin, end, .{146.0/255.0, 1, 118.0/255.0, 1});
         }
 
-        for :iterate_vector3i collision.size {
-            if collision.viewed[it_index] == {
-                case .VISIBLE;
-                    begin := to_vector3(collision.position + it);
-                    imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
-                case .SEEN;
-                    begin := to_vector3(collision.position + it);
-                    imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
+        if mode == .GAME {
+            for :iterate_vector3i collision.size {
+                if collision.viewed[it_index] == {
+                    case .VISIBLE;
+                        begin := to_vector3(collision.position + it);
+                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
+                    case .SEEN;
+                        begin := to_vector3(collision.position + it);
+                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
+                }
             }
         }
 
