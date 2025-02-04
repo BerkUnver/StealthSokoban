@@ -138,6 +138,9 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                         assert(!collision.filled[collision_index]);
                         collision.filled[collision_index] = block;
                     } else if inside_positive_bounding_box(data.previous_coord - collision.position, collision.size) {
+                        // @TODO: Properly handle collision resizing!|
+
+                        /*
                         // @TODO: :EditorCollision figure out how collision in the editor is going to work.
 
                         // @Speed We could do it without removing the block.
@@ -180,7 +183,8 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                         block.size = new_size;
                         block.filled = new_filled;
 
-                        assert(add_block_to_collision(*collision, block));
+                        assert(add_block_to_collision(*collision, block) == .OK);
+                        */
                     }
                 }
                 return;

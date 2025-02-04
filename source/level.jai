@@ -69,6 +69,29 @@ Block :: struct {
 }
 
 
+// Fits to the given blocks. DOES NOT INSERT THEM INTO THE COLLISION MAP.
+make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
+    start := blocks[0].position;
+    end := start + blocks[0].size;
+
+    for 1..blocks.count-1 {
+        block := *blocks[it];
+        start = min(start, block.position);
+        end = max(end, block.position + block.size);
+    }
+
+    size := end - start;
+    size_1d := size.x * size.y * size.z;
+
+    return .{
+        position = start,
+        size = size,
+        filled = arena_alloc_array(arena, size_1d, *Block),
+        viewed = arena_alloc_array(arena, size_1d, View_State)
+    };
+}
+
+
 get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
     success, index := get_3d_index(position, col.position, col.size);
     if !success return false, null;
@@ -76,29 +99,20 @@ get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *B
 }
 
 
-make_collision :: (level_arena: *Memory_Arena) -> Collision {
-    START :: Vector3i.{-10, -10, -10};
-    END :: Vector3i.{10, 10, 10};
-    size := END - START;
-    collision_array_size := size.x * size.y * size.z;
-
-    filled := arena_alloc_array(level_arena, collision_array_size, *Block);
-
-    viewed := arena_alloc_array(level_arena, collision_array_size, View_State);
-
-    return Collision.{
-        position = START,
-        size = size,
-        filled = filled,
-        viewed = viewed
-    };
+Add_Block_Result :: enum {
+    OK;
+    OUT_OF_BOUNDS;
+    CELL_ALREADY_OCCUPIED;
 }
 
 
-add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
+add_block_to_collision :: (col: *Collision, block: *Block) -> Add_Block_Result {
     offset := block.position - col.position;
-    assert(inside_positive_bounding_box(offset, col.size));
-    assert(inside_positive_bounding_box(offset + block.size, col.size));
+    end := offset + block.size;
+    if !inside_positive_bounding_box(offset, col.size) return .OUT_OF_BOUNDS;
+    if (end.x < 0 || col.size.x < end.x ||
+        end.x < 0 || col.size.x < end.x ||
+        end.x < 0 || col.size.x < end.x ) return .OUT_OF_BOUNDS;
 
     // @Speed we could just detect when the failure happens and unwind what we've
     // already added instead of first checking, then adding.
@@ -107,9 +121,9 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
         filled := block.filled[it_index];
         if !filled continue;
         collision_coord := it + offset;
-        collision_index := get_3d_index_unchecked(collision_coord, col.size);
+        success, collision_index := get_3d_index(collision_coord, col.size);
         block_already_there := col.filled[collision_index];
-        if block_already_there return false;
+        if block_already_there return .CELL_ALREADY_OCCUPIED;
     }
 
     for :iterate_vector3i block.size {
@@ -120,7 +134,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> bool {
         col.filled[collision_index] = block;
     }
 
-    return true;
+    return .OK;
 }
 
 
@@ -235,33 +249,22 @@ remove_block_from_collision :: (col: *Collision, block: *Block) {
 }
 
 
-add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vector3i, size: Vector3i, filled: [] bool, color: Vector4, moveable: bool) {
-     assert(position.x >= level.collision.position.x
-            && position.y >= level.collision.position.y
-            && position.z >= level.collision.position.z);
-     assert(position.x + size.x < level.collision.position.x + level.collision.size.x
-            && position.y + size.y < level.collision.position.y + level.collision.size.y
-            && position.z + size.z < level.collision.position.z + level.collision.size.z);
+add_block_to_level :: (using level: *Level, using temp_block: *Block, level_arena: *Memory_Arena) {
+    filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
+    memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
 
-     assert(size.x * size.y * size.z == filled.count);
-    
-     // Do we need more elegant failure cases here?
+    block := append(*blocks);
+    assert(block != null);
+   
+    block.* = .{
+       position = position,
+       size = size,
+       filled = filled_allocated,
+       color = color,
+       moveable = moveable
+    };
 
-     filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
-     memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
-
-     block := append(*level.blocks);
-     assert(block != null);
-    
-     block.* = .{
-        position = position,
-        size = size,
-        filled = filled_allocated,
-        color = color,
-        moveable = moveable
-     };
-
-     assert(add_block_to_collision(*level.collision, block));
+    assert(add_block_to_collision(*collision, block) == .OK);
 }
 
 init_camera :: (using level: *Level) {
@@ -375,59 +378,63 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
      
-    level.collision = make_collision(level_arena);
     level.entrance = .{-3, 0, -2};
     level.player_position = level.entrance;
     level.exit = .{2, 0, -1};
     init_camera(level);
 
-    add_block_to_level(level, level_arena, 
-        position = .{-3, -1, -2},
-        size = .{6, 1, 4},
-        filled = .[
-            T, T, T, T, T, T,
-            T, T, T, T, T, T,
-            T, T, T, T, T, T,
-            T, T, T, T, T, T
-        ],
-        color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
-        moveable = false
-    );
+    blocks := Block.[
+        .{
+            position = .{-3, -1, -2},
+            size = .{6, 1, 4},
+            filled = .[
+                T, T, T, T, T, T,
+                T, T, T, T, T, T,
+                T, T, T, T, T, T,
+                T, T, T, T, T, T
+            ],
+            color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
+            moveable = false
+        },
+        .{
+            position = .{-3, 0, -2},
+            size = .{6, 1, 4},
+            filled = .[
+                F, F, F, F, F, T,
+                T, F, F, F, F, F, 
+                F, F, F, F, F, F,
+                T, T, T, T, T, T
+            ],
+            color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
+            // .{1, 143.0/255.0, 0, 1} Orange color that I liked
+            moveable = false
+        },
+        .{
+            position = .{-1, 0, -2},
+            size = .{3, 1, 2},
+            filled = .[
+                T, T, T,
+                T, F, T
+            ],
+            color = .{0, 0, 1, 1},
+            moveable = true
+        },
+        /*
+        .{
+            position = .{-1, 0, 0},
+            size = .{3, 1, 1},
+            filled = .[T, T, T],
+            color = .{0, 0.5, 0, 1},
+            moveable = true
+        };
+        */
+    ];
     
-    add_block_to_level(level, level_arena, 
-        position = .{-3, 0, -2},
-        size = .{6, 1, 4},
-        filled = .[
-            F, F, F, F, F, T,
-            T, F, F, F, F, F, 
-            F, F, F, F, F, F,
-            T, T, T, T, T, T
-        ],
-        color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
-        // .{1, 143.0/255.0, 0, 1} Orange color that I liked
-        moveable = false
-    );
+    level.collision = make_collision(blocks, level_arena);
+    for * blocks {
+        add_block_to_level(level, it, level_arena);
+    }
 
-    add_block_to_level(level, level_arena, 
-        position = .{-1, 0, -2},
-        size = .{3, 1, 2},
-        filled = .[
-            T, T, T,
-            T, F, T
-        ],
-        color = .{0, 0, 1, 1},
-        moveable = true
-    );
-    /* 
-    block_3 := append(*blocks);
-    block_3.* = .{
-        position = .{-1, 0, 0},
-        size = .{3, 1, 1},
-        filled = .[T, T, T],
-        color = .{0, 0.5, 0, 1},
-        moveable = true
-    };
-    */
 }
 
 level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
@@ -496,7 +503,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         move_failed := false;
         for moving_blocks {
             it.position += push_direction;
-            if !add_block_to_collision(*collision, it) {
+            if add_block_to_collision(*collision, it) != .OK {
 
                 // Undo everything we just tried to do
                 it.position -= push_direction;
@@ -507,7 +514,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 }
 
                 for moving_blocks {
-                    assert(add_block_to_collision(*collision, it));
+                    assert(add_block_to_collision(*collision, it) == .OK);
                 }
 
                 move_failed = true;

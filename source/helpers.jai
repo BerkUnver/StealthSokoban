@@ -52,6 +52,50 @@ get_mark :: (arena: *Memory_Arena) -> s64 {
 }
 
 
+iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
+    #assert for_flags == 0;
+
+    y_chunk := v.x * v.z;
+    for `y_index: 0..v.y-1 {
+        y_offset := y_index * y_chunk;
+        for `z_index: 0..v.z-1 {
+            z_offset := y_offset + z_index * v.x;
+            for `x_index: 0..v.x-1 {
+                `it_index := z_offset + x_index;
+                `it := Vector3i.{x_index, y_index, z_index};
+                #insert(break=break y_index, continue=continue, remove=#assert false) body;
+            }
+        }
+    }
+}
+
+
+get_3d_index_unchecked :: (coord: Vector3i, size: Vector3i) -> s64 {
+    return coord.y * size.z * size.x + coord.z * size.x + coord.x;
+}
+
+
+inside_positive_bounding_box :: (v: Vector3i, bbox: Vector3i) -> bool {
+    return
+        0 <= v.x && v.x < bbox.x &&
+        0 <= v.y && v.y < bbox.y &&
+        0 <= v.z && v.z < bbox.z;
+}
+
+
+get_3d_index :: (position: Vector3i, array_position: Vector3i, array_size: Vector3i) -> bool, s64 {
+    coord := position - array_position;
+    if !inside_positive_bounding_box(coord, array_size) return false, 0;
+    return true, get_3d_index_unchecked(coord, array_size);
+}
+
+
+get_3d_index :: (position: Vector3i, size: Vector3i) -> bool, s64 {
+    if !inside_positive_bounding_box(position, size) return false, 0;
+    return true, get_3d_index_unchecked(position, size);
+}
+
+
 restore_mark :: (arena: *Memory_Arena, marker: s64) {
     assert(arena.current >= marker);
     arena.current = marker;
