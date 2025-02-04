@@ -28,24 +28,31 @@ clear_arena :: inline (arena: *Memory_Arena) {
 }
 
 
-arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := true) -> [] T #must {
-    assert(count >= 0); // You would think this wouldn't happen but I had a bug here.
-    byte_count := ifx count > 0 then size_of(T) * count else 1; 
-    // We give it one byte so if we want to extend this allocation and another allocation was made afterwards, it does not overwrite that allocation.
-    assert(arena.count - arena.current >= byte_count);
+arena_alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
+    assert(count >= 0);
     ret := arena.data + arena.current;
-    arena.current += byte_count;
-    #if zero_init memset(ret, 0, byte_count);
+    arena.current += count;
+    if zero_init memset(ret, 0, count);
+    return ret;
+}
+
+arena_alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
+    return arena_alloc(arena, size_of(T), zero_init);
+}
+
+arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
+    byte_count := size_of(T) * count; 
+    ret := arena_alloc(arena, byte_count, zero_init);
     return .{data=xx ret, count=count};
 }
 
 
-get_marker :: (arena: *Memory_Arena) -> s64 {
+get_mark :: (arena: *Memory_Arena) -> s64 {
     return arena.current;
 }
 
 
-restore_marker :: (arena: *Memory_Arena, marker: s64) {
+restore_mark :: (arena: *Memory_Arena, marker: s64) {
     assert(arena.current >= marker);
     arena.current = marker;
 }

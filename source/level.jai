@@ -1,7 +1,7 @@
 Level :: struct {
     blocks: Fixed_Array(32, Block);
 
-    player_position: Vector3i; // Don't set directly. Use set_player_position.
+    player_position: Vector3i;
     flags: enum {PULLING :: 1;};
     entrance: Vector3i;
     exit: Vector3i;
@@ -30,10 +30,11 @@ Collision :: struct {
 }
 
 
-View_State :: enum u8 {
-    HIDDEN;
+View_State :: enum_flags u8 {
     SEEN;
     VISIBLE;
+    
+    QUEUED_FOR_FLOODFILL;
 }
 
 
@@ -292,28 +293,44 @@ get_camera_to_world_rotation_matrix :: (using level: *Level) -> Matrix3 {
 }
 
 
-set_player_position :: (using level: *Level, new_player_position: Vector3i) {
-    success, index := get_3d_index(new_player_position, collision.position, collision.size);
-    assert(success);
-    assert(!collision.filled[index]);
+update_level_visibility :: (using level: *Level) {
+    // The following code is nontrivial so I will write an explanation.
+    // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
+    // Here's why:
+    // A cell will only be visible if it has at least one neighboring cell that is visible.
+    // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
+    // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
+    // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
+    // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
     
-    player_position = new_player_position;
+    // @Speed So, this is our first real reality check of this game.
+    // Running this on a 20x20x20 level already starts to lag out the game.
+    // For this initial development period this is fine, but we will soon have levels bigger than that.
+    // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
+
+    //      -berk, 2 - 3 - 2025
+
 
     for :iterate_vector3i collision.size {
-        if collision.viewed[it_index] == .VISIBLE collision.viewed[it_index] = .SEEN;
+        collision.viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
     }
-
     
-    positions: Fixed_Array(8000, Vector3i); // @TODO: Use a temporary stack allocator for this.
+    using context.game_context;
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    positions := arena_alloc_array(*frame_arena, collision.size.x * collision.size.y * collision.size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+    position_count := 1;
+
+    player_success, player_index := get_3d_index(player_position, collision.position, collision.size);
+    assert(player_success);
+    positions[0] = .{player_index, player_position};
+    collision.viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
     
     end := to_vector3(player_position) + Vector3.{0.5, 0.5, 0.5};
-    append(*positions, player_position);
-    while positions.count != 0 {
-        position := pop(*positions);
-        success, index := get_3d_index(position, collision.position, collision.size);
-
-        if !success continue;
-        if collision.viewed[index] == .VISIBLE continue;
+    while position_count != 0 {
+        position_count -= 1;
+        using index_and_position := positions[position_count];
 
         visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
             success, index := get_3d_index(position, collision.position, collision.size);
@@ -324,7 +341,7 @@ set_player_position :: (using level: *Level, new_player_position: Vector3i) {
         start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
 
         if raycast(start, end, visitor, *collision) continue;
-        collision.viewed[index] = .VISIBLE;
+        collision.viewed[index] |= (.SEEN | .VISIBLE);
 
         px := position; px.x += 1;
         nx := position; nx.x -= 1;
@@ -332,13 +349,24 @@ set_player_position :: (using level: *Level, new_player_position: Vector3i) {
         ny := position; ny.y -= 1;
         pz := position; pz.z += 1;
         nz := position; nz.z -= 1;
+       
+        check_position :: (p: Vector3i) #expand {
+            success, index := get_3d_index(p, `collision.position, collision.size);
+            if !success return;
 
-        append(*positions, px);
-        append(*positions, nx);
-        append(*positions, py);
-        append(*positions, ny);
-        append(*positions, pz);
-        append(*positions, nz);
+            if collision.filled[index] || (collision.viewed[index] & .QUEUED_FOR_FLOODFILL) return;
+            
+            collision.viewed[index] |= .QUEUED_FOR_FLOODFILL;
+            `positions[`position_count] = .{index, p};
+            position_count += 1;
+        }
+        
+        check_position(px);
+        check_position(nx);
+        check_position(py);
+        check_position(ny);
+        check_position(pz);
+        check_position(nz);
     }
 }
 
@@ -349,6 +377,7 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
      
     level.collision = make_collision(level_arena);
     level.entrance = .{-3, 0, -2};
+    level.player_position = level.entrance;
     level.exit = .{2, 0, -1};
     init_camera(level);
 
@@ -399,8 +428,6 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
         moveable = true
     };
     */
-
-    set_player_position(level, level.entrance);
 }
 
 level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
@@ -489,7 +516,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         }
 
         if !move_failed {
-            set_player_position(level, new_player_position);
+            player_position = new_player_position;
             if player_position == exit {
                 clear_arena(level_arena);
                 test_level_init(level, level_arena);

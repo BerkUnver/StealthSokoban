@@ -330,7 +330,7 @@ main :: () {
 
     
     GAME_DLL_NAME_FRESH :: "stealth_sokoban_game_fresh.dll";
-    GAME_DLL_NAME :: "stalth_sokoban_game.dll";
+    GAME_DLL_NAME :: "stealth_sokoban_game.dll";
     
     dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
     if dll_attrs != INVALID_FILE_ATTRIBUTES {

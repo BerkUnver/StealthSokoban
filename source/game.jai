@@ -171,6 +171,13 @@ game_update : Game_Update : (
         context.game_context = *game_memory.game_context;
         using game_memory.game_context;
         using game_memory.game;
+
+        defer assert(frame_arena.current == 0);
+        // I'm trying to enforce people who use the stack arena to use it
+        // like a stack and not just put stuff into it and expect it to
+        // get cleared at the end of the frame.
+        // Therefore, we check to make sure everyone has popped their stuff
+        // off of the stack.
         
         for input.events {
             if it.key == Key.F_BASE + 1 && it.down {
@@ -206,7 +213,13 @@ game_update : Game_Update : (
         
         // @TODO We probably want to be able to draw while this is running.
         // However, we need to update the camera movement before we can set the projection for imm_state.
-        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
+        if #complete mode == {
+            case .EDITOR;
+                editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
+            case .GAME;
+                update_level_visibility(*level);
+        }
+
 
         // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
 
@@ -273,16 +286,13 @@ game_update : Game_Update : (
             imm_cuboid(begin, end, .{146.0/255.0, 1, 118.0/255.0, 1});
         }
 
-        if mode == .GAME {
-            for :iterate_vector3i collision.size {
-                if collision.viewed[it_index] == {
-                    case .VISIBLE;
-                        begin := to_vector3(collision.position + it);
-                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
-                    case .SEEN;
-                        begin := to_vector3(collision.position + it);
-                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
-                }
+        for :iterate_vector3i collision.size {
+            if collision.viewed[it_index] & .VISIBLE {
+                begin := to_vector3(collision.position + it);
+                imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
+            } else if collision.viewed[it_index] & .SEEN {
+                begin := to_vector3(collision.position + it);
+                imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
             }
         }
 
