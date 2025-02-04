@@ -8,15 +8,18 @@ BACKGROUND_B :: 19;
 INNER_WINDOW_W :: 1920;
 INNER_WINDOW_H :: 1080;
 
+GAME_MEMORY_SIZE :: 1 << 24; // @TODO: See how much of this memory is actually used!
 LEVEL_ARENA_SIZE :: 1 << 24;
+FRAME_ARENA_SIZE :: 1 << 20;
 
-Game_Init :: #type (
-    game_memory: *void,
-    game_memory_size: u64,
-    gl_extension_loader: (*u8) -> *void #c_call,
-    os_print: (string),
-    level_arena_memory: *void
-) #no_context;
+Game_Init_Data :: struct {
+    game_memory: *void;
+    gl_extension_loader: (*u8) -> *void #c_call;
+    os_print: (string);
+    level_arena_memory: *void;
+    frame_arena_memory: *void;
+}
+Game_Init_Proc :: #type (init: *Game_Init_Data) #no_context;
 
 Game_Update :: #type (
     game_memory: *void,

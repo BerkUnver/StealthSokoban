@@ -11,7 +11,6 @@ jai_string_equals_c_string :: (jai_string: string, c_string: *u8) -> bool {
 Memory_Arena :: struct {
     data: *u8;
     count: s64;
-    previous_current: s64;
     current: s64;
 }
 
@@ -35,26 +34,22 @@ arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := 
     // We give it one byte so if we want to extend this allocation and another allocation was made afterwards, it does not overwrite that allocation.
     assert(arena.count - arena.current >= byte_count);
     ret := arena.data + arena.current;
-    arena.previous_current = arena.current;
     arena.current += byte_count;
     #if zero_init memset(ret, 0, byte_count);
     return .{data=xx ret, count=count};
 }
 
 
-arena_extend_most_recent_allocation :: (arena: *Memory_Arena, allocation: *u8, new_count: s64, $zero_init := true) {
-    assert(cast(s64, allocation - arena.data) == arena.previous_current);
-    new_current := arena.previous_current + new_count;
-    assert(new_current <= arena.count);
-    #if zero_init memset(arena.data + arena.current, 0, new_count - arena.current);
-    arena.current = new_current;
+get_marker :: (arena: *Memory_Arena) -> s64 {
+    return arena.current;
 }
 
 
-arena_grow_most_recent_array :: (arena: *Memory_Arena, array: *[] $T, new_count: s64, $zero_init := true) {
-    arena_extend_most_recent_allocation(arena, xx array.data, new_count * size_of(T), zero_init);
-    array.count = new_count;
+restore_marker :: (arena: *Memory_Arena, marker: s64) {
+    assert(arena.current >= marker);
+    arena.current = marker;
 }
+
 
 
 print :: (s: string, args: ..Any) {

@@ -14,6 +14,8 @@ Game_Context :: struct {
     os_print: (string);
     imm_state: Imm_State;
 
+    frame_arena: Memory_Arena;
+
     block_shader: GLuint;
     block_bitmap: GLuint;
     color_shader: GLuint;
@@ -40,31 +42,27 @@ Game_Mode :: enum {
     EDITOR;
 }
 
+#assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
+
 #program_export "game_init"
-game_init : Game_Init : (
-    game_memory_: *void,
-    game_memory_size: u64,
-    gl_extension_loader: (*u8) -> *void #c_call,
-    os_print_: (string),
-    level_arena_memory: *void
-) #no_context {
-    game_memory := cast(*Game_Memory, game_memory_);
+game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
+    game_memory := cast(*Game_Memory, data.game_memory);
     push_context {
-        assert(game_memory_size >= size_of(Game_Memory));
 
         context.game_context = *game_memory.game_context;
+
         using context.game_context;
 
-
+        frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
         
-        os_print = os_print_;
+        os_print = data.os_print;
 
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
             assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
 
             // Works whether or not address is null.
-            address := gl_extension_loader(it.name.data);
+            address := data.gl_extension_loader(it.name.data);
             dest := cast(*u8, *gl_procs) + it.offset_in_bytes;
             cast(**void, dest).* = address;
         }
@@ -118,7 +116,7 @@ game_init : Game_Init : (
         stack_context := context;
         if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
 
-        level_arena = make_arena(level_arena_memory, LEVEL_ARENA_SIZE);
+        level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
 
         block_shader = register_shader(BLOCK_SHADER);
         assert(block_shader != 0);

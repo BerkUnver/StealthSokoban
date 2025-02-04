@@ -327,9 +327,7 @@ main :: () {
     // Initialize the game state
     //
     
-    GAME_MEMORY_SIZE :: 1 << 24; // @TODO: See how much of this memory is actually used!
 
-    game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
     
     GAME_DLL_NAME_FRESH :: "stealth_sokoban_game_fresh.dll";
     GAME_DLL_NAME :: "stalth_sokoban_game.dll";
@@ -342,10 +340,22 @@ main :: () {
     game_dll := LoadLibraryA(GAME_DLL_NAME);
     assert(game_dll != null);
     
-    level_arena := VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE);
-    game_init := cast(Game_Init, GetProcAddress(game_dll, "game_init"));
+
+    game_init := cast(Game_Init_Proc, GetProcAddress(game_dll, "game_init"));
     assert(game_init != null);
-    game_init(game_memory, GAME_MEMORY_SIZE, wglGetProcAddress, os_print, level_arena);
+    
+    game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
+
+    data := Game_Init_Data.{
+        game_memory        = game_memory,
+        gl_extension_loader = wglGetProcAddress,
+        os_print            = os_print,
+        level_arena_memory  = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
+        frame_arena_memory  = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE)
+    };
+
+    game_init(*data);
+
     game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
     assert(game_update != null);
     
