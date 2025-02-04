@@ -263,8 +263,6 @@ add_block_to_level :: (level: *Level, level_arena: *Memory_Arena, position: Vect
      assert(add_block_to_collision(*level.collision, block));
 }
 
-
-
 init_camera :: (using level: *Level) {
     FOV :: PI / 3;
     NEAR :: 0.1;
@@ -294,24 +292,28 @@ get_camera_to_world_rotation_matrix :: (using level: *Level) -> Matrix3 {
 }
 
 
-set_player_position :: (using level: *Level, position: Vector3i) {
-    success, index := get_3d_index(position, collision.position, collision.size);
+set_player_position :: (using level: *Level, new_player_position: Vector3i) {
+    success, index := get_3d_index(new_player_position, collision.position, collision.size);
     assert(success);
     assert(!collision.filled[index]);
     
-    player_position = position;
+    player_position = new_player_position;
 
     for :iterate_vector3i collision.size {
         if collision.viewed[it_index] == .VISIBLE collision.viewed[it_index] = .SEEN;
     }
 
-
-    // @TODO: Make this not recursive. It causes a stack overflow.
-    /*
-    flood_fill :: (position: Vector3i, collision: *Collision, end: Vector3) {
+    
+    positions: Fixed_Array(8000, Vector3i); // @TODO: Use a temporary stack allocator for this.
+    
+    end := to_vector3(player_position) + Vector3.{0.5, 0.5, 0.5};
+    append(*positions, player_position);
+    while positions.count != 0 {
+        position := pop(*positions);
         success, index := get_3d_index(position, collision.position, collision.size);
-        if !success return;
-        if collision.viewed[index] == .VISIBLE return;
+
+        if !success continue;
+        if collision.viewed[index] == .VISIBLE continue;
 
         visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
             success, index := get_3d_index(position, collision.position, collision.size);
@@ -321,8 +323,7 @@ set_player_position :: (using level: *Level, position: Vector3i) {
         
         start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
 
-        if raycast(start, end, visitor, collision) return;
-
+        if raycast(start, end, visitor, *collision) continue;
         collision.viewed[index] = .VISIBLE;
 
         px := position; px.x += 1;
@@ -332,31 +333,12 @@ set_player_position :: (using level: *Level, position: Vector3i) {
         pz := position; pz.z += 1;
         nz := position; nz.z -= 1;
 
-        flood_fill(nx, collision, end);
-        flood_fill(ny, collision, end);
-        flood_fill(nz, collision, end);
-
-        flood_fill(px, collision, end);
-        flood_fill(py, collision, end);
-        flood_fill(pz, collision, end);
-    }
-    
-    flood_fill(position, *collision, to_vector3(position) + Vector3.{0.5, 0.5, 0.5});
-    */
-
-    visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
-        success, index := get_3d_index(position, collision.position, collision.size);
-        if !success return false;
-        return collision.filled[index] != null;
-    }
-    
-    test := Vector3i.{1, 0, 0};
-    end := to_vector3(player_position) + Vector3.{0.5, 0.5, 0.5};
-    start := end + to_vector3(test);
-
-    if !raycast(start, end, visitor, *collision) {
-        success, index := get_3d_index(player_position + test, collision.position, collision.size);
-        if success collision.viewed[index] = .VISIBLE;
+        append(*positions, px);
+        append(*positions, nx);
+        append(*positions, py);
+        append(*positions, ny);
+        append(*positions, pz);
+        append(*positions, nz);
     }
 }
 

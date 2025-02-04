@@ -71,6 +71,11 @@ get_3d_index :: (position: Vector3i, array_position: Vector3i, array_size: Vecto
     return true, get_3d_index_unchecked(coord, array_size);
 }
 
+get_3d_index :: (position: Vector3i, size: Vector3i) -> bool, s64 {
+    if !inside_positive_bounding_box(position, size) return false, 0;
+    return true, get_3d_index_unchecked(position, size);
+}
+
 
 make_y_rotation_matrix :: ($T: Type, r: float) -> T {
     // Rotate about the y-axis

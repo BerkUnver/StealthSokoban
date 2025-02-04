@@ -295,8 +295,6 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
 
 
                     camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
-                    draw_arrow(block_position, block_position + camera_normal, .{1, 1, 0, 1});
-                    draw_arrow(block_position, block_position + axis, .{1, 1, 0, 1});
                     
                     // When we do cross(camera_normal, axis) we get a vector that runs parallel to the camera plane
                     // We cross that with the axis to get the normal of the plane formed by the axis and that parallel vector.
@@ -327,16 +325,10 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                     || dot(intersection - l.camera_position, camera_normal - l.camera_position) <= 0 { // Prevent the block from going behind the camera when the intersection point is behind the camera
                         editor.selected_block.position.component[index] = block_start.component[index];
                     } else {
-                        imm_state.shader = color_shader;
-                        imm_cuboid(intersection - Vector3.{0.1, 0.1, 0.1}, intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
-                        imm_cuboid(initial_intersection - Vector3.{0.1, 0.1, 0.1}, initial_intersection + Vector3.{0.1, 0.1, 0.1}, .{1, 1, 1, 1});
-                        imm_flush();
-
                         movement := intersection.component[index] - initial_intersection.component[index];
                         new_position_component := cast(s32, round(cast(float, block_start.component[index]) + movement));
                         editor.selected_block.position.component[index] = new_position_component;
                     }
-
                     // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
             }
     }

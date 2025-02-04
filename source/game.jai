@@ -154,7 +154,7 @@ game_init : Game_Init : (
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         
-        mode = .EDITOR;
+        mode = .GAME;
         test_level_init(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -205,7 +205,10 @@ game_update : Game_Update : (
             dt = cast(float, time_elapsed_ - time_elapsed);
         }
         time_elapsed = time_elapsed_;
-
+        
+        // @TODO We probably want to be able to draw while this is running.
+        // However, we need to update the camera movement before we can set the projection for imm_state.
+        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
 
         // @TODO: We should print the current editor mode in the top-left of the screen for clarity.
 
@@ -216,8 +219,6 @@ game_update : Game_Update : (
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-        imm_state.projection = get_camera_matrix(*level);
-        if mode == .EDITOR editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
 
         imm_state.projection = get_camera_matrix(*level);
 
@@ -231,7 +232,6 @@ game_update : Game_Update : (
             imm_flush();
         }
         
-        // @TODO: Pull these out into separate routines
         imm_state.shader = block_shader;
         imm_state.bitmap = block_bitmap;
 

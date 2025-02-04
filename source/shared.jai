@@ -66,6 +66,7 @@ append :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
     return true;
 }
 
+
 append :: (using array: *Fixed_Array($N, $T)) -> *T {
     if count == N return null;
     ptr := *data[count];
@@ -73,12 +74,22 @@ append :: (using array: *Fixed_Array($N, $T)) -> *T {
     return ptr;
 }
 
+
+pop :: (using array: *Fixed_Array($N, $T)) -> T {
+    count -= 1;
+    return data[count];
+    // If count is zero and it gets deincremented the data[count] bounds check will fail
+    // So we don't need to do the manual bounds check.
+}
+
+
 append_many :: (using array: *Fixed_Array($N, $T), how_many: s64) -> *T {
     if count + how_many > N return null;
     ptr := *data[count];
     count += how_many;
     return ptr;
 }
+
 
 contains :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
     for array {

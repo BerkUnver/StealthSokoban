@@ -11,6 +11,7 @@ jai_string_equals_c_string :: (jai_string: string, c_string: *u8) -> bool {
 Memory_Arena :: struct {
     data: *u8;
     count: s64;
+    previous_current: s64;
     current: s64;
 }
 
@@ -30,13 +31,31 @@ clear_arena :: inline (arena: *Memory_Arena) {
 
 arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, $zero_init := true) -> [] T #must {
     assert(count >= 0); // You would think this wouldn't happen but I had a bug here.
-    byte_count := size_of(T) * count;
+    byte_count := ifx count > 0 then size_of(T) * count else 1; 
+    // We give it one byte so if we want to extend this allocation and another allocation was made afterwards, it does not overwrite that allocation.
     assert(arena.count - arena.current >= byte_count);
     ret := arena.data + arena.current;
+    arena.previous_current = arena.current;
     arena.current += byte_count;
     #if zero_init memset(ret, 0, byte_count);
     return .{data=xx ret, count=count};
 }
+
+
+arena_extend_most_recent_allocation :: (arena: *Memory_Arena, allocation: *u8, new_count: s64, $zero_init := true) {
+    assert(cast(s64, allocation - arena.data) == arena.previous_current);
+    new_current := arena.previous_current + new_count;
+    assert(new_current <= arena.count);
+    #if zero_init memset(arena.data + arena.current, 0, new_count - arena.current);
+    arena.current = new_current;
+}
+
+
+arena_grow_most_recent_array :: (arena: *Memory_Arena, array: *[] $T, new_count: s64, $zero_init := true) {
+    arena_extend_most_recent_allocation(arena, xx array.data, new_count * size_of(T), zero_init);
+    array.count = new_count;
+}
+
 
 print :: (s: string, args: ..Any) {
     buf: [4096] u8;
