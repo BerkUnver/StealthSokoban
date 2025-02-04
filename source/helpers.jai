@@ -96,11 +96,30 @@ get_3d_index :: (position: Vector3i, size: Vector3i) -> bool, s64 {
 }
 
 
+realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: [] $T, sub_position: Vector3i, sub_size: Vector3i, arena: *Memory_Arena) -> new_position: Vector3i, new_size: Vector3i, new_data: [] T {
+    new_position := min(position, sub_position);
+    new_end := max(position + size, sub_position + sub_size);
+    new_size := new_end - new_position;
+    
+    if position == new_position && size == new_size return position, size, data;
+
+    new_data := arena_alloc_array(arena, new_size.x * new_size.y * new_size.z, T);
+    
+    // @Speed memcpy the x axis instead of calculating it one-by-one.
+    offset := position - new_position;
+    for :iterate_vector3i size {
+        new_index := get_3d_index_unchecked(it + offset, new_size);
+        new_data[new_index] = data[it_index];
+    }
+
+    return new_position, new_size, new_data;
+}
+
+
 restore_mark :: (arena: *Memory_Arena, marker: s64) {
     assert(arena.current >= marker);
     arena.current = marker;
 }
-
 
 
 print :: (s: string, args: ..Any) {

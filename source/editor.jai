@@ -110,14 +110,12 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
 
                 raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
                     success, index := get_3d_index(position, col.position, col.size);
-                    if !success return false;
-                    filled := col.filled[index];
-                    if !filled {
+                    if !success || !col.filled[index] {
                         previous_coord_exists = true;
                         previous_coord = position;
                         return false;
                     } else {
-                        collided_block = filled;
+                        collided_block = col.filled[index];
                         return true;
                     }
                 }
@@ -127,65 +125,24 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 raycast(camera_position, ray_end, raycast_visitor, *data);
                 
                 block := data.collided_block;
+
                 if block && data.previous_coord_exists {
+                    block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, data.previous_coord, Vector3i.{1, 1, 1}, level_arena);
+                   
+
+                    // @Speed do both of these at once
+                    _:, _:, collision.filled = realloc_3d_array_to_fit_subarea(collision.position, collision.size, collision.filled, block.position, block.size, level_arena);
+
+                    collision.position, collision.size, collision.viewed = realloc_3d_array_to_fit_subarea(collision.position, collision.size, collision.viewed, block.position, block.size, level_arena);
+
+
                     block_success, block_index := get_3d_index(data.previous_coord, block.position, block.size);
-                    if block_success {
-                        block.filled[block_index] = true;
-                        
-                        collision_success, collision_index := get_3d_index(data.previous_coord, collision.position, collision.size);
-                        assert(collision_success); // Any block that's part of the level should _ALWAYS_ be within the bounds of the collision grid.
-
-                        assert(!collision.filled[collision_index]);
-                        collision.filled[collision_index] = block;
-                    } else if inside_positive_bounding_box(data.previous_coord - collision.position, collision.size) {
-                        // @TODO: Properly handle collision resizing!|
-
-                        /*
-                        // @TODO: :EditorCollision figure out how collision in the editor is going to work.
-
-                        // @Speed We could do it without removing the block.
-                        remove_block_from_collision(*collision, block);
-                        old := block.filled;
+                    assert(block_success);
+                    block.filled[block_index] = true;
                     
-                        new_position := Vector3i.{
-                            min(data.previous_coord.x, block.position.x),
-                            min(data.previous_coord.y, block.position.y),
-                            min(data.previous_coord.z, block.position.z)
-                        };
-                        
-                        new_end := Vector3i.{
-                            max(data.previous_coord.x + 1, block.position.x + block.size.x),
-                            max(data.previous_coord.y + 1, block.position.y + block.size.y),
-                            max(data.previous_coord.z + 1, block.position.z + block.size.z)
-                        };
-
-                        new_size := new_end - new_position;
-
-                        new_filled := arena_alloc_array(level_arena, new_size.x * new_size.y * new_size.z, bool);
-                        
-                        block_y_chunk := block.size.x * block.size.z;
-                        
-                        // @Speed we could rip the x-rows in with one memcpy
-                        for :iterate_vector3i block.size {
-                            filled := block.filled[it_index];
-                            success, new_index := get_3d_index(it + block.position, new_position, new_size);
-                            assert(success);
-                            new_filled[new_index] = block.filled[it_index];
-                        }
-
-                        {
-                            success, index := get_3d_index(data.previous_coord, new_position, new_size);
-                            assert(success);
-                            new_filled[index] = true;
-                        }
-
-                        block.position = new_position;
-                        block.size = new_size;
-                        block.filled = new_filled;
-
-                        assert(add_block_to_collision(*collision, block) == .OK);
-                        */
-                    }
+                    collision_success, collision_index := get_3d_index(data.previous_coord, collision.position, collision.size);
+                    assert(collision_success);
+                    collision.filled[collision_index] = block;
                 }
                 return;
             }
