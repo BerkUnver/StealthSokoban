@@ -244,29 +244,10 @@ game_update : Game_Update : (
         draw_vertex_mesh(*entrance_mesh, translate(world_to_camera, to_vector3(entrance_position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit_mesh, translate(world_to_camera, to_vector3(exit_position)), .{146.0/255.0, 1, 118.0/255.0, 1});
 
-        if mode == .EDITOR && editor.selected_block {
-            imm_state.shader = imm_color_shader;
-            begin := to_vector3(editor.selected_block.position);
-            end := begin + to_vector3(editor.selected_block.size);
-            imm_cuboid_outline(begin, end, 0.03, .{0, 1, 0, 1});
-            imm_flush();
+        for * blocks {
+            draw_block_mesh(*it.mesh, translate(world_to_camera, to_vector3(it.position)), it.color);
         }
-        
-        imm_state.shader = block_shader;
-        imm_state.bitmap = block_bitmap;
-
-        for blocks {
-            for :iterate_vector3i coord: it.size {
-                filled := it.filled[it_index];
-                if !filled continue;
-                begin := to_vector3(it.position + coord);
-                end := begin + Vector3.{1,1,1};
-                imm_cuboid_with_uvs(begin, end, it.color);
-            }
-        }
-
-        imm_flush();
-
+            
         
         imm_state.shader = imm_color_shader;
 
@@ -391,37 +372,6 @@ gl_debug_callback :: (
 }
 
 
-
-
-BLOCK_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=1) in vec4 vertex_color;
-layout(location=2) in vec2 vertex_uv;
-#else
-layout(location=0) out vec4 color;
-#endif
-
-uniform mat4 projection;
-uniform sampler2D bitmap;
-
-OUTIN vec4 fragment_color;
-OUTIN vec2 fragment_uv;
-
-#ifdef VERTEX_SHADER
-void main() {
-    gl_Position = projection * vec4(vertex_position, 1.0);
-    fragment_color = vertex_color;
-    fragment_uv = vertex_uv;
-}
-#else
-void main() {
-    color = fragment_color * texture(bitmap, fragment_uv);
-}
-#endif
-END
-
-
 IMM_COLOR_SHADER :: #string END
 #ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
@@ -462,6 +412,31 @@ void main () {
     gl_Position = projection * vec4(vertex_position, 1.0);
 #else
     fragment_color = color;
+#endif
+}
+END
+
+
+BLOCK_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=1) in vec2 vertex_uv;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform sampler2D bitmap;
+uniform mat4 projection;
+uniform vec4 color;
+
+OUTIN vec2 fragment_uv;
+
+void main() {
+#ifdef VERTEX_SHADER
+    gl_Position = projection * vec4(vertex_position, 1.0);
+    fragment_uv = vertex_uv;
+#else
+    fragment_color = color * texture(bitmap, fragment_uv);
 #endif
 }
 END

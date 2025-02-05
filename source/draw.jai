@@ -5,65 +5,130 @@ Mesh :: struct {
 }
 
 
-make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
+make_cuboid :: (buf: [] u8, b: Vector3, e: Vector3, $has_uv: bool) -> [] u8 {
+    buf_size := size_of(Vector3) + #ifx has_uv then size_of(Vector2) else 0;
+    buf_size *= 36;
+
+    assert(buf.count >= buf_size);
+    
+    d := buf.data;
+    
+
+    vertex :: (v: Vector3, uv: Vector2) #expand {
+        cast(*Vector3, `d).* = v;
+        d += size_of(Vector3);
+        #if `has_uv {
+            cast(*Vector2, d).* = uv;
+            d += size_of(Vector2);
+        }
+    }
+    
+    vertex(.{b.x, b.y, b.z}, .{0, 0});
+    vertex(.{e.x, b.y, b.z}, .{1, 0});
+    vertex(.{e.x, e.y, b.z}, .{1, 1});
+    vertex(.{b.x, b.y, b.z}, .{0, 0});
+    vertex(.{e.x, e.y, b.z}, .{1, 1});
+    vertex(.{b.x, e.y, b.z}, .{0, 1});
+    vertex(.{e.x, b.y, b.z}, .{0, 0});
+    vertex(.{e.x, b.y, e.z}, .{1, 0});
+    vertex(.{e.x, e.y, e.z}, .{1, 1});
+    vertex(.{e.x, b.y, b.z}, .{0, 0});
+    vertex(.{e.x, e.y, e.z}, .{1, 1});
+    vertex(.{e.x, e.y, b.z}, .{0, 1});
+    vertex(.{b.x, e.y, b.z}, .{0, 0});
+    vertex(.{e.x, e.y, b.z}, .{1, 0});
+    vertex(.{e.x, e.y, e.z}, .{1, 1});
+    vertex(.{b.x, e.y, b.z}, .{0, 0});
+    vertex(.{e.x, e.y, e.z}, .{1, 1});
+    vertex(.{b.x, e.y, e.z}, .{0, 1});
+    vertex(.{e.x, b.y, b.z}, .{0, 0});
+    vertex(.{b.x, b.y, b.z}, .{1, 0});
+    vertex(.{b.x, b.y, e.z}, .{1, 1});
+    vertex(.{e.x, b.y, b.z}, .{0, 0});
+    vertex(.{b.x, b.y, e.z}, .{1, 1});
+    vertex(.{e.x, b.y, e.z}, .{0, 1});
+    vertex(.{b.x, b.y, e.z}, .{0, 0});
+    vertex(.{b.x, b.y, b.z}, .{1, 0});
+    vertex(.{b.x, e.y, b.z}, .{1, 1});
+    vertex(.{b.x, b.y, e.z}, .{0, 0});
+    vertex(.{b.x, e.y, b.z}, .{1, 1});
+    vertex(.{b.x, e.y, e.z}, .{0, 1});
+    vertex(.{e.x, b.y, e.z}, .{0, 0});
+    vertex(.{b.x, b.y, e.z}, .{1, 0});
+    vertex(.{b.x, e.y, e.z}, .{1, 1});
+    vertex(.{e.x, b.y, e.z}, .{0, 0});
+    vertex(.{b.x, e.y, e.z}, .{1, 1});
+    vertex(.{e.x, e.y, e.z}, .{0, 1});
+
+    return .{count = buf.count - buf_size, data = d};
+}
+
+
+make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3) -> Mesh {
     using context.game_context;
 
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    
-    Player_Vertex :: Vector3;
+    VERTEX_COUNT :: 36;
+    v: [VERTEX_COUNT * size_of(Vector3)] u8 = ---;
 
-    v := arena_alloc_array(*frame_arena, 36, Player_Vertex);
-    
-    v[0]  = .{b.x, b.y, b.z}; // .{.{b.x, b.y, b.z}, color, .{0, 0}};
-    v[1]  = .{e.x, b.y, b.z}; // .{.{e.x, b.y, b.z}, color, .{1, 0}};
-    v[2]  = .{e.x, e.y, b.z}; // .{.{e.x, e.y, b.z}, color, .{1, 1}};
-    v[3]  = .{b.x, b.y, b.z}; // .{.{b.x, b.y, b.z}, color, .{0, 0}};
-    v[4]  = .{e.x, e.y, b.z}; // .{.{e.x, e.y, b.z}, color, .{1, 1}};
-    v[5]  = .{b.x, e.y, b.z}; // .{.{b.x, e.y, b.z}, color, .{0, 1}};
-    v[6]  = .{e.x, b.y, b.z}; // .{.{e.x, b.y, b.z}, color, .{0, 0}};
-    v[7]  = .{e.x, b.y, e.z}; // .{.{e.x, b.y, e.z}, color, .{1, 0}};
-    v[8]  = .{e.x, e.y, e.z}; // .{.{e.x, e.y, e.z}, color, .{1, 1}};
-    v[9]  = .{e.x, b.y, b.z}; // .{.{e.x, b.y, b.z}, color, .{0, 0}};
-    v[10] = .{e.x, e.y, e.z}; // .{.{e.x, e.y, e.z}, color, .{1, 1}};
-    v[11] = .{e.x, e.y, b.z}; // .{.{e.x, e.y, b.z}, color, .{0, 1}};
-    v[12] = .{b.x, e.y, b.z}; // .{.{b.x, e.y, b.z}, color, .{0, 0}};
-    v[13] = .{e.x, e.y, b.z}; // .{.{e.x, e.y, b.z}, color, .{1, 0}};
-    v[14] = .{e.x, e.y, e.z}; // .{.{e.x, e.y, e.z}, color, .{1, 1}};
-    v[15] = .{b.x, e.y, b.z}; // .{.{b.x, e.y, b.z}, color, .{0, 0}};
-    v[16] = .{e.x, e.y, e.z}; // .{.{e.x, e.y, e.z}, color, .{1, 1}};
-    v[17] = .{b.x, e.y, e.z}; // .{.{b.x, e.y, e.z}, color, .{0, 1}};
-    v[18] = .{e.x, b.y, b.z}; // .{.{e.x, b.y, b.z}, color, .{0, 0}};
-    v[19] = .{b.x, b.y, b.z}; // .{.{b.x, b.y, b.z}, color, .{1, 0}};
-    v[20] = .{b.x, b.y, e.z}; // .{.{b.x, b.y, e.z}, color, .{1, 1}};
-    v[21] = .{e.x, b.y, b.z}; // .{.{e.x, b.y, b.z}, color, .{0, 0}};
-    v[22] = .{b.x, b.y, e.z}; // .{.{b.x, b.y, e.z}, color, .{1, 1}};
-    v[23] = .{e.x, b.y, e.z}; // .{.{e.x, b.y, e.z}, color, .{0, 1}};
-    v[24] = .{b.x, b.y, e.z}; // .{.{b.x, b.y, e.z}, color, .{0, 0}};
-    v[25] = .{b.x, b.y, b.z}; // .{.{b.x, b.y, b.z}, color, .{1, 0}};
-    v[26] = .{b.x, e.y, b.z}; // .{.{b.x, e.y, b.z}, color, .{1, 1}};
-    v[27] = .{b.x, b.y, e.z}; // .{.{b.x, b.y, e.z}, color, .{0, 0}};
-    v[28] = .{b.x, e.y, b.z}; // .{.{b.x, e.y, b.z}, color, .{1, 1}};
-    v[29] = .{b.x, e.y, e.z}; // .{.{b.x, e.y, e.z}, color, .{0, 1}};
-    v[30] = .{e.x, b.y, e.z}; // .{.{e.x, b.y, e.z}, color, .{0, 0}};
-    v[31] = .{b.x, b.y, e.z}; // .{.{b.x, b.y, e.z}, color, .{1, 0}};
-    v[32] = .{b.x, e.y, e.z}; // .{.{b.x, e.y, e.z}, color, .{1, 1}};
-    v[33] = .{e.x, b.y, e.z}; // .{.{e.x, b.y, e.z}, color, .{0, 0}};
-    v[34] = .{b.x, e.y, e.z}; // .{.{b.x, e.y, e.z}, color, .{1, 1}};
-    v[35] = .{e.x, e.y, e.z}; // .{.{e.x, e.y, e.z}, color, .{0, 1}};
+    make_cuboid(v, b, e, has_uv = false);
 
     vao, vbo: GLuint;
     
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, size_of(Player_Vertex) * v.count, v.data, GL_STATIC_DRAW); // Allocate the buffer
+    glBufferData(GL_ARRAY_BUFFER, v.count, v.data, GL_STATIC_DRAW); // Allocate the buffer
 
     glGenVertexArrays(1, *vao);
     glBindVertexArray(vao);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Player_Vertex), null);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
 
-    return .{vao = vao, vbo = vbo, vertex_count = xx v.count};
+    return .{vao = vao, vbo = vbo, vertex_count = VERTEX_COUNT};
+}
+
+
+make_block_mesh :: (size: Vector3i, filled: [] bool) -> Mesh {    
+    using context.game_context;
+    // @TODO @Speed @Memory: Optimize how many vertices this is to be only the faces of the cubes on the surface.
+    // @TODO @Speed: Add reallocing from the top of the temporary buffer
+
+    filled_count := 0;
+    for :iterate_vector3i size {
+        if filled[it_index] filled_count += 1;
+    }
+
+    Block_Vertex :: struct {
+        position: Vector3;
+        uv: Vector2;
+    }
+    
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+
+    vertex_count := 36 * filled_count;
+    vertices := arena_alloc_array(*frame_arena, size_of(Block_Vertex) * vertex_count, u8, zero_init = true);
+    v := vertices;
+    for :iterate_vector3i size {
+        if filled[it_index] v = make_cuboid(v, to_vector3(it), to_vector3(it + Vector3i.{1, 1, 1}), has_uv = true);
+    }
+
+    vao, vbo: GLuint;
+    
+    glGenBuffers(1, *vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.count, vertices.data, GL_STATIC_DRAW); // Allocate the buffer
+
+    // @Copypasta Figure out how to use metaprogramming to generate vaos for arbitrary vertex formats.
+
+    glGenVertexArrays(1, *vao);
+    glBindVertexArray(vao);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+
+    return .{vao = vao, vbo = vbo, vertex_count = xx vertex_count};
 }
 
 
@@ -75,6 +140,7 @@ draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     projection_loc := glGetUniformLocation(color_shader, "projection");
     assert(projection_loc >= 0);
     glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
+
     color_loc := glGetUniformLocation(color_shader, "color");
     assert(color_loc >= 0);
     glUniform4f(color_loc, color.x, color.y, color.z, color.w);
@@ -85,6 +151,33 @@ draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertex_count);
 }
 
+
+draw_block_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
+    using context.game_context;
+
+    glUseProgram(block_shader);
+   
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, block_bitmap);
+    bitmap_loc := glGetUniformLocation(block_shader, "bitmap");
+    assert(bitmap_loc >= 0);
+    glUniform1i(bitmap_loc, 0);
+
+
+    projection_loc := glGetUniformLocation(block_shader, "projection");
+    assert(projection_loc >= 0);
+    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
+
+    color_loc := glGetUniformLocation(block_shader, "color");
+    assert(color_loc >= 0);
+    glUniform4f(color_loc, color.x, color.y, color.z, color.w);
+
+
+    glBindVertexArray(mesh.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+
+    glDrawArrays(GL_TRIANGLES, 0, mesh.vertex_count);
+}
 
 
 register_shader :: (text: string) -> GLuint {

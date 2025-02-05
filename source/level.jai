@@ -65,12 +65,14 @@ POSSIBLE SO I CAN START DESIGNING LEVELS! ALWAYS KEEP THAT IN MIND!
 
 Block :: struct {
     position: Vector3i;
+
     size: Vector3i;
     filled: [] bool;
     color: Vector4;
     moveable: bool;
-    // @TODO Pregenerate the mesh for the block and upload it to the GPU
     // @TODO Make a bit array data structure for better cache coherency
+
+    mesh: Mesh;
 }
 
 
@@ -260,17 +262,21 @@ add_block_to_level :: (using level: *Level, using temp_block: *Block, level_aren
 
     block := append(*blocks);
     assert(block != null);
-   
+    
+    generated_mesh := make_block_mesh(size, filled_allocated);
+
     block.* = .{
        position = position,
        size = size,
        filled = filled_allocated,
        color = color,
-       moveable = moveable
+       moveable = moveable,
+       mesh = generated_mesh
     };
 
     assert(add_block_to_collision(*collision, block) == .OK);
 }
+
 
 init_camera :: (using level: *Level) {
     FOV :: PI / 3;
@@ -384,13 +390,13 @@ test_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
     F :: false;
      
     entrance_position = .{-3, 0, -2};
-    entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena);
+    entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85});
 
     exit_position = .{2, 0, -1};
-    exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena);
+    exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85});
 
     player_position = entrance_position;
-    player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena);
+    player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8});
 
     init_camera(level);
 
