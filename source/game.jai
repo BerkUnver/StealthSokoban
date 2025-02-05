@@ -3,6 +3,7 @@
 #load "gl.jai";
 #load "shared.jai";
 #load "imm.jai";
+#load "draw.jai";
 #load "helpers.jai";
 #load "math.jai";
 #load "level.jai";
@@ -19,6 +20,7 @@ Game_Context :: struct {
     block_shader: GLuint;
     block_bitmap: GLuint;
     color_shader: GLuint;
+    player_shader: GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -120,8 +122,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         block_shader = register_shader(BLOCK_SHADER);
         assert(block_shader != 0);
-        color_shader = register_shader(PLAYER_SHADER);
+        color_shader = register_shader(COLOR_SHADER);
         assert(color_shader != 0);
+        player_shader = register_shader(PLAYER_SHADER);
+        assert(player_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -230,8 +234,9 @@ game_update : Game_Update : (
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
-
-        imm_state.projection = get_camera_matrix(*level);
+        
+        world_to_camera := get_camera_matrix(*level);
+        imm_state.projection = world_to_camera;
 
         using level;
 
@@ -258,18 +263,25 @@ game_update : Game_Update : (
 
         imm_flush();
         
-        
+        {
+            glUseProgram(player_shader);
 
+            projection_loc := glGetUniformLocation(player_shader, "projection");
+            assert(projection_loc >= 0);
+            projection := translate(world_to_camera, to_vector3(player_position));
+            glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
+            color_loc := glGetUniformLocation(player_shader, "color");
+            assert(color_loc >= 0);
+            glUniform4f(color_loc, 1, 1, 1, 1);
 
-        imm_state.shader = color_shader;
-        
-        { // Draw the player
-            corner := to_vector3(player_position);
-            begin := corner + Vector3.{0.2, 0.2, 0.2};
-            end   := corner + Vector3.{0.8, 0.8, 0.8};
-            imm_cuboid(begin, end, .{1, 1, 1, 1});
+            glBindVertexArray(player_mesh.vao);
+            glBindBuffer(GL_ARRAY_BUFFER, player_mesh.vbo);
+
+            glDrawArrays(GL_TRIANGLES, 0, player_mesh.vertex_count);
         }
         
+        imm_state.shader = color_shader;
+
         // @TODO Make a mesh for this
         { // Draw the entrance
             corner := to_vector3(entrance);
@@ -437,7 +449,8 @@ void main() {
 #endif
 END
 
-PLAYER_SHADER :: #string END
+
+COLOR_SHADER :: #string END
 #ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec4 vertex_color;
@@ -459,4 +472,24 @@ void main() {
     color = fragment_color;
 }
 #endif
+END
+
+
+PLAYER_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+uniform vec4 color;
+
+void main () {
+#ifdef VERTEX_SHADER
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    fragment_color = color;
+#endif
+}
 END

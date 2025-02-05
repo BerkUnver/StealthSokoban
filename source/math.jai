@@ -25,6 +25,10 @@ operator == :: (a: Vector3i, b: Vector3i) -> bool {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
+operator - :: (v: Vector3i) -> Vector3i {
+    return .{-v.x, -v.y, -v.z};
+}
+
 
 to_vector3 :: (v: Vector3i) -> Vector3 {
     return .{xx v.x, xx v.y, xx v.z};

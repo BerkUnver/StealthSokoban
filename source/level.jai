@@ -2,6 +2,8 @@ Level :: struct {
     blocks: Fixed_Array(32, Block);
 
     player_position: Vector3i;
+    player_mesh: Mesh;
+
     flags: enum {PULLING :: 1;};
     entrance: Vector3i;
     exit: Vector3i;
@@ -380,6 +382,8 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
      
     level.entrance = .{-3, 0, -2};
     level.player_position = level.entrance;
+    level.player_mesh = make_cuboid_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena);
+
     level.exit = .{2, 0, -1};
     init_camera(level);
 
@@ -434,8 +438,8 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
     for * blocks {
         add_block_to_level(level, it, level_arena);
     }
-
 }
+
 
 level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
     if event.key == #char " " {

@@ -14,111 +14,12 @@ Imm_State :: struct {
     bitmap: GLuint;
 }
 
-
-register_shader :: (text: string) -> GLuint {
-    using context.game_context;
-
-    LOG_SIZE :: 1024;
-
-    vertex := glCreateShader(GL_VERTEX_SHADER);
-    defer glDeleteShader(vertex);
-    
-    VERTEX_L0 :: "#version 330 core\n";
-    VERTEX_L1 :: "#define VERTEX_SHADER\n";
-    VERTEX_L2 :: "#define OUTIN out\n";
-
-    vertex_lines := *u8.[
-        VERTEX_L0,
-        VERTEX_L1,
-        VERTEX_L2,
-        text.data
-    ];
-
-    vertex_lengths :=  GLint.[
-        xx VERTEX_L0.count,
-        xx VERTEX_L1.count,
-        xx VERTEX_L2.count,
-        xx text.count
-    ];
-
-    glShaderSource(vertex, xx vertex_lines.count, vertex_lines.data, vertex_lengths.data);
-    glCompileShader(vertex);
-    
-    vertex_success: GLint;
-    glGetShaderiv(vertex, GL_COMPILE_STATUS, *vertex_success);
-    if !vertex_success {
-        count: GLsizei;
-        buffer: [LOG_SIZE] u8 = ---;
-        glGetShaderInfoLog(vertex, LOG_SIZE, *count, *buffer[0]);
-
-        str := string.{data=*buffer[0], count=count};
-
-        print("Vertex shader compilation error:\n%", str);
-        return 0;
-    }
-    
-    fragment := glCreateShader(GL_FRAGMENT_SHADER);
-    defer glDeleteShader(fragment);
-    
-    FRAGMENT_L0 :: "#version 330 core\n";
-    FRAGMENT_L1 :: "#define OUTIN in\n";
-
-    fragment_lines := *u8.[
-        FRAGMENT_L0,
-        FRAGMENT_L1,
-        text.data
-    ];
-
-    fragment_lengths := GLint.[
-        xx FRAGMENT_L0.count,
-        xx FRAGMENT_L1.count,
-        xx text.count
-    ];
-
-    glShaderSource(fragment, xx fragment_lines.count, fragment_lines.data, fragment_lengths.data);
-    glCompileShader(fragment);
-
-    fragment_success: GLint;
-    glGetShaderiv(fragment, GL_COMPILE_STATUS, *fragment_success);
-    if !fragment_success {
-        count: GLsizei;
-        buffer: [LOG_SIZE] u8 = ---;
-        glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
-
-        str := string.{data=*buffer[0], count=count};
-        print("Fragment shader compilation error:\n%", str);
-        return 0;
-    }
-
-    program := glCreateProgram();
-    glAttachShader(program, vertex);
-    glAttachShader(program, fragment);
-    glLinkProgram(program);
-    
-    link_success: GLint;
-    glGetProgramiv(program, GL_LINK_STATUS, *link_success);
-    if !link_success {
-        count: GLsizei;
-        buffer: [LOG_SIZE] u8 = ---;
-        glGetProgramInfoLog(program, LOG_SIZE, *count, *buffer[0]);
-
-        str := string.{data=*buffer[0], count=count};
-        print("Shader linking error:\n");
-        print(str);
-        return 0;
-    }
-
-    return program;
-}
-
-
 imm_init :: () {
     using context.game_context.imm_state;
     using context.game_context;
 
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * vertices.count, null, GL_STREAM_DRAW); // Allocate the buffer
     glGenVertexArrays(1, *vao);
     
@@ -131,13 +32,13 @@ imm_init :: () {
     for 0..vertex_type_info.members.count-1 {
         glEnableVertexAttribArray(xx it);
     }
-
 }
 
 imm_flush :: () {
     using context.game_context.imm_state;
     using context.game_context;
     
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, bitmap);
