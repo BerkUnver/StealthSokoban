@@ -144,6 +144,8 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                     block_success, block_index := get_3d_index(data.previous_coord, block.position, block.size);
                     assert(block_success);
                     block.filled[block_index] = true;
+                    update_block_mesh(*block.mesh, block.size, block.filled);
+
                     
                     collision_success, collision_index := get_3d_index(data.previous_coord, collision.position, collision.size);
                     assert(collision_success);

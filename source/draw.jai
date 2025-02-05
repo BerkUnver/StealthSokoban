@@ -87,8 +87,13 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3) -> Mesh {
 }
 
 
-make_block_mesh :: (size: Vector3i, filled: [] bool) -> Mesh {    
-    using context.game_context;
+Block_Vertex :: struct {
+    position: Vector3;
+    uv: Vector2;
+}
+
+
+make_block_mesh_data :: (size: Vector3i, filled: [] bool, arena: *Memory_Arena) -> vertex_count: int, vertex_data: [] u8 {
     // @TODO @Speed @Memory: Optimize how many vertices this is to be only the faces of the cubes on the surface.
     // @TODO @Speed: Add reallocing from the top of the temporary buffer
 
@@ -97,21 +102,24 @@ make_block_mesh :: (size: Vector3i, filled: [] bool) -> Mesh {
         if filled[it_index] filled_count += 1;
     }
 
-    Block_Vertex :: struct {
-        position: Vector3;
-        uv: Vector2;
-    }
-    
-
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-
     vertex_count := 36 * filled_count;
-    vertices := arena_alloc_array(*frame_arena, size_of(Block_Vertex) * vertex_count, u8, zero_init = true);
+    vertices := arena_alloc_array(arena, size_of(Block_Vertex) * vertex_count, u8, zero_init = true);
     v := vertices;
+
     for :iterate_vector3i size {
         if filled[it_index] v = make_cuboid(v, to_vector3(it), to_vector3(it + Vector3i.{1, 1, 1}), has_uv = true);
     }
+
+    return vertex_count, vertices;
+}
+
+
+make_block_mesh :: (size: Vector3i, filled: [] bool) -> Mesh {      
+    using context.game_context;
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    vertex_count, vertices := make_block_mesh_data(size, filled, *frame_arena);
 
     vao, vbo: GLuint;
     
@@ -129,6 +137,19 @@ make_block_mesh :: (size: Vector3i, filled: [] bool) -> Mesh {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
 
     return .{vao = vao, vbo = vbo, vertex_count = xx vertex_count};
+}
+
+
+update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool) {
+    using context.game_context;
+    
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    vertex_count, vertices := make_block_mesh_data(size, filled, *frame_arena);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.count, vertices.data, GL_STATIC_DRAW);
+    mesh.vertex_count = xx vertex_count;
 }
 
 
