@@ -3,10 +3,13 @@ Level :: struct {
 
     player_position: Vector3i;
     player_mesh: Mesh;
-
     flags: enum {PULLING :: 1;};
-    entrance: Vector3i;
-    exit: Vector3i;
+
+    entrance_position: Vector3i;
+    entrance_mesh: Mesh;
+
+    exit_position: Vector3i;
+    exit_mesh: Mesh;
 
     camera_position: Vector3;
     camera_pitch: float;
@@ -376,18 +379,22 @@ update_level_visibility :: (using level: *Level) {
 }
 
 
-test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
+test_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
      
-    level.entrance = .{-3, 0, -2};
-    level.player_position = level.entrance;
-    level.player_mesh = make_cuboid_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena);
+    entrance_position = .{-3, 0, -2};
+    entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena);
 
-    level.exit = .{2, 0, -1};
+    exit_position = .{2, 0, -1};
+    exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena);
+
+    player_position = entrance_position;
+    player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena);
+
     init_camera(level);
 
-    blocks := Block.[
+    init_blocks := Block.[
         .{
             position = .{-3, -1, -2},
             size = .{6, 1, 4},
@@ -434,8 +441,8 @@ test_level_init :: (level: *Level, level_arena: *Memory_Arena) {
         */
     ];
     
-    level.collision = make_collision(blocks, level_arena);
-    for * blocks {
+    collision = make_collision(init_blocks, level_arena);
+    for * init_blocks {
         add_block_to_level(level, it, level_arena);
     }
 }
@@ -528,7 +535,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
         if !move_failed {
             player_position = new_player_position;
-            if player_position == exit {
+            if player_position == exit_position {
                 clear_arena(level_arena);
                 test_level_init(level, level_arena);
             }

@@ -5,7 +5,7 @@ Mesh :: struct {
 }
 
 
-make_cuboid_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
+make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
     using context.game_context;
 
     mark := get_mark(*frame_arena);
@@ -56,7 +56,7 @@ make_cuboid_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
     
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, size_of(Player_Vertex) * v.count, v.data, GL_STREAM_DRAW); // Allocate the buffer
+    glBufferData(GL_ARRAY_BUFFER, size_of(Player_Vertex) * v.count, v.data, GL_STATIC_DRAW); // Allocate the buffer
 
     glGenVertexArrays(1, *vao);
     glBindVertexArray(vao);
@@ -65,6 +65,26 @@ make_cuboid_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
 
     return .{vao = vao, vbo = vbo, vertex_count = xx v.count};
 }
+
+
+draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
+    using context.game_context;
+
+    glUseProgram(color_shader);
+
+    projection_loc := glGetUniformLocation(color_shader, "projection");
+    assert(projection_loc >= 0);
+    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
+    color_loc := glGetUniformLocation(color_shader, "color");
+    assert(color_loc >= 0);
+    glUniform4f(color_loc, color.x, color.y, color.z, color.w);
+
+    glBindVertexArray(mesh.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+
+    glDrawArrays(GL_TRIANGLES, 0, mesh.vertex_count);
+}
+
 
 
 register_shader :: (text: string) -> GLuint {
