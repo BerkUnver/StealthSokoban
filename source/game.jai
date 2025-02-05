@@ -21,6 +21,7 @@ Game_Context :: struct {
     block_bitmap: GLuint;
     imm_color_shader: GLuint;
     color_shader: GLuint;
+    wireframe_shader: GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -126,6 +127,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(imm_color_shader != 0);
         color_shader = register_shader(COLOR_SHADER);
         assert(color_shader != 0);
+        wireframe_shader = register_shader(WIREFRAME_SHADER);
+        assert(wireframe_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -249,19 +252,32 @@ game_update : Game_Update : (
         }
             
         
-        imm_state.shader = imm_color_shader;
 
-        for :iterate_vector3i collision.size {
-            if collision.viewed[it_index] & .VISIBLE {
-                begin := to_vector3(collision.position + it);
-                imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
-            } else if collision.viewed[it_index] & .SEEN {
-                begin := to_vector3(collision.position + it);
-                imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
-            }
+        if mode ==  {
+            case .GAME;
+                imm_state.shader = imm_color_shader;
+                for :iterate_vector3i collision.size {
+                    if collision.viewed[it_index] & .VISIBLE {
+                        begin := to_vector3(collision.position + it);
+                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
+                    } else if collision.viewed[it_index] & .SEEN {
+                        begin := to_vector3(collision.position + it);
+                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
+                    }
+                }
+                imm_flush();
+
+            case .EDITOR;
+                if editor.selected_block {
+                    t := (cos(editor.selected_timer * TAU) + 1) / 2;
+                    color := Vector4.{t, t, t, 1};
+
+                    draw_wireframe_mesh(*editor.selected_block.mesh, translate(world_to_camera, to_vector3(editor.selected_block.position)), color);
+                }
         }
 
-        imm_flush();
+
+
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
         // This might be valuable for debugging.
@@ -437,6 +453,28 @@ void main() {
     fragment_uv = vertex_uv;
 #else
     fragment_color = color * texture(bitmap, fragment_uv);
+#endif
+}
+END
+
+
+WIREFRAME_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+uniform vec4 color;
+
+void main() {
+#ifdef VERTEX_SHADER
+    vec4 position = projection * vec4(vertex_position, 1.0);
+    position.z -= 0.0001;
+    gl_Position = position;
+#else
+    fragment_color = color;
 #endif
 }
 END

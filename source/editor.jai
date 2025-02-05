@@ -24,6 +24,7 @@ Editor :: struct {
     }
     
     selected_block: *Block; // DO NOT MODIFY THIS IF selection_mode != .IDLE.
+    selected_timer: float;
     
     union {
         drag: struct {
@@ -94,6 +95,10 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
 
                 ray_end := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 1});
                 raycast(camera_position, ray_end, raycast_visitor, *data);
+                
+                if data.block && editor.selected_block != data.block {
+                    editor.selected_timer = 0;
+                }
 
                 editor.selected_block = data.block;
                 return;
@@ -292,5 +297,10 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                     }
                     // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
             }
+    }
+    
+    FLASH_TIME :: 1;
+    if editor.selected_block {
+        editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
     }
 }

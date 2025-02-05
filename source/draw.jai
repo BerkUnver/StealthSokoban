@@ -163,7 +163,6 @@ draw_block_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     assert(bitmap_loc >= 0);
     glUniform1i(bitmap_loc, 0);
 
-
     projection_loc := glGetUniformLocation(block_shader, "projection");
     assert(projection_loc >= 0);
     glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
@@ -172,11 +171,35 @@ draw_block_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     assert(color_loc >= 0);
     glUniform4f(color_loc, color.x, color.y, color.z, color.w);
 
-
     glBindVertexArray(mesh.vao);
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
 
     glDrawArrays(GL_TRIANGLES, 0, mesh.vertex_count);
+}
+
+
+draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
+    using context.game_context;
+
+    glUseProgram(wireframe_shader);
+
+    projection_loc := glGetUniformLocation(wireframe_shader, "projection");
+    assert(projection_loc >= 0);
+    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
+
+    color_loc := glGetUniformLocation(wireframe_shader, "color");
+    assert(color_loc >= 0);
+    glUniform4f(color_loc, color.x, color.y, color.z, color.w);
+    
+    // @TODO: Make sure that we make a VAO where the vertex format matches the input mesh vertex format.
+    // The only reason it works right now is because all the vertex formats have position as their first element.
+
+    glBindVertexArray(mesh.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
+    
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
+    glDrawArrays(GL_TRIANGLES, 0, mesh.vertex_count);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
 
