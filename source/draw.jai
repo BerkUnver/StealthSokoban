@@ -153,7 +153,7 @@ update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool) {
 }
 
 
-// I am keeping the gl... calls out of most of the code.
+// I am keeping the gl... calls out of the non-drawing and init code.
 // I don't know if this is premature messing around or not.
 
 Collision_Texture :: struct {
@@ -165,17 +165,17 @@ Collision_Texture :: struct {
 
 make_collision_texture :: (size: Vector3i) -> Collision_Texture {
     using context.game_context;
-
+    
     vbo, tbo: GLuint;
-
+    
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_TEXTURE_BUFFER, vbo);
     glBufferData(GL_TEXTURE_BUFFER, size.x * size.y * size.z, null, GL_DYNAMIC_DRAW);
 
     glGenTextures(1, *tbo);
     glBindTexture(GL_TEXTURE_BUFFER, tbo);
-    
-    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8, vbo);
+
+    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, vbo);
 
     return .{vbo = vbo, tbo = tbo, size = size};
 }
@@ -183,7 +183,7 @@ make_collision_texture :: (size: Vector3i) -> Collision_Texture {
 
 update_collision_texture :: (collision: *Collision) {
     using context.game_context;
-
+    
     glBindBuffer(GL_TEXTURE_BUFFER, collision.texture.vbo);
     
     // Should we just resize it when the collision resizes?

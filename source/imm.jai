@@ -40,19 +40,22 @@ imm_flush :: () {
     
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, bitmap);
-
     glBindVertexArray(vao);
     
     glUseProgram(shader);
-
+    
+    // @TODO: I think the caller should bind all uniforms themselves...
+    
+    /*
     projection_loc := glGetUniformLocation(shader, "projection");
     assert(projection_loc >= 0);
     glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
-    
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, bitmap);
     bitmap_loc := glGetUniformLocation(shader, "bitmap");
     if bitmap_loc >= 0 glUniform1i(bitmap_loc, 0);
+    */
 
     position_loc := glGetAttribLocation(shader, "vertex_position");
     if position_loc >= 0 {
@@ -100,6 +103,22 @@ imm_vertex :: (position: Vector3, color: Vector4) {
     v := imm_vertex_ptr();
     v.position = position;
     v.color = color;
+}
+
+
+imm_vertex :: (position: Vector3) {
+    v := imm_vertex_ptr();
+    v.position = position;
+}
+
+
+imm_quad_y :: (y: float, begin_x: float, begin_z: float, end_x: float, end_z: float) {
+    imm_vertex(.{begin_x, y, begin_z});
+    imm_vertex(.{end_x,   y, begin_z});
+    imm_vertex(.{end_x,   y, end_z});
+    imm_vertex(.{begin_x, y, begin_z});
+    imm_vertex(.{end_x,   y, end_z});
+    imm_vertex(.{begin_x, y, end_z});
 }
 
 

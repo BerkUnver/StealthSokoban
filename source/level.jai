@@ -37,7 +37,7 @@ Collision :: struct {
 }
 
 
-View_State :: enum_flags u8 {
+View_State :: enum_flags u8 { // @Volatile :ViewState
     SEEN;
     VISIBLE;
     

@@ -22,6 +22,7 @@ Game_Context :: struct {
     imm_color_shader: GLuint;
     color_shader: GLuint;
     wireframe_shader: GLuint;
+    viewed_shader: GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -129,6 +130,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(color_shader != 0);
         wireframe_shader = register_shader(WIREFRAME_SHADER);
         assert(wireframe_shader != 0);
+        viewed_shader = register_shader(VIEWED_SHADER);
+        assert(viewed_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -239,7 +242,6 @@ game_update : Game_Update : (
         
         
         world_to_camera := get_camera_matrix(*level);
-        imm_state.projection = world_to_camera;
 
         using level;
 
@@ -254,8 +256,18 @@ game_update : Game_Update : (
         
 
         if mode ==  {
-            case .GAME;
+            case .GAME; 
+                // @TODO: Clean up immediate-mode rendering so the caller is responsible for binding each uniform.
+
                 imm_state.shader = imm_color_shader;
+                glUseProgram(imm_color_shader);
+
+                {
+                    projection_loc := glGetUniformLocation(imm_color_shader, "projection");
+                    assert(projection_loc >= 0);
+                    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *world_to_camera._11);
+                }
+
                 for :iterate_vector3i collision.size {
                     if collision.viewed[it_index] & .VISIBLE {
                         begin := to_vector3(collision.position + it);
@@ -267,6 +279,31 @@ game_update : Game_Update : (
                 }
                 imm_flush();
 
+
+                imm_state.shader = viewed_shader;
+                
+                glUseProgram(viewed_shader);
+                    
+                projection := translate(world_to_camera, .{0, 2, 0});
+                projection_loc := glGetUniformLocation(viewed_shader, "projection");
+                assert(projection_loc >= 0);
+                glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
+
+                viewed_loc := glGetUniformLocation(viewed_shader, "viewed");
+                assert(viewed_loc >= 0);
+                glUniform1i(viewed_loc, 0);
+
+                viewed_size_loc := glGetUniformLocation(viewed_shader, "viewed_size");
+                assert(viewed_size_loc >= 0);
+                glUniform3iv(viewed_size_loc, 1, *collision.texture.size.x);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+
+                imm_quad_y(1, 0, 0, 6, 4);
+
+                imm_flush();
+
             case .EDITOR;
                 if editor.selected_block {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
@@ -275,7 +312,7 @@ game_update : Game_Update : (
                     draw_wireframe_mesh(*editor.selected_block.mesh, translate(world_to_camera, to_vector3(editor.selected_block.position)), color);
                 }
         }
-
+        
 
 
 
@@ -475,6 +512,53 @@ void main() {
     gl_Position = position;
 #else
     fragment_color = color;
+#endif
+}
+END
+
+
+VIEWED_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+uniform usamplerBuffer viewed;
+uniform ivec3 viewed_size;
+
+OUTIN vec3 fragment_coordinates;
+
+// @Volatile :ViewState
+#define VIEW_STATE_SEEN 1u
+#define VIEW_STATE_VISIBLE 2u
+
+void main() {
+#ifdef VERTEX_SHADER
+    fragment_coordinates = vertex_position;
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    
+    // @TODO: The reason this is flickering so much is because when
+    // OpenGL interpolates fragment_coordinates, the value of y
+    // dips ever-so-slightly below 1, and then it gets floored to 0.
+    // Maybe this won't be an issue once the actual viewing system
+    // is working, so it's not work trying to fix right now.
+    int x = int(floor(fragment_coordinates.x));
+    int y = int(floor(fragment_coordinates.y));
+    int z = int(floor(fragment_coordinates.z));
+
+    int index = y * viewed_size.z * viewed_size.x + z * viewed_size.x + x;
+    uint filled = texelFetch(viewed, index).r;
+
+    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
+        fragment_color = vec4(1, 0, 0, 1);
+    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
+        fragment_color = vec4(0, 1, 0, 1);
+    } else {
+        fragment_color = vec4(0, 0, 1, 1);
+    }
 #endif
 }
 END
