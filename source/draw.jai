@@ -153,6 +153,49 @@ update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool) {
 }
 
 
+// I am keeping the gl... calls out of most of the code.
+// I don't know if this is premature messing around or not.
+
+Collision_Texture :: struct {
+    vbo: GLuint; // The backing store for the tbo
+    tbo: GLuint; // "tbo" = texture buffer object
+    size: Vector3i;
+}
+
+
+make_collision_texture :: (size: Vector3i) -> Collision_Texture {
+    using context.game_context;
+
+    vbo, tbo: GLuint;
+
+    glGenBuffers(1, *vbo);
+    glBindBuffer(GL_TEXTURE_BUFFER, vbo);
+    glBufferData(GL_TEXTURE_BUFFER, size.x * size.y * size.z, null, GL_DYNAMIC_DRAW);
+
+    glGenTextures(1, *tbo);
+    glBindTexture(GL_TEXTURE_BUFFER, tbo);
+    
+    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8, vbo);
+
+    return .{vbo = vbo, tbo = tbo, size = size};
+}
+
+
+update_collision_texture :: (collision: *Collision) {
+    using context.game_context;
+
+    glBindBuffer(GL_TEXTURE_BUFFER, collision.texture.vbo);
+    
+    // Should we just resize it when the collision resizes?
+    if collision.texture.size != collision.size {
+        collision.texture.size = collision.size;
+        glBufferData(GL_TEXTURE_BUFFER, collision.size.x * collision.size.y * collision.size.z, collision.viewed.data, GL_DYNAMIC_DRAW);
+    } else {
+        glBufferSubData(GL_TEXTURE_BUFFER, 0, collision.size.x * collision.size.y * collision.size.z, collision.viewed.data);
+    }
+}
+
+
 draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     using context.game_context;
 

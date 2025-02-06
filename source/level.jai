@@ -32,6 +32,8 @@ Collision :: struct {
     // able to type levels directly into code for this initial
     // development period, but may make less sense later.
     // Consider coming back to this.
+
+    texture: Collision_Texture; // :SharedEditor We don't need this in the editor...
 }
 
 
@@ -78,6 +80,8 @@ Block :: struct {
 
 // Fits to the given blocks. DOES NOT INSERT THEM INTO THE COLLISION MAP.
 make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
+    using context.game_context;
+
     start := blocks[0].position;
     end := start + blocks[0].size;
 
@@ -89,12 +93,13 @@ make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
 
     size := end - start;
     size_1d := size.x * size.y * size.z;
-
+    
     return .{
         position = start,
         size = size,
         filled = arena_alloc_array(arena, size_1d, *Block),
-        viewed = arena_alloc_array(arena, size_1d, View_State)
+        viewed = arena_alloc_array(arena, size_1d, View_State),
+        texture = make_collision_texture(size)
     };
 }
 
@@ -382,6 +387,8 @@ update_level_visibility :: (using level: *Level) {
         check_position(pz);
         check_position(nz);
     }
+
+    update_collision_texture(*collision);
 }
 
 
