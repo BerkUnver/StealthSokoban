@@ -163,7 +163,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         
         mode = .GAME;
-        test_level_init(*level, *level_arena);
+        make_level(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -192,17 +192,14 @@ game_update : Game_Update : (
         for input.events {
             if it.key == Key.F_BASE + 1 && it.down {
 
-                clear_arena(*level_arena);
-                memset(*level, 0, size_of(type_of(level)));
-
                 if mode == .GAME {
                     mode = .EDITOR;
-                    test_level_init(*level, *level_arena);
-                    editor = .{};
                 } else {
                     mode = .GAME;
-                    test_level_init(*level, *level_arena);
                 }
+
+                free_level(*level, *level_arena);
+                make_level(*level, *level_arena);
             } else {
                 if #complete mode == {
                     case .GAME;

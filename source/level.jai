@@ -409,7 +409,12 @@ update_level_visibility :: (using level: *Level) {
 }
 
 
-test_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
+make_level :: (using level: *Level, level_arena: *Memory_Arena) {
+    // @Speed maybe we can just set what we need to be reset in case
+    // this is a reused pointer from an old level. I am going to
+    // zero-init everything right now to prevent bufs.
+    level.* = .{};
+
     T :: true;
     F :: false;
     
@@ -475,6 +480,26 @@ test_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
     collision = make_collision(temp_blocks, level_arena);
     
     for * temp_blocks add_block_to_level(level, it, level_arena);
+}
+
+
+free_level :: (using level: *Level, level_arena: *Memory_Arena) {   
+    // @TODO This is a far-in-the-future kind of thing.
+    // We should wrap glGenBuffers, glDeleteBuffers, and similar allocating functions and make a memory debugger
+    // that tells us what has leaked when we close the application, because as far as I can tell, there's no good
+    // way to natively get that information from OpenGL.
+
+    free(*collision.texture);
+
+    free(*player.mesh);
+    free(*entrance.mesh);
+    free(*exit.mesh);
+
+    for blocks {
+        free(*it.mesh);
+    }
+
+    clear_arena(level_arena);
 }
 
 
@@ -566,8 +591,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         if !move_failed {
             player.position = new_player_position;
             if player.position == exit.position {
-                clear_arena(level_arena);
-                test_level_init(level, level_arena);
+                free_level(level, level_arena);
+                make_level(level, level_arena);
             }
         }
     }

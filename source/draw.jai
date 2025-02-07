@@ -64,6 +64,13 @@ make_cuboid :: (buf: [] u8, b: Vector3, e: Vector3, $has_uv: bool) -> [] u8 {
 }
 
 
+free :: (mesh: *Mesh) {
+    using context.game_context;
+    glDeleteVertexArrays(1, *mesh.vao);
+    glDeleteBuffers(1, *mesh.vbo);
+}
+
+
 make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3) -> Mesh {
     using context.game_context;
 
@@ -175,6 +182,12 @@ make_collision_texture :: (size: Vector3i) -> Collision_Texture {
     glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, vbo);
 
     return .{vbo = vbo, tbo = tbo, size = size};
+}
+
+free :: (tex: *Collision_Texture) {
+    using context.game_context;
+    glDeleteBuffers(1, *tex.vbo);
+    glDeleteTextures(1, *tex.tbo);
 }
 
 
