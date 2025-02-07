@@ -244,10 +244,10 @@ game_update : Game_Update : (
         world_to_camera := get_camera_matrix(*level);
 
         using level;
-
-        draw_vertex_mesh(*player_mesh, translate(world_to_camera, to_vector3(player_position)), .{1, 1, 1, 1});
-        draw_vertex_mesh(*entrance_mesh, translate(world_to_camera, to_vector3(entrance_position)), .{75.0/255.0, 228.0/255.0, 1, 1});
-        draw_vertex_mesh(*exit_mesh, translate(world_to_camera, to_vector3(exit_position)), .{146.0/255.0, 1, 118.0/255.0, 1});
+        
+        draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
+        draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
+        draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
 
         for * blocks {
             draw_block_mesh(*it.mesh, translate(world_to_camera, to_vector3(it.position)), it.color);

@@ -1,15 +1,12 @@
 Level :: struct {
+    selectables: Fixed_Array(32, *Selectable);
+
     blocks: Fixed_Array(32, Block);
-
-    player_position: Vector3i;
-    player_mesh: Mesh;
+    player: Player;
     flags: enum {PULLING :: 1;};
-
-    entrance_position: Vector3i;
-    entrance_mesh: Mesh;
-
-    exit_position: Vector3i;
-    exit_mesh: Mesh;
+    
+    entrance: Selectable;
+    exit:     Selectable;
 
     camera_position: Vector3;
     camera_pitch: float;
@@ -18,6 +15,38 @@ Level :: struct {
 
     collision: Collision;
 }
+
+
+Selectable :: struct {
+    position: Vector3i;
+    mesh: Mesh;
+}
+
+
+Player   :: Selectable;
+
+
+Block :: struct {
+    using #as selectable: Selectable;
+
+    size: Vector3i;
+    filled: [] bool;
+    color: Vector4;
+    moveable: bool;
+    // @TODO Make a bit array data structure for better cache coherency
+
+}
+
+
+// This solely exists as a convenience so I can type blocks into the editor for now.
+Temporary_Block :: struct {
+    position: Vector3i;
+    size: Vector3i;
+    filled: [] bool;
+    color: Vector4;
+    moveable: bool;
+}
+
 
 
 Collision :: struct {
@@ -65,28 +94,15 @@ POSSIBLE SO I CAN START DESIGNING LEVELS! ALWAYS KEEP THAT IN MIND!
 */
 
 
-Block :: struct {
-    position: Vector3i;
-
-    size: Vector3i;
-    filled: [] bool;
-    color: Vector4;
-    moveable: bool;
-    // @TODO Make a bit array data structure for better cache coherency
-
-    mesh: Mesh;
-}
-
-
 // Fits to the given blocks. DOES NOT INSERT THEM INTO THE COLLISION MAP.
-make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
+make_collision :: (temp_blocks: [] Temporary_Block, arena: *Memory_Arena) -> Collision {
     using context.game_context;
 
-    start := blocks[0].position;
-    end := start + blocks[0].size;
+    start := temp_blocks[0].position;
+    end := start + temp_blocks[0].size;
 
-    for 1..blocks.count-1 {
-        block := *blocks[it];
+    for 1..temp_blocks.count-1 {
+        block := *temp_blocks[it];
         start = min(start, block.position);
         end = max(end, block.position + block.size);
     }
@@ -261,7 +277,7 @@ remove_block_from_collision :: (col: *Collision, block: *Block) {
 }
 
 
-add_block_to_level :: (using level: *Level, using temp_block: *Block, level_arena: *Memory_Arena) {
+add_block_to_level :: (using level: *Level, using temp_block: *Temporary_Block, level_arena: *Memory_Arena) {
     filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
     memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
 
@@ -278,7 +294,8 @@ add_block_to_level :: (using level: *Level, using temp_block: *Block, level_aren
        moveable = moveable,
        mesh = generated_mesh
     };
-
+    
+    assert(append(*selectables, block));
     assert(add_block_to_collision(*collision, block) == .OK);
 }
 
@@ -341,12 +358,12 @@ update_level_visibility :: (using level: *Level) {
     positions := arena_alloc_array(*frame_arena, collision.size.x * collision.size.y * collision.size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
     position_count := 1;
 
-    player_success, player_index := get_3d_index(player_position, collision.position, collision.size);
+    player_success, player_index := get_3d_index(player.position, collision.position, collision.size);
     assert(player_success);
-    positions[0] = .{player_index, player_position};
+    positions[0] = .{player_index, player.position};
     collision.viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
     
-    end := to_vector3(player_position) + Vector3.{0.5, 0.5, 0.5};
+    end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
     while position_count != 0 {
         position_count -= 1;
         using index_and_position := positions[position_count];
@@ -395,19 +412,29 @@ update_level_visibility :: (using level: *Level) {
 test_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
-     
-    entrance_position = .{-3, 0, -2};
-    entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85});
+    
+    entrance = .{
+        position = .{-3, 0, -2},
+        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85})
+    };
+    
+    exit = .{
+        position = .{2, 0, -1},
+        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85})
+    };
+    
+    player = .{
+        position = entrance.position,
+        mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8})
+    };
 
-    exit_position = .{2, 0, -1};
-    exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85});
-
-    player_position = entrance_position;
-    player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8});
+    assert(append(*selectables, *entrance));
+    assert(append(*selectables, *exit));
+    assert(append(*selectables, *player));
 
     init_camera(level);
 
-    init_blocks := Block.[
+    temp_blocks := Temporary_Block.[
         .{
             position = .{-3, -1, -2},
             size = .{6, 1, 4},
@@ -442,22 +469,12 @@ test_level_init :: (using level: *Level, level_arena: *Memory_Arena) {
             ],
             color = .{0, 0, 1, 1},
             moveable = true
-        },
-        /*
-        .{
-            position = .{-1, 0, 0},
-            size = .{3, 1, 1},
-            filled = .[T, T, T],
-            color = .{0, 0.5, 0, 1},
-            moveable = true
-        };
-        */
+        }
     ];
+
+    collision = make_collision(temp_blocks, level_arena);
     
-    collision = make_collision(init_blocks, level_arena);
-    for * init_blocks {
-        add_block_to_level(level, it, level_arena);
-    }
+    for * temp_blocks add_block_to_level(level, it, level_arena);
 }
 
 
@@ -479,7 +496,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
         }
         
-        new_player_position := player_position + push_direction;
+        new_player_position := player.position + push_direction;
 
         
         // This code took a while to put together and likely is only going to get more complex.
@@ -514,7 +531,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         }
 
         if flags & .PULLING {
-            pulled_in_bounds, pulled_block := get_block(*collision, player_position - push_direction);
+            pulled_in_bounds, pulled_block := get_block(*collision, player.position - push_direction);
             if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(*moving_blocks, pulled_block) {
                 assert(append(*moving_blocks, pulled_block));
             }
@@ -547,8 +564,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         }
 
         if !move_failed {
-            player_position = new_player_position;
-            if player_position == exit_position {
+            player.position = new_player_position;
+            if player.position == exit.position {
                 clear_arena(level_arena);
                 test_level_init(level, level_arena);
             }
