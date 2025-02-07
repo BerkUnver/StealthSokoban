@@ -284,7 +284,7 @@ add_block_to_level :: (using level: *Level, using temp_block: *Temporary_Block, 
     block := append(*blocks);
     assert(block != null);
     
-    generated_mesh := make_block_mesh(size, filled_allocated);
+    generated_mesh := make_block_mesh(size, filled_allocated, level_arena);
 
     block.* = .{
        position = position,
@@ -420,17 +420,17 @@ make_level :: (using level: *Level, level_arena: *Memory_Arena) {
     
     entrance = .{
         position = .{-3, 0, -2},
-        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85})
+        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena)
     };
     
     exit = .{
         position = .{2, 0, -1},
-        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85})
+        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena)
     };
     
     player = .{
         position = entrance.position,
-        mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8})
+        mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
     };
 
     assert(append(*selectables, *entrance));

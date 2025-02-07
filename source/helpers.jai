@@ -128,3 +128,14 @@ print :: (s: string, args: ..Any) {
     buf_str = format_print(buf_str, s, ..args);
     context.game_context.os_print(buf_str);
 }
+
+
+byte_count :: (a: [] $T) -> s64 {
+    return size_of(T) * a.count;
+}
+
+
+slice :: (a: [] $T, start: int) -> [] T {
+    assert(start <= a.count);
+    return .{data=a.data + start, count = a.count - start};
+}
