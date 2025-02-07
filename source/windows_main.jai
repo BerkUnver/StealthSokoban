@@ -393,6 +393,7 @@ main :: () {
                 assert(game_dll != null);
                 game_update = GetProcAddress(game_dll, "game_update");
                 assert(game_update != null);
+                print("Game DLL has been hotloaded.\n");
             }
         }
 
