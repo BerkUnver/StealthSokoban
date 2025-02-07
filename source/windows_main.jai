@@ -33,7 +33,10 @@ main :: () {
                         return true, xx keycode;
                     } else if 0x6f < keycode && keycode <= 0x7B {
                         return true, xx (xx Key.F_BASE + keycode - 0x6f);
-                    }
+                    } else if keycode == VK_LEFT return true, .LEFT_ARROW;
+                    else if keycode == VK_UP return true, .UP_ARROW;
+                    else if keycode == VK_RIGHT return true, .RIGHT_ARROW;
+                    else if keycode == VK_DOWN return true, .DOWN_ARROW;
 
                     return false, 0;
                 }

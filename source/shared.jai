@@ -53,6 +53,10 @@ Key :: enum {
     MOUSE_RIGHT_BUTTON;
     F_BASE :: MOUSE_RIGHT_BUTTON;
     F12 :: F_BASE + 12;
+    LEFT_ARROW;
+    RIGHT_ARROW;
+    DOWN_ARROW;
+    UP_ARROW;
 }
 
 

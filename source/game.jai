@@ -289,12 +289,12 @@ game_update : Game_Update : (
                 */
 
             case .EDITOR;
-                if editor.selected_block {
-                    t := (cos(editor.selected_timer * TAU) + 1) / 2;
-                    color := Vector4.{t, t, t, 1};
+                selected := selectables[editor.selected_index];
 
-                    draw_wireframe_mesh(*editor.selected_block.mesh, translate(world_to_camera, to_vector3(editor.selected_block.position)), color);
-                }
+                t := (cos(editor.selected_timer * TAU) + 1) / 2;
+                color := Vector4.{t, t, t, 1};
+
+                draw_wireframe_mesh(*selected.mesh, translate(world_to_camera, to_vector3(selected.position)), color);
         }
         
 

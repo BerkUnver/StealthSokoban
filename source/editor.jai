@@ -23,7 +23,7 @@ Editor :: struct {
         }
     }
     
-    selected_block: *Block; // DO NOT MODIFY THIS IF selection_mode != .IDLE.
+    selected_index: int; // DO NOT MODIFY THIS IF selection_mode != .IDLE.
     selected_timer: float;
     
     union {
@@ -78,6 +78,10 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
             }
 
 
+            // @TODO: Get rid of this raycast stuff
+            // @TODO: Make it so "collision" is not used in the editor.
+            
+            /*
             if event.key == .MOUSE_LEFT_BUTTON && event.down {
                 Raycast_Data :: struct {
                     block: *Block;
@@ -103,7 +107,19 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 editor.selected_block = data.block;
                 return;
             }
+            */
+            
+            if event.key == .LEFT_ARROW && event.down {
+                editor.selected_index = (editor.selected_index - 1 + selectables.count) % selectables.count;
+                editor.selected_timer = 0;
+                return;
+            }
 
+            if event.key == .RIGHT_ARROW && event.down {
+                editor.selected_index = (editor.selected_index + 1) % selectables.count;
+                editor.selected_timer = 0;
+                return;
+            }
 
             if event.key == xx #char "X" && event.down {
                 Raycast_Data :: struct {
@@ -154,7 +170,7 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 return;
             }
             
-
+            /*
             enable_drag :: (index: u8) #expand {
                 `editor.selection_mode = .LOCKED;
                 `editor.drag = .{
@@ -178,6 +194,7 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 enable_drag(2);
                 return;
             }
+            */
 
         case .CAMERA;
             using editor.selection.camera; if event.key == {
@@ -249,6 +266,7 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
         case .LOCKED;
             if editor.mode == {
                 case .DRAG; 
+                    /*
                     using editor.drag;
 
                     camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
@@ -298,11 +316,10 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                         editor.selected_block.position.component[index] = new_position_component;
                     }
                     // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
+                    */
             }
     }
     
     FLASH_TIME :: 1;
-    if editor.selected_block {
-        editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
-    }
+    editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
 }
