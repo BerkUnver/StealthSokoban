@@ -29,7 +29,7 @@ Editor :: struct {
     union {
         drag: struct {
             mouse_start: Vector2;
-            block_start: Vector3i;
+            selectable_start: Vector3i;
             index: u8;
         }
     }
@@ -170,12 +170,11 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 return;
             }
             
-            /*
             enable_drag :: (index: u8) #expand {
                 `editor.selection_mode = .LOCKED;
                 `editor.drag = .{
                     mouse_start = .{`mouse_x, `mouse_y},
-                    block_start = `editor.selected_block.position,
+                    selectable_start = `selectables[editor.selected_index].position,
                     index = index
                 };
             }
@@ -194,7 +193,6 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
                 enable_drag(2);
                 return;
             }
-            */
 
         case .CAMERA;
             using editor.selection.camera; if event.key == {
@@ -241,7 +239,7 @@ editor_handle_input :: (using l: *Level, level_arena: *Memory_Arena, editor: *Ed
 }
 
 
-editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
+editor_update :: (using l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
     if editor.selection_mode == {
         case .CAMERA;
             using editor.selection.camera;
@@ -252,21 +250,20 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                 mouse_movement := rotating_previous_mouse_position - mouse;
                 rotating_previous_mouse_position = mouse;
                 
-                l.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
-                l.camera_yaw = fmod_cycling(l.camera_yaw, TAU);
+                camera_yaw += mouse_movement.x * dt * YAW_SPEED;
+                camera_yaw = fmod_cycling(camera_yaw, TAU);
 
-                l.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
-                clamp(*l.camera_pitch, -PI/2, PI/2);
+                camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
+                clamp(*camera_pitch, -PI/2, PI/2);
             }
 
             CAMERA_SPEED :: 240.0 / 60.0;
             camera_movement := get_camera_to_world_rotation_matrix(l) * moving_direction * (dt * CAMERA_SPEED);
-            l.camera_position += camera_movement;
+            camera_position += camera_movement;
 
         case .LOCKED;
             if editor.mode == {
                 case .DRAG; 
-                    /*
                     using editor.drag;
 
                     camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(l);
@@ -274,7 +271,7 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                     initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
                     mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
                     
-                    block_position := to_vector3(editor.selected_block.position);
+                    selectable_position := to_vector3(selectables[editor.selected_index].position);
 
                     axis: Vector3;
                     axis.component[index] = 1;
@@ -291,15 +288,15 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
 
 
                     intersection_parallel, intersection := get_intersection_between_line_and_plane(
-                        line_point = l.camera_position,
-                        line_direction = mouse_position - l.camera_position,
-                        plane_point = block_position,
+                        line_point = camera_position,
+                        line_direction = mouse_position - camera_position,
+                        plane_point = selectable_position,
                         plane_normal = normal);
 
                     initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
-                        line_point = l.camera_position,
-                        line_direction = initial_mouse_position - l.camera_position,
-                        plane_point = block_position,
+                        line_point = camera_position,
+                        line_direction = initial_mouse_position - camera_position,
+                        plane_point = selectable_position,
                         plane_normal = normal);
                     
                     using context.game_context;
@@ -307,16 +304,15 @@ editor_update :: (l: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt
                     if initial_intersection_parallel
                     || intersection_parallel
                     || abs(intersection.component[index] - initial_intersection.component[index]) > 1000
-                    // Prevent the block from flying to infinity when the camera is almost parallel and close to the axis
-                    || dot(intersection - l.camera_position, camera_normal - l.camera_position) <= 0 { // Prevent the block from going behind the camera when the intersection point is behind the camera
-                        editor.selected_block.position.component[index] = block_start.component[index];
+                    // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
+                    || dot(intersection - camera_position, camera_normal - camera_position) <= 0 { // Prevent the selection from going behind the camera when the intersection point is behind the camera
+                        selectables[editor.selected_index].position.component[index] = selectable_start.component[index];
                     } else {
                         movement := intersection.component[index] - initial_intersection.component[index];
-                        new_position_component := cast(s32, round(cast(float, block_start.component[index]) + movement));
-                        editor.selected_block.position.component[index] = new_position_component;
+                        new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
+                        selectables[editor.selected_index].position.component[index] = new_position_component;
                     }
                     // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
-                    */
             }
     }
     
