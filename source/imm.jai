@@ -9,9 +9,11 @@ Imm_State :: struct {
     vbo: GLuint;
     vertices: [2400] Vertex;
     vertex_count: u32;
-    projection: Matrix4;
-    shader: GLuint;
-    bitmap: GLuint;
+
+    // @TODO: Should we store the shader on here instead of setting it explicitly with OpenGL?
+    // I don't want to do premature stuff, and right now the most explicit thing to do seems to be
+    // setting everything directly and only putting vertices here. I will keep it the way it is
+    // for now.
 }
 
 imm_init :: () {
@@ -34,29 +36,20 @@ imm_init :: () {
     }
 }
 
+
 imm_flush :: () {
     using context.game_context.imm_state;
     using context.game_context;
     
+    shader_GLint: GLint;
+    glGetIntegerv(GL_CURRENT_PROGRAM, *shader_GLint);
+    assert(shader_GLint >= 0);
+    shader := cast(GLuint, shader_GLint);
+
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
     glBindVertexArray(vao);
     
-    glUseProgram(shader);
-    
-    // @TODO: I think the caller should bind all uniforms themselves...
-    
-    /*
-    projection_loc := glGetUniformLocation(shader, "projection");
-    assert(projection_loc >= 0);
-    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, bitmap);
-    bitmap_loc := glGetUniformLocation(shader, "bitmap");
-    if bitmap_loc >= 0 glUniform1i(bitmap_loc, 0);
-    */
-
     position_loc := glGetAttribLocation(shader, "vertex_position");
     if position_loc >= 0 {
         glVertexAttribPointer(xx position_loc, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).position);
@@ -284,20 +277,17 @@ imm_cuboid_outline :: (start: Vector3, end: Vector3, width: float, color: Vector
 
 
 // @TODO Make a version of imm_vertex that doesn't require uvs!
-draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, radius := 0.03) {
+draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: *Matrix4,  radius := 0.03) {
     using context.game_context;
     difference := end - start;
     rot_quaternion := make_quaternion(Vector3.{1, 0, 0}, difference);
     rot_matrix := rotation_matrix(Matrix4, rot_quaternion);
     offset_matrix := make_translation_matrix4(start);
-    
-    old_matrix := imm_state.projection;
-    defer imm_state.projection = old_matrix;
-    // Changing the projection without telling the user is probably bad,
-    // so I'll restore it after we're done.
+   
 
-    imm_state.projection = old_matrix * multiply(offset_matrix, rot_matrix);
-    imm_state.shader = context.game_context.color_shader;
+    glUseProgram(color_shader);
+    projection_matrix := projection * multiply(offset_matrix, rot_matrix);
+    set_uniform("projection", *projection_matrix);
     
     cuboid_start := Vector3.{0, -radius, -radius};
 

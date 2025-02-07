@@ -254,19 +254,12 @@ game_update : Game_Update : (
         }
             
         
-
+        
         if mode ==  {
             case .GAME; 
-                // @TODO: Clean up immediate-mode rendering so the caller is responsible for binding each uniform.
 
-                imm_state.shader = imm_color_shader;
                 glUseProgram(imm_color_shader);
-
-                {
-                    projection_loc := glGetUniformLocation(imm_color_shader, "projection");
-                    assert(projection_loc >= 0);
-                    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *world_to_camera._11);
-                }
+                set_uniform("projection", *world_to_camera);
 
                 for :iterate_vector3i collision.size {
                     if collision.viewed[it_index] & .VISIBLE {
@@ -279,23 +272,13 @@ game_update : Game_Update : (
                 }
                 imm_flush();
 
-
-                imm_state.shader = viewed_shader;
                 
+                /*
                 glUseProgram(viewed_shader);
-                    
-                projection := translate(world_to_camera, .{0, 2, 0});
-                projection_loc := glGetUniformLocation(viewed_shader, "projection");
-                assert(projection_loc >= 0);
-                glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
-
-                viewed_loc := glGetUniformLocation(viewed_shader, "viewed");
-                assert(viewed_loc >= 0);
-                glUniform1i(viewed_loc, 0);
-
-                viewed_size_loc := glGetUniformLocation(viewed_shader, "viewed_size");
-                assert(viewed_size_loc >= 0);
-                glUniform3iv(viewed_size_loc, 1, *collision.texture.size.x);
+                
+                set_uniform("projection", *world_to_camera);
+                set_uniform("viewed", cast(s32, 0));
+                set_uniform("viewed_size", collision.texture.size);
 
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
@@ -303,6 +286,7 @@ game_update : Game_Update : (
                 imm_quad_y(1, 0, 0, 6, 4);
 
                 imm_flush();
+                */
 
             case .EDITOR;
                 if editor.selected_block {

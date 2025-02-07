@@ -303,7 +303,7 @@ main :: () {
     assert(wglMakeCurrent(dc, opengl_context) != 0);
 
     wglSwapIntervalEXT := cast((s32) -> BOOL #c_call, wglGetProcAddress("wglSwapIntervalEXT"));
-    wglSwapIntervalEXT(1);
+    assert(wglSwapIntervalEXT(1) != 0);
     
     ticks_per_second_s64: s64;
     assert(QueryPerformanceFrequency(xx *ticks_per_second_s64) != 0);

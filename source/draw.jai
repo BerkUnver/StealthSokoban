@@ -153,9 +153,6 @@ update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool) {
 }
 
 
-// I am keeping the gl... calls out of the non-drawing and init code.
-// I don't know if this is premature messing around or not.
-
 Collision_Texture :: struct {
     vbo: GLuint; // The backing store for the tbo
     tbo: GLuint; // "tbo" = texture buffer object
@@ -361,4 +358,24 @@ register_shader :: (text: string) -> GLuint {
     }
 
     return program;
+}
+
+
+set_uniform :: (name: *u8, val: $T) {
+    using context.game_context;
+    
+    shader_GLint: GLint;
+    glGetIntegerv(GL_CURRENT_PROGRAM, *shader_GLint);
+    assert(shader_GLint >= 0);
+    shader := cast(GLuint, shader_GLint);
+
+    loc := glGetUniformLocation(shader, name);
+    assert(loc >= 0);
+    #if T == *Matrix4 {
+        glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
+    } else #if T == s32 {
+        glUniform1i(loc, val);
+    } else #if T == Vector3i {
+        glUniform3i(loc, val.x, val.y, val.z);
+    } else #assert false;
 }
