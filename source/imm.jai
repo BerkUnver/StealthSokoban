@@ -116,7 +116,7 @@ imm_quad_y :: (y: float, begin_x: float, begin_z: float, end_x: float, end_z: fl
 
 
 imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
-    size := begin - end;
+    size := end - begin;
     for 0..35 {
         imm_vertex(begin + cube_vertices[it] * size, color);
     }
@@ -124,8 +124,7 @@ imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
 
 
 imm_cuboid_with_uvs :: (begin: Vector3, end: Vector3, color: Vector4) {
-    size := begin - end;
-
+    size := end - begin;
     for 0..35 {
         imm_vertex(begin + cube_vertices[it] * size, color, cube_uvs[it]);
     }

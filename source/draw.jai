@@ -156,6 +156,7 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 
 Block_Vertex :: struct {
     position: Vector3;
+    viewed_offset: Vector3i;
     uv: Vector2;
 }
 
@@ -186,6 +187,7 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
                 for 0..5 {
                     vertices[vertex_count] = .{
                        position = origin + cube_vertices[xx face + it],
+                       viewed_offset = position,
                        uv = cube_uvs[xx face + it]
                     };
                     vertex_count += 1;
@@ -228,7 +230,9 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+    glVertexAttribIPointer(1, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
 
     return .{
         vertices = vertex_positions,

@@ -259,7 +259,7 @@ game_update : Game_Update : (
 
         for * blocks {
             projection := translate(world_to_camera, to_vector3(it.position));
-            set_uniform("viewed_offset", it.position - collision.position);
+            set_uniform("viewed_position", it.position - collision.position);
             set_uniform("projection", *projection);
             set_uniform("color", it.color);
 
@@ -270,22 +270,6 @@ game_update : Game_Update : (
 
         
         if mode ==  {
-            case .GAME; 
-
-                glUseProgram(imm_color_shader);
-                set_uniform("projection", *world_to_camera);
-
-                for :iterate_vector3i collision.size {
-                    if collision.viewed[it_index] & .VISIBLE {
-                        begin := to_vector3(collision.position + it);
-                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{1, 1, 0, 1});
-                    } else if collision.viewed[it_index] & .SEEN {
-                        begin := to_vector3(collision.position + it);
-                        imm_cuboid(begin + Vector3.{0.4, 0.4, 0.4}, begin + Vector3.{0.6, 0.6, 0.6}, .{0.5, 0.5, 0, 1});
-                    }
-                }
-                imm_flush();
-
             case .EDITOR;
                 selected := get_selected(*level, *editor);
                 if selected {
@@ -456,8 +440,8 @@ END
 BLOCK_SHADER :: #string END
 #ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
-layout(location=1) in vec2 vertex_uv;
-layout(location=2) in ivec3 vertex_viewed_cell;
+layout(location=1) in ivec3 vertex_viewed_offset;
+layout(location=2) in vec2 vertex_uv;
 #else
 layout(location=0) out vec4 fragment_color;
 #endif
@@ -465,12 +449,12 @@ layout(location=0) out vec4 fragment_color;
 uniform sampler2D bitmap;
 uniform usamplerBuffer viewed;
 uniform ivec3 viewed_size;
-uniform ivec3 viewed_offset;
+uniform ivec3 viewed_position;
 uniform mat4 projection;
 uniform vec4 color;
 
-flat OUTIN ivec3 fragment_offset;
 OUTIN vec2 fragment_uv;
+OUTIN float fragment_brightness;
 
 // :ShaderInclude we should have a way to use #includes in shaders.
 // There is an extension called ARB_shading_language_include, can we use that?
@@ -481,24 +465,36 @@ OUTIN vec2 fragment_uv;
 #define VIEW_STATE_SEEN 1u
 #define VIEW_STATE_VISIBLE 2u
 
+// @Speed figure out how to optimize branching
 void main() {
 #ifdef VERTEX_SHADER
     gl_Position = projection * vec4(vertex_position, 1.0);
     fragment_uv = vertex_uv;
-    fragment_offset = viewed_offset + ivec3(vertex_position);
-#else
-    int index = fragment_offset.y * viewed_size.x * viewed_size.z + fragment_offset.z * viewed_size.x + fragment_offset.x;
-    uint filled = texelFetch(viewed, index).r;
-    
-    vec4 saturated_color = color * texture(bitmap, fragment_uv);
-    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
-        fragment_color = saturated_color;
-    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
-        // @TODO: Figure out a nice way to desaturate these.
-        fragment_color = vec4(saturated_color.rgb * 0.667, saturated_color.a);
+    ivec3 viewed_coord = viewed_position + vertex_viewed_offset;
+
+    // Setting gl_Position.w = 0 will cause the vertex to be clipped because
+    /// x, y, z will get divided by w (zero) and become infinity.
+    if ((viewed_coord.x < 0 && viewed_size.x <= viewed_coord.x)
+     || (viewed_coord.y < 0 && viewed_size.y <= viewed_coord.y)
+     || (viewed_coord.z < 0 && viewed_size.z <= viewed_coord.z)) {
+        gl_Position.w = 0;
     } else {
-        fragment_color = vec4(saturated_color.rgb * 0.333, saturated_color.a);
+        int index = 
+            viewed_coord.y * viewed_size.x * viewed_size.z +
+            viewed_coord.z * viewed_size.x +
+            viewed_coord.x;
+        uint filled = texelFetch(viewed, index).r;
+        if ((filled & VIEW_STATE_VISIBLE) != 0u) {
+            fragment_brightness = 1;
+        } else if ((filled & VIEW_STATE_SEEN) != 0u) {
+            fragment_brightness = 0.5;
+        } else {
+            gl_Position.w = 0;
+        }
     }
+#else
+    vec4 regular_color = color * texture(bitmap, fragment_uv);
+    fragment_color = vec4(regular_color.rgb * fragment_brightness, regular_color.a);
 #endif
 }
 END
@@ -521,53 +517,6 @@ void main() {
     gl_Position = position;
 #else
     fragment_color = color;
-#endif
-}
-END
-
-
-VIEWED_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-#else
-layout(location=0) out vec4 fragment_color;
-#endif
-
-uniform mat4 projection;
-uniform usamplerBuffer viewed;
-uniform ivec3 viewed_size;
-
-OUTIN vec3 fragment_coordinates;
-
-// @Volatile :ViewState :ShaderInclude
-#define VIEW_STATE_SEEN 1u
-#define VIEW_STATE_VISIBLE 2u
-
-void main() {
-#ifdef VERTEX_SHADER
-    fragment_coordinates = vertex_position;
-    gl_Position = projection * vec4(vertex_position, 1.0);
-#else
-    
-    // @TODO: The reason this is flickering so much is because when
-    // OpenGL interpolates fragment_coordinates, the value of y
-    // dips ever-so-slightly below 1, and then it gets floored to 0.
-    // Maybe this won't be an issue once the actual viewing system
-    // is working, so it's not work trying to fix right now.
-    int x = int(floor(fragment_coordinates.x));
-    int y = int(floor(fragment_coordinates.y));
-    int z = int(floor(fragment_coordinates.z));
-
-    int index = y * viewed_size.z * viewed_size.x + z * viewed_size.x + x;
-    uint filled = texelFetch(viewed, index).r;
-
-    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
-        fragment_color = vec4(1, 0, 0, 1);
-    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
-        fragment_color = vec4(0, 1, 0, 1);
-    } else {
-        fragment_color = vec4(0, 0, 1, 1);
-    }
 #endif
 }
 END
