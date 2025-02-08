@@ -5,61 +5,123 @@ Mesh :: struct {
 }
 
 
-make_cuboid_macro :: (b: Vector3, e: Vector3, vertices: [] Vector3, uvs: [] Vector2, has_uvs: bool) #expand {
-    index := 0;
-    vertex :: (v: Vector3, uv: Vector2) #expand {
-         vertices[index] = v;
-         #if has_uvs uvs[index] = uv;
-         index += 1;
-    }
-
-    vertex(.{b.x, b.y, b.z}, .{0, 0});
-    vertex(.{e.x, b.y, b.z}, .{1, 0});
-    vertex(.{e.x, e.y, b.z}, .{1, 1});
-    vertex(.{b.x, b.y, b.z}, .{0, 0});
-    vertex(.{e.x, e.y, b.z}, .{1, 1});
-    vertex(.{b.x, e.y, b.z}, .{0, 1});
-    vertex(.{e.x, b.y, b.z}, .{0, 0});
-    vertex(.{e.x, b.y, e.z}, .{1, 0});
-    vertex(.{e.x, e.y, e.z}, .{1, 1});
-    vertex(.{e.x, b.y, b.z}, .{0, 0});
-    vertex(.{e.x, e.y, e.z}, .{1, 1});
-    vertex(.{e.x, e.y, b.z}, .{0, 1});
-    vertex(.{b.x, e.y, b.z}, .{0, 0});
-    vertex(.{e.x, e.y, b.z}, .{1, 0});
-    vertex(.{e.x, e.y, e.z}, .{1, 1});
-    vertex(.{b.x, e.y, b.z}, .{0, 0});
-    vertex(.{e.x, e.y, e.z}, .{1, 1});
-    vertex(.{b.x, e.y, e.z}, .{0, 1});
-    vertex(.{e.x, b.y, b.z}, .{0, 0});
-    vertex(.{b.x, b.y, b.z}, .{1, 0});
-    vertex(.{b.x, b.y, e.z}, .{1, 1});
-    vertex(.{e.x, b.y, b.z}, .{0, 0});
-    vertex(.{b.x, b.y, e.z}, .{1, 1});
-    vertex(.{e.x, b.y, e.z}, .{0, 1});
-    vertex(.{b.x, b.y, e.z}, .{0, 0});
-    vertex(.{b.x, b.y, b.z}, .{1, 0});
-    vertex(.{b.x, e.y, b.z}, .{1, 1});
-    vertex(.{b.x, b.y, e.z}, .{0, 0});
-    vertex(.{b.x, e.y, b.z}, .{1, 1});
-    vertex(.{b.x, e.y, e.z}, .{0, 1});
-    vertex(.{e.x, b.y, e.z}, .{0, 0});
-    vertex(.{b.x, b.y, e.z}, .{1, 0});
-    vertex(.{b.x, e.y, e.z}, .{1, 1});
-    vertex(.{e.x, b.y, e.z}, .{0, 0});
-    vertex(.{b.x, e.y, e.z}, .{1, 1});
-    vertex(.{e.x, e.y, e.z}, .{0, 1});
+Cube_Vertex :: enum {
+    Z_NEGATIVE :: 0;
+    X_POSITIVE :: 6;
+    Y_POSITIVE :: 12;
+    Y_NEGATIVE :: 18;
+    X_NEGATIVE :: 24;
+    Z_POSITIVE :: 30;
+    COUNT :: 36;
 }
 
 
-make_cuboid :: (vertices: [] Vector3, uvs: [] Vector2, begin: Vector3, end: Vector3) -> vertices: [] Vector3, uvs: [] Vector2 {
-    make_cuboid_macro(begin, end, vertices, uvs, has_uvs=true);
-    return slice(vertices, 36), slice(uvs, 36);
-}
+cube_vertices : [Cube_Vertex.COUNT] Vector3 : .[
+    // Front face
+    .{0, 0, 0},
+    .{1, 0, 0},
+    .{1, 1, 0},
+    .{0, 0, 0},
+    .{1, 1, 0},
+    .{0, 1, 0},
+    
+    // Right face
+    .{1, 0, 0},
+    .{1, 0, 1},
+    .{1, 1, 1},
+    .{1, 0, 0},
+    .{1, 1, 1},
+    .{1, 1, 0},
+    
+    // Top face
+    .{0, 1, 0},
+    .{1, 1, 0},
+    .{1, 1, 1},
+    .{0, 1, 0},
+    .{1, 1, 1},
+    .{0, 1, 1},
+    
+    // Bottom face
+    .{1, 0, 0},
+    .{0, 0, 0},
+    .{0, 0, 1},
+    .{1, 0, 0},
+    .{0, 0, 1},
+    .{1, 0, 1},
+
+    // Left face
+    .{0, 0, 1},
+    .{0, 0, 0},
+    .{0, 1, 0},
+    .{0, 0, 1},
+    .{0, 1, 0},
+    .{0, 1, 1},
+
+    // Back face
+    .{1, 0, 1},
+    .{0, 0, 1},
+    .{0, 1, 1},
+    .{1, 0, 1},
+    .{0, 1, 1},
+    .{1, 1, 1},
+];
+
+
+cube_uvs : [Cube_Vertex.COUNT] Vector2 : .[
+    .{0, 0},
+    .{1, 0},
+    .{1, 1},
+    .{0, 0},
+    .{1, 1},
+    .{0, 1},
+    
+    // Right face
+    .{0, 0},
+    .{1, 0},
+    .{1, 1},
+    .{0, 0},
+    .{1, 1},
+    .{0, 1},
+    
+    // Top face
+    .{0, 0},
+    .{1, 0},
+    .{1, 1},
+    .{0, 0},
+    .{1, 1},
+    .{0, 1},
+    
+    // Bottom face
+    .{0, 0},
+    .{1, 0},
+    .{1, 1},
+    .{0, 0},
+    .{1, 1},
+    .{0, 1},
+
+    // Left face
+    .{0, 0},
+    .{1, 0},
+    .{1, 1},
+    .{0, 0},
+    .{1, 1},
+    .{0, 1},
+
+    // Back face
+    .{0, 0},
+    .{1, 0},
+    .{1, 1},
+    .{0, 0},
+    .{1, 1},
+    .{0, 1},
+];
 
 
 make_cuboid :: (vertices: [] Vector3, begin: Vector3, end: Vector3) -> [] Vector3 { 
-    make_cuboid_macro(begin, end, vertices, .{}, has_uvs=false);
+    size := end - begin;
+    for 0..35 {
+        vertices[it] = begin + cube_vertices[it] * size;
+    }
     return slice(vertices, 36);
 }
 
@@ -100,40 +162,54 @@ Block_Vertex :: struct {
 
 make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
-
-    // @TODO @Speed @Memory: Optimize how many vertices this is to be only the faces of the cubes on the surface.
-    // @TODO @Speed: Add reallocing from the top of the temporary buffer
-
-    filled_count := 0;
-    for :iterate_vector3i size {
-        if filled[it_index] filled_count += 1;
-    }
-
-    vertices := arena_alloc_array(arena, 36 * filled_count, Vector3);
-
+    
+    // @Temporary @TODO: Make it so we can freely resize the topmost allocations of memory arenas!
+    
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    uvs := arena_alloc_array(*frame_arena, 36 * filled_count, Vector2);
-    i_vertices := vertices;
-    i_uvs := uvs;
+    vertices := arena_alloc_array(*frame_arena, 10000, Block_Vertex, zero_init=false);
+    vertex_count := 0;
 
     for :iterate_vector3i size {
-        if filled[it_index] i_vertices, i_uvs = make_cuboid(i_vertices, i_uvs, to_vector3(it), to_vector3(it + Vector3i.{1, 1, 1}));
+        if !filled[it_index] continue;
+        
+        origin := to_vector3(it);
+
+        position: Vector3i;
+        success: bool;
+        index: s64;
+        
+        check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
+            success, index = get_3d_index(position, size);
+            if !success || !filled[index] {
+                for 0..5 {
+                    vertices[vertex_count] = .{
+                       position = origin + cube_vertices[xx face + it],
+                       uv = cube_uvs[xx face + it]
+                    };
+                    vertex_count += 1;
+                }
+            }
+        }
+        
+        check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
+        check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
+        check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
+        check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
+        check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
+        check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
     }
-
-    // @Temporary? Figure out if we want to store vertices in AOS or SOA form.
-    buf := arena_alloc_array(*frame_arena, size_of(Block_Vertex) * uvs.count, u8);
-
-    for 0..uvs.count-1 {
-        cast(*Vector3, *buf[it * size_of(Block_Vertex)]).* = vertices[it];
-        cast(*Vector2, *buf[it * size_of(Block_Vertex) + xx *cast(*Block_Vertex, null).uv]).* = uvs[it];
+    
+    vertex_positions := arena_alloc_array(arena, vertex_count, Vector3);
+    for 0..vertex_count-1 {
+        vertex_positions[it] = vertices[it].position;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, buf.count, buf.data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertex_count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
 
-    return vertices;
+    return vertex_positions;
 }
 
 
@@ -143,7 +219,7 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
     vao, vbo: GLuint;
     glGenBuffers(1, *vbo);
 
-    vertices := make_block_mesh_data(size, filled, vbo, level_arena);
+    vertex_positions := make_block_mesh_data(size, filled, vbo, level_arena);
 
     // @Copypasta Figure out how to use metaprogramming to generate vaos for arbitrary vertex formats.
 
@@ -155,7 +231,7 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
 
     return .{
-        vertices = vertices,
+        vertices = vertex_positions,
         vao = vao,
         vbo = vbo
     };
@@ -190,6 +266,7 @@ make_collision_texture :: (size: Vector3i) -> Collision_Texture {
 
     return .{vbo = vbo, tbo = tbo, size = size};
 }
+
 
 free :: (tex: *Collision_Texture) {
     using context.game_context;
@@ -233,32 +310,6 @@ draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
 }
 
 
-draw_block_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
-    using context.game_context;
-
-    glUseProgram(block_shader);
-   
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, block_bitmap);
-    bitmap_loc := glGetUniformLocation(block_shader, "bitmap");
-    assert(bitmap_loc >= 0);
-    glUniform1i(bitmap_loc, 0);
-
-    projection_loc := glGetUniformLocation(block_shader, "projection");
-    assert(projection_loc >= 0);
-    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
-
-    color_loc := glGetUniformLocation(block_shader, "color");
-    assert(color_loc >= 0);
-    glUniform4f(color_loc, color.x, color.y, color.z, color.w);
-
-    glBindVertexArray(mesh.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
-
-    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertices.count);
-}
-
-
 draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     using context.game_context;
 
@@ -284,7 +335,7 @@ draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
 }
 
 
-register_shader :: (text: string) -> GLuint {
+register_shader :: (name: string, text: string) -> GLuint {
     using context.game_context;
 
     LOG_SIZE :: 1024;
@@ -292,21 +343,22 @@ register_shader :: (text: string) -> GLuint {
     vertex := glCreateShader(GL_VERTEX_SHADER);
     defer glDeleteShader(vertex);
     
-    VERTEX_L0 :: "#version 330 core\n";
-    VERTEX_L1 :: "#define VERTEX_SHADER\n";
-    VERTEX_L2 :: "#define OUTIN out\n";
+    // You need the "#line 0" directive or else the NVIDIA shader compiler will report the line number including the
+    // prefix lines in its compilation errors.
 
+    VERTEX_PREFIX :: #string END
+#version 330 core
+#define VERTEX_SHADER
+#define OUTIN out
+#line 0
+END
     vertex_lines := *u8.[
-        VERTEX_L0,
-        VERTEX_L1,
-        VERTEX_L2,
+        VERTEX_PREFIX,
         text.data
     ];
 
     vertex_lengths :=  GLint.[
-        xx VERTEX_L0.count,
-        xx VERTEX_L1.count,
-        xx VERTEX_L2.count,
+        xx VERTEX_PREFIX.count,
         xx text.count
     ];
 
@@ -322,25 +374,26 @@ register_shader :: (text: string) -> GLuint {
 
         str := string.{data=*buffer[0], count=count};
 
-        print("Vertex shader compilation error:\n%", str);
+        print("Compilation error in vertex shader \"%\"\n%", name, str);
         return 0;
     }
     
     fragment := glCreateShader(GL_FRAGMENT_SHADER);
     defer glDeleteShader(fragment);
     
-    FRAGMENT_L0 :: "#version 330 core\n";
-    FRAGMENT_L1 :: "#define OUTIN in\n";
+    FRAGMENT_PREFIX :: #string END
+#version 330 core
+#define OUTIN in
+#line 0
+END
 
     fragment_lines := *u8.[
-        FRAGMENT_L0,
-        FRAGMENT_L1,
+        FRAGMENT_PREFIX,
         text.data
     ];
 
     fragment_lengths := GLint.[
-        xx FRAGMENT_L0.count,
-        xx FRAGMENT_L1.count,
+        xx FRAGMENT_PREFIX.count,
         xx text.count
     ];
 
@@ -355,7 +408,7 @@ register_shader :: (text: string) -> GLuint {
         glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Fragment shader compilation error:\n%", str);
+        print("Compilation error in fragment shader \"%\"\n%", name, str);
         return 0;
     }
 
@@ -372,7 +425,7 @@ register_shader :: (text: string) -> GLuint {
         glGetProgramInfoLog(program, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Shader linking error:\n");
+        print("Linking error in shader \"%\"\n%", name, str);
         print(str);
         return 0;
     }
@@ -391,11 +444,14 @@ set_uniform :: (name: *u8, val: $T) {
 
     loc := glGetUniformLocation(shader, name);
     assert(loc >= 0);
-    #if T == *Matrix4 {
-        glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
-    } else #if T == s32 {
+
+    #if T == s32 {
         glUniform1i(loc, val);
     } else #if T == Vector3i {
         glUniform3i(loc, val.x, val.y, val.z);
+    } else #if T == Vector4 {
+        glUniform4f(loc, val.x, val.y, val.z, val.w);
+    } else #if T == *Matrix4 {
+        glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
     } else #assert false;
 }

@@ -318,7 +318,7 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
                         // We should still be able to drag, and it looks like that is working right now, but I'm not sure why.
 
 
-                        intersection_parallel, intersection := get_intersection_between_line_and_plane(
+                        intersection_parallel, intersection, intersection_t := get_intersection_between_line_and_plane(
                             line_point = camera_position,
                             line_direction = mouse_position - camera_position,
                             plane_point = selected_position,
@@ -334,9 +334,9 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
 
                         if initial_intersection_parallel
                         || intersection_parallel
-                        || abs(intersection.component[index] - initial_intersection.component[index]) > 1000
+                        || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
+                        || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
                         // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
-                        || dot(intersection - camera_position, camera_normal - camera_position) <= 0 { // Prevent the selection from going behind the camera when the intersection point is behind the camera
                             selected.position.component[index] = selectable_start.component[index];
                         } else {
                             movement := intersection.component[index] - initial_intersection.component[index];

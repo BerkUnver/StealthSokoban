@@ -115,112 +115,20 @@ imm_quad_y :: (y: float, begin_x: float, begin_z: float, end_x: float, end_z: fl
 }
 
 
-imm_cuboid :: (b: Vector3, e: Vector3, color: Vector4) {
-    // b: beginning, the bottom corner of the cuboid
-    // e: end, the top corner of the cuboid
-
-    // Front face
-    imm_vertex(.{b.x, b.y, b.z}, color);
-    imm_vertex(.{e.x, b.y, b.z}, color);
-    imm_vertex(.{e.x, e.y, b.z}, color);
-    imm_vertex(.{b.x, b.y, b.z}, color);
-    imm_vertex(.{e.x, e.y, b.z}, color);
-    imm_vertex(.{b.x, e.y, b.z}, color);
-    
-    // Right face
-    imm_vertex(.{e.x, b.y, b.z}, color);
-    imm_vertex(.{e.x, b.y, e.z}, color);
-    imm_vertex(.{e.x, e.y, e.z}, color);
-    imm_vertex(.{e.x, b.y, b.z}, color);
-    imm_vertex(.{e.x, e.y, e.z}, color);
-    imm_vertex(.{e.x, e.y, b.z}, color);
-    
-    // Top face
-    imm_vertex(.{b.x, e.y, b.z}, color);
-    imm_vertex(.{e.x, e.y, b.z}, color);
-    imm_vertex(.{e.x, e.y, e.z}, color);
-    imm_vertex(.{b.x, e.y, b.z}, color);
-    imm_vertex(.{e.x, e.y, e.z}, color);
-    imm_vertex(.{b.x, e.y, e.z}, color);
-    
-    // Bottom face
-    imm_vertex(.{e.x, b.y, b.z}, color);
-    imm_vertex(.{b.x, b.y, b.z}, color);
-    imm_vertex(.{b.x, b.y, e.z}, color);
-    imm_vertex(.{e.x, b.y, b.z}, color);
-    imm_vertex(.{b.x, b.y, e.z}, color);
-    imm_vertex(.{e.x, b.y, e.z}, color);
-
-    // Left face
-    imm_vertex(.{b.x, b.y, e.z}, color);
-    imm_vertex(.{b.x, b.y, b.z}, color);
-    imm_vertex(.{b.x, e.y, b.z}, color);
-    imm_vertex(.{b.x, b.y, e.z}, color);
-    imm_vertex(.{b.x, e.y, b.z}, color);
-    imm_vertex(.{b.x, e.y, e.z}, color);
-
-    // Back face
-    imm_vertex(.{e.x, b.y, e.z}, color);
-    imm_vertex(.{b.x, b.y, e.z}, color);
-    imm_vertex(.{b.x, e.y, e.z}, color);
-    imm_vertex(.{e.x, b.y, e.z}, color);
-    imm_vertex(.{b.x, e.y, e.z}, color);
-    imm_vertex(.{e.x, e.y, e.z}, color);
+imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
+    size := begin - end;
+    for 0..35 {
+        imm_vertex(begin + cube_vertices[it] * size, color);
+    }
 }
 
 
-imm_cuboid_with_uvs :: (b: Vector3, e: Vector3, color: Vector4) {
-    // @Copypasta imm_cuboid but with uvs
-    // b: beginning, the bottom corner of the cuboid
-    // e: end, the top corner of the cuboid
+imm_cuboid_with_uvs :: (begin: Vector3, end: Vector3, color: Vector4) {
+    size := begin - end;
 
-    // Front face
-    imm_vertex(.{b.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(.{e.x, b.y, b.z}, color, .{1, 0});
-    imm_vertex(.{e.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(.{b.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(.{e.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(.{b.x, e.y, b.z}, color, .{0, 1});
-    
-    // Right face
-    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(.{e.x, b.y, e.z}, color, .{1, 0});
-    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(.{e.x, e.y, b.z}, color, .{0, 1});
-    
-    // Top face
-    imm_vertex(.{b.x, e.y, b.z}, color, .{0, 0});
-    imm_vertex(.{e.x, e.y, b.z}, color, .{1, 0});
-    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(.{b.x, e.y, b.z}, color, .{0, 0});
-    imm_vertex(.{e.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(.{b.x, e.y, e.z}, color, .{0, 1});
-    
-    // Bottom face
-    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(.{b.x, b.y, b.z}, color, .{1, 0});
-    imm_vertex(.{b.x, b.y, e.z}, color, .{1, 1});
-    imm_vertex(.{e.x, b.y, b.z}, color, .{0, 0});
-    imm_vertex(.{b.x, b.y, e.z}, color, .{1, 1});
-    imm_vertex(.{e.x, b.y, e.z}, color, .{0, 1});
-
-    // Left face
-    imm_vertex(.{b.x, b.y, e.z}, color, .{0, 0});
-    imm_vertex(.{b.x, b.y, b.z}, color, .{1, 0});
-    imm_vertex(.{b.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(.{b.x, b.y, e.z}, color, .{0, 0});
-    imm_vertex(.{b.x, e.y, b.z}, color, .{1, 1});
-    imm_vertex(.{b.x, e.y, e.z}, color, .{0, 1});
-
-    // Back face
-    imm_vertex(.{e.x, b.y, e.z}, color, .{0, 0});
-    imm_vertex(.{b.x, b.y, e.z}, color, .{1, 0});
-    imm_vertex(.{b.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(.{e.x, b.y, e.z}, color, .{0, 0});
-    imm_vertex(.{b.x, e.y, e.z}, color, .{1, 1});
-    imm_vertex(.{e.x, e.y, e.z}, color, .{0, 1});
+    for 0..35 {
+        imm_vertex(begin + cube_vertices[it] * size, color, cube_uvs[it]);
+    }
 }
 
 

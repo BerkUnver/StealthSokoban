@@ -121,17 +121,16 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
 
         level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
-
-        block_shader = register_shader(BLOCK_SHADER);
+        
+        // @TODO: Figure out how to get the name of an identifier in a macro.
+        block_shader = register_shader("BLOCK_SHADER", BLOCK_SHADER);
         assert(block_shader != 0);
-        imm_color_shader = register_shader(IMM_COLOR_SHADER);
+        imm_color_shader = register_shader("IMM_COLOR_SHADER", IMM_COLOR_SHADER);
         assert(imm_color_shader != 0);
-        color_shader = register_shader(COLOR_SHADER);
+        color_shader = register_shader("COLOR_SHADER", COLOR_SHADER);
         assert(color_shader != 0);
-        wireframe_shader = register_shader(WIREFRAME_SHADER);
+        wireframe_shader = register_shader("WIREFRAM_SHADER", WIREFRAME_SHADER);
         assert(wireframe_shader != 0);
-        viewed_shader = register_shader(VIEWED_SHADER);
-        assert(viewed_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -245,12 +244,30 @@ game_update : Game_Update : (
         draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
+        
+
+        glUseProgram(block_shader);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, block_bitmap);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+
+        set_uniform("bitmap", cast(s32, 0));
+        set_uniform("viewed", cast(s32, 1));
+        set_uniform("viewed_size", collision.size);
 
         for * blocks {
-            draw_block_mesh(*it.mesh, translate(world_to_camera, to_vector3(it.position)), it.color);
+            projection := translate(world_to_camera, to_vector3(it.position));
+            set_uniform("viewed_offset", it.position - collision.position);
+            set_uniform("projection", *projection);
+            set_uniform("color", it.color);
+
+            glBindVertexArray(it.mesh.vao);
+            glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
+            glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
         }
-            
-        
+
         
         if mode ==  {
             case .GAME; 
@@ -268,22 +285,6 @@ game_update : Game_Update : (
                     }
                 }
                 imm_flush();
-
-                
-                /*
-                glUseProgram(viewed_shader);
-                
-                set_uniform("projection", *world_to_camera);
-                set_uniform("viewed", cast(s32, 0));
-                set_uniform("viewed_size", collision.texture.size);
-
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
-
-                imm_quad_y(1, 0, 0, 6, 4);
-
-                imm_flush();
-                */
 
             case .EDITOR;
                 selected := get_selected(*level, *editor);
@@ -456,22 +457,48 @@ BLOCK_SHADER :: #string END
 #ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
 layout(location=1) in vec2 vertex_uv;
+layout(location=2) in ivec3 vertex_viewed_cell;
 #else
 layout(location=0) out vec4 fragment_color;
 #endif
 
 uniform sampler2D bitmap;
+uniform usamplerBuffer viewed;
+uniform ivec3 viewed_size;
+uniform ivec3 viewed_offset;
 uniform mat4 projection;
 uniform vec4 color;
 
+flat OUTIN ivec3 fragment_offset;
 OUTIN vec2 fragment_uv;
+
+// :ShaderInclude we should have a way to use #includes in shaders.
+// There is an extension called ARB_shading_language_include, can we use that?
+// Or should we just do a preprocessing pass on the shader and have a first
+// line with the includes?
+
+// @Volatile :ViewState :ShaderInclude
+#define VIEW_STATE_SEEN 1u
+#define VIEW_STATE_VISIBLE 2u
 
 void main() {
 #ifdef VERTEX_SHADER
     gl_Position = projection * vec4(vertex_position, 1.0);
     fragment_uv = vertex_uv;
+    fragment_offset = viewed_offset + ivec3(vertex_position);
 #else
-    fragment_color = color * texture(bitmap, fragment_uv);
+    int index = fragment_offset.y * viewed_size.x * viewed_size.z + fragment_offset.z * viewed_size.x + fragment_offset.x;
+    uint filled = texelFetch(viewed, index).r;
+    
+    vec4 saturated_color = color * texture(bitmap, fragment_uv);
+    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
+        fragment_color = saturated_color;
+    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
+        // @TODO: Figure out a nice way to desaturate these.
+        fragment_color = vec4(saturated_color.rgb * 0.667, saturated_color.a);
+    } else {
+        fragment_color = vec4(saturated_color.rgb * 0.333, saturated_color.a);
+    }
 #endif
 }
 END
@@ -512,7 +539,7 @@ uniform ivec3 viewed_size;
 
 OUTIN vec3 fragment_coordinates;
 
-// @Volatile :ViewState
+// @Volatile :ViewState :ShaderInclude
 #define VIEW_STATE_SEEN 1u
 #define VIEW_STATE_VISIBLE 2u
 

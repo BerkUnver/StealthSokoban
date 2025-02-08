@@ -89,12 +89,12 @@ get_angle :: (v: Vector2) -> float {
 }
 
 
-get_intersection_between_line_and_plane :: (line_point: Vector3, line_direction: Vector3, plane_point: Vector3, plane_normal: Vector3) -> parallel: bool, Vector3 {
+get_intersection_between_line_and_plane :: (line_point: Vector3, line_direction: Vector3, plane_point: Vector3, plane_normal: Vector3) -> parallel: bool, point: Vector3, t: float {
     denominator := dot(plane_normal, line_direction);
-    if denominator == 0 return true, .{};
-
+    if denominator == 0 return true, .{}, 0;
+    
     t := (dot(plane_normal, plane_point) - dot(plane_normal, line_point)) / dot(plane_normal, line_direction);
-    return false, line_point + line_direction * t;
+    return false, line_point + line_direction * t, t;
 }
 
 
