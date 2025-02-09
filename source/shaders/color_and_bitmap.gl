@@ -1,6 +1,6 @@
 #ifdef VERTEX_SHADER
 layout(location=0) in vec3 vertex_position;
-layout(location=2) in vec2 vertex_uv; // @TODO: Figure out how to get multiple vertex formats to work with the same shader.
+layout(location=1) in vec2 vertex_uv; 
 #else
 layout(location=0) out vec4 fragment_color;
 #endif

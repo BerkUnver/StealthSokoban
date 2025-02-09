@@ -24,8 +24,6 @@ Game_Context :: struct {
     color_shader: GLuint;
     wireframe_shader: GLuint;
     color_and_bitmap_shader: GLuint;
-
-    // vaos: [Vertex_Format.COUNT] GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -97,11 +95,14 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         // We want to support Mac, so we can't support OpenGL 4.3 which is when this
         // extension became part of the standard. As such, we have to use the extension.
+        // :GLDebugProcHotloadingHack
+        stack_context := context;
         if GL_ARB_debug_output {
             glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
             // Make sure we do not have to also call glEnable(GL_DEBUG_OUTPUT);
+            glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
         } else {
-            // print("glDebugMessageCallbackARB was not found.");
+            print("glDebugMessageCallbackARB was not found\n.");
         }
 
 
@@ -109,12 +110,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
-
-        // :GLDebugProcHotloadingHack
-        stack_context := context;
-        if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
-        
-        // imm_init();
+        imm_init();
 
         block_shader = load_shader("shaders/block.gl");
         assert(block_shader != 0);
@@ -126,20 +122,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(wireframe_shader != 0);
         color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
         assert(color_and_bitmap_shader != 0);
-        
-        /*
-        glGenVertexArrays(vaos.count, vaos.data);
-
-        vao := vaos[Vertex_Format.BLOCK];
-        glBindVertexArray(vao);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
-        glEnableVertexAttribArray(1);
-        glVertexAttribIPointer(1, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
-        */
-
+       
         //
         // Now that the game_context is initted, we can init the game.
         //
@@ -281,7 +264,6 @@ game_update : Game_Update : (
                     set_uniform("color", it.color);
                 
                     glBindVertexArray(it.mesh.vao);
-                    glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
                     glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
                 }
             
@@ -299,7 +281,6 @@ game_update : Game_Update : (
                     set_uniform("color", it.color);
 
                     glBindVertexArray(it.mesh.vao);
-                    glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
                     glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
                 }
 
@@ -311,7 +292,6 @@ game_update : Game_Update : (
 
                     draw_wireframe_mesh(*selected.mesh, translate(world_to_camera, to_vector3(selected.position)), color);
                 }
-                
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

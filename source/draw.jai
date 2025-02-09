@@ -16,6 +16,32 @@ Cube_Vertex :: enum {
 }
 
 
+
+
+// We need a way for shaders with different inputs to work on the same vertex format.
+// My idea to handle this right now is to have a defined layout index for each kind of vertex input.
+// When we set up the VAO and write the layouts in the shaders, we use these constants instead of 
+// putting them in ascending order.
+
+// That way, if a shaders needs, let's say, POSITION and VIEWED_OFFSET, the shader will have locations
+// 0 and 2 for those vertex attributes and and the VAO will have vertex attribute indices 0 and 2
+// set up to mean position and viewed_offset. As long as the vertex format has what the shader needs,
+// the shader will be able to draw that vertex format.
+
+// I don't know enough about rendering to know if this has @Speed considerations, and, quite frankly,
+// this isn't something that is appropriate for me to be thinking about in this stage of the project.
+
+// @Volatile Make sure this matches the layout locations in shaders. Possibly we can make a
+// corresponding enum / macros for shaders once shader including is working.
+
+//          -berk, 2 - 9 -2025
+Layout_Location :: enum {
+    POSITION;
+    UV;
+    VIEWED_OFFSET;
+}
+
+
 cube_vertices : [Cube_Vertex.COUNT] Vector3 : .[
     // Front face
     .{0, 0, 0},
@@ -141,14 +167,16 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 
     vao, vbo: GLuint;
     
+    glGenVertexArrays(1, *vao);
+    glBindVertexArray(vao);
+
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, byte_count(vertices), vertices.data, GL_STATIC_DRAW); // Allocate the buffer
-
-    glGenVertexArrays(1, *vao);
-    glBindVertexArray(vao);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
+    
+    using Layout_Location;
+    glEnableVertexAttribArray(xx POSITION);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
 
     return .{vertices = vertices, vao = vao, vbo = vbo};
 }
@@ -156,8 +184,8 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 
 Block_Vertex :: struct {
     position: Vector3;
-    viewed_offset: Vector3i;
     uv: Vector2;
+    viewed_offset: Vector3i;
 }
 
 
@@ -187,8 +215,8 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
                 for 0..5 {
                     vertices[vertex_count] = .{
                        position = origin + cube_vertices[xx face + it],
+                       uv = cube_uvs[xx face + it],
                        viewed_offset = position,
-                       uv = cube_uvs[xx face + it]
                     };
                     vertex_count += 1;
                 }
@@ -211,6 +239,7 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, vertex_count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
 
+
     return vertex_positions;
 }
 
@@ -219,21 +248,29 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
     using context.game_context;
 
     vao, vbo: GLuint;
+
+    glGenVertexArrays(1, *vao);
     glGenBuffers(1, *vbo);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    using Layout_Location;
+
+    glEnableVertexAttribArray(xx POSITION);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
+
+    glEnableVertexAttribArray(xx UV);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+
+    glEnableVertexAttribArray(xx VIEWED_OFFSET);
+    glVertexAttribIPointer(xx VIEWED_OFFSET, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
+
+
 
     vertex_positions := make_block_mesh_data(size, filled, vbo, level_arena);
 
-    // @Copypasta Figure out how to use metaprogramming to generate vaos for arbitrary vertex formats.
-
-    glGenVertexArrays(1, *vao);
-    glBindVertexArray(vao);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
-    glEnableVertexAttribArray(1);
-    glVertexAttribIPointer(1, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
-
+    // @TODO Store vertex buffers in SOA form!
     return .{
         vertices = vertex_positions,
         vao = vao,
@@ -476,13 +513,3 @@ set_uniform :: (name: *u8, val: $T) {
         glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
     } else #assert false;
 }
-
-/*
-Vertex_Format :: enum {
-    IMMEDIATE_MODE;
-    POSITION_ONLY;
-    BLOCK;
-
-    COUNT;
-}
-*/
