@@ -1,0 +1,21 @@
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=2) in vec2 vertex_uv; // @TODO: Figure out how to get multiple vertex formats to work with the same shader.
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+OUTIN vec2 uv;
+
+uniform sampler2D bitmap;
+uniform mat4 projection;
+uniform vec4 color;
+
+void main() {
+#ifdef VERTEX_SHADER
+    uv = vertex_uv;
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    fragment_color = color * texture(bitmap, uv);
+#endif
+}

@@ -166,10 +166,10 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
     
     // @Temporary @TODO: Make it so we can freely resize the topmost allocations of memory arenas!
     
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
+    mark := get_mark(frame_arena);
+    defer restore_mark(frame_arena, mark);
 
-    vertices := arena_alloc_array(*frame_arena, 10000, Block_Vertex, zero_init=false);
+    vertices := arena_alloc_array(frame_arena, 10000, Block_Vertex, zero_init=false);
     vertex_count := 0;
 
     for :iterate_vector3i size {
@@ -339,7 +339,22 @@ draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
 }
 
 
-register_shader :: (name: string, text: string) -> GLuint {
+load_shader :: (file_name: string) -> GLuint {
+    using context.game_context;
+    
+    mark := get_mark(frame_arena);
+    defer restore_mark(frame_arena, mark);
+    success, file := read_file(file_name, frame_arena);
+    if !success {
+        print("Failed to load the file for shader \"%\"\n", file_name);
+        return 0;
+    }
+
+    return load_shader(file_name, .{file.count, file.data});
+}
+
+
+load_shader :: (name: string, text: string) -> GLuint {
     using context.game_context;
 
     LOG_SIZE :: 1024;
@@ -459,3 +474,4 @@ set_uniform :: (name: *u8, val: $T) {
         glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
     } else #assert false;
 }
+

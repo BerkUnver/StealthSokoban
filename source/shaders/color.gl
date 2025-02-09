@@ -1,0 +1,16 @@
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+uniform vec4 color;
+
+void main () {
+#ifdef VERTEX_SHADER
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    fragment_color = color;
+#endif
+}

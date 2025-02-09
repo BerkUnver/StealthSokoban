@@ -13,9 +13,10 @@ Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
     os_print: (string);
+    read_file: (string, *Memory_Arena) -> bool, [] u8;
     imm_state: Imm_State;
 
-    frame_arena: Memory_Arena;
+    frame_arena: *Memory_Arena;
 
     block_shader: GLuint;
     block_bitmap: GLuint;
@@ -36,7 +37,7 @@ Game :: struct {
     mode: Game_Mode;
     level: Level;
     editor: Editor;
-    level_arena: Memory_Arena;
+    level_arena: *Memory_Arena;
 
     time_elapsed: float64;
 }
@@ -57,9 +58,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         using context.game_context;
 
-        frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
-        
+        frame_arena = data.frame_arena;
+
         os_print = data.os_print;
+        read_file = data.read_file;
 
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
@@ -119,19 +121,20 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         // :GLDebugProcHotloadingHack
         stack_context := context;
         if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
-
-        level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
+        
+        level_arena = data.level_arena;
         
         // @TODO: Figure out how to get the name of an identifier in a macro.
-        block_shader = register_shader("BLOCK_SHADER", BLOCK_SHADER);
+        success: bool; 
+        block_shader = load_shader("shaders/block.gl");
         assert(block_shader != 0);
-        imm_color_shader = register_shader("IMM_COLOR_SHADER", IMM_COLOR_SHADER);
+        imm_color_shader = load_shader("shaders/imm_color.gl");
         assert(imm_color_shader != 0);
-        color_shader = register_shader("COLOR_SHADER", COLOR_SHADER);
+        color_shader = load_shader("shaders/color.gl");
         assert(color_shader != 0);
-        wireframe_shader = register_shader("WIREFRAM_SHADER", WIREFRAME_SHADER);
+        wireframe_shader = load_shader("shaders/wireframe.gl");
         assert(wireframe_shader != 0);
-        color_and_bitmap_shader = register_shader("COLOR_AND_BITMAP_SHADER", COLOR_AND_BITMAP_SHADER);
+        color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
         assert(color_and_bitmap_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
@@ -164,7 +167,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         
         mode = .GAME;
-        make_level(*level, *level_arena);
+        make_level(*level, level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -199,14 +202,14 @@ game_update : Game_Update : (
                     mode = .GAME;
                 }
 
-                free_level(*level, *level_arena);
-                make_level(*level, *level_arena);
+                free_level(*level, level_arena);
+                make_level(*level, level_arena);
             } else {
                 if #complete mode == {
                     case .GAME;
-                        level_handle_input(*level, *level_arena, it);
+                        level_handle_input(*level, level_arena, it);
                     case .EDITOR;
-                        editor_handle_input(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
+                        editor_handle_input(*level, level_arena, *editor, input.mouse_x, input.mouse_y, it);
                 }
             }
         }
@@ -408,160 +411,3 @@ gl_debug_callback :: (
         );
     }
 }
-
-
-IMM_COLOR_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=1) in vec4 vertex_color;
-#else
-layout(location=0) out vec4 color;
-#endif
-
-uniform mat4 projection;
-
-OUTIN vec4 fragment_color;
-
-#ifdef VERTEX_SHADER
-void main() {
-    gl_Position = projection * vec4(vertex_position, 1.0);
-    fragment_color = vertex_color;
-}
-#else
-void main() {
-    color = fragment_color;
-}
-#endif
-END
-
-
-COLOR_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-#else
-layout(location=0) out vec4 fragment_color;
-#endif
-
-uniform mat4 projection;
-uniform vec4 color;
-
-void main () {
-#ifdef VERTEX_SHADER
-    gl_Position = projection * vec4(vertex_position, 1.0);
-#else
-    fragment_color = color;
-#endif
-}
-END
-
-
-BLOCK_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=1) in ivec3 vertex_viewed_offset;
-layout(location=2) in vec2 vertex_uv;
-#else
-layout(location=0) out vec4 fragment_color;
-#endif
-
-uniform sampler2D bitmap;
-uniform usamplerBuffer viewed;
-uniform ivec3 viewed_size;
-uniform ivec3 viewed_position;
-uniform mat4 projection;
-uniform vec4 color;
-
-OUTIN vec2 fragment_uv;
-OUTIN float fragment_brightness;
-
-// :ShaderInclude we should have a way to use #includes in shaders.
-// There is an extension called ARB_shading_language_include, can we use that?
-// Or should we just do a preprocessing pass on the shader and have a first
-// line with the includes?
-
-// @Volatile :ViewState :ShaderInclude
-#define VIEW_STATE_SEEN 1u
-#define VIEW_STATE_VISIBLE 2u
-
-// @Speed figure out how to optimize branching
-void main() {
-#ifdef VERTEX_SHADER
-    gl_Position = projection * vec4(vertex_position, 1.0);
-    fragment_uv = vertex_uv;
-    ivec3 viewed_coord = viewed_position + vertex_viewed_offset;
-
-    // Setting gl_Position.w = 0 will cause the vertex to be clipped because
-    /// x, y, z will get divided by w (zero) and become infinity.
-    if ((viewed_coord.x < 0 && viewed_size.x <= viewed_coord.x)
-     || (viewed_coord.y < 0 && viewed_size.y <= viewed_coord.y)
-     || (viewed_coord.z < 0 && viewed_size.z <= viewed_coord.z)) {
-        gl_Position.w = 0;
-    } else {
-        int index = 
-            viewed_coord.y * viewed_size.x * viewed_size.z +
-            viewed_coord.z * viewed_size.x +
-            viewed_coord.x;
-        uint filled = texelFetch(viewed, index).r;
-        if ((filled & VIEW_STATE_VISIBLE) != 0u) {
-            fragment_brightness = 1;
-        } else if ((filled & VIEW_STATE_SEEN) != 0u) {
-            fragment_brightness = 0.5;
-        } else {
-            gl_Position.w = 0;
-        }
-    }
-#else
-    vec4 regular_color = color * texture(bitmap, fragment_uv);
-    fragment_color = vec4(regular_color.rgb * fragment_brightness, regular_color.a);
-#endif
-}
-END
-
-
-WIREFRAME_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-#else
-layout(location=0) out vec4 fragment_color;
-#endif
-
-OUTIN vec2 uv;
-
-uniform mat4 projection;
-uniform vec4 color;
-
-void main() {
-#ifdef VERTEX_SHADER
-    vec4 position = projection * vec4(vertex_position, 1.0);
-    position.z -= 0.0001;
-    gl_Position = position;
-#else
-    fragment_color = color;
-#endif
-}
-END
-
-
-COLOR_AND_BITMAP_SHADER :: #string END
-#ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=2) in vec2 vertex_uv; // @TODO: Figure out how to get multiple vertex formats to work with the same shader.
-#else
-layout(location=0) out vec4 fragment_color;
-#endif
-
-OUTIN vec2 uv;
-
-uniform sampler2D bitmap;
-uniform mat4 projection;
-uniform vec4 color;
-
-void main() {
-#ifdef VERTEX_SHADER
-    uv = vertex_uv;
-    gl_Position = projection * vec4(vertex_position, 1.0);
-#else
-    fragment_color = color * texture(bitmap, uv);
-#endif
-}
-END

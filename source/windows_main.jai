@@ -352,12 +352,16 @@ main :: () {
     
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
 
+    level_arena := make_arena(VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), LEVEL_ARENA_SIZE);
+    frame_arena := make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
+
     data := Game_Init_Data.{
-        game_memory        = game_memory,
+        game_memory         = game_memory,
         gl_extension_loader = wglGetProcAddress,
         os_print            = os_print,
-        level_arena_memory  = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
-        frame_arena_memory  = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE)
+        read_file           = read_file,
+        level_arena         = *level_arena,
+        frame_arena         = *frame_arena
     };
 
     game_init(*data);
@@ -441,6 +445,7 @@ main :: () {
     }
 }
 
+
 print :: (s: string, args: ..Any) {
     buf: [4096] u8;
     buf_str := string.{buf.count, buf.data};
@@ -448,8 +453,36 @@ print :: (s: string, args: ..Any) {
     os_print(buf_str);
 }
 
+
 os_print :: (s: string) {
     WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
     FlushFileBuffers(windows.stdout); 
     // This function is for debug output. We don't care about performance, so we flush every time we call this.
+}
+
+
+// @TODO: Switch to using the Jai allocator-passing method so we can pass an allocator to this without it knowing about memory arenas?
+read_file :: (name: string, arena: *Memory_Arena) -> bool, [] u8 {
+    // @TODO: Maybe we can detect when name is a static string (it is zero-terminated) and skip translating it?
+
+    path: [MAX_PATH] u8;
+    assert(name.count <= MAX_PATH - 1);
+    memcpy(path.data, name.data, name.count);
+    path[name.count] = 0;
+
+    handle := CreateFileA(path.data, FILE_GENERIC_READ);
+    if handle == INVALID_HANDLE_VALUE return false, .{};
+    defer CloseHandle(handle);
+
+    size_l: LARGE_INTEGER;
+    assert(GetFileSizeEx(handle, *size_l) != 0);
+    assert(size_l.QuadPart < 0x7fffffff);
+    size := cast(u32, size_l.QuadPart);
+    
+    buf := arena_alloc_array(arena, size, u8);
+    read_size: u32;
+    ReadFile(handle, buf.data, size, *read_size);
+    assert(read_size == size);
+
+    return true, buf;
 }

@@ -353,9 +353,9 @@ update_level_visibility :: (using level: *Level) {
     
     using context.game_context;
 
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    positions := arena_alloc_array(*frame_arena, collision.size.x * collision.size.y * collision.size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+    mark := get_mark(frame_arena);
+    defer restore_mark(frame_arena, mark);
+    positions := arena_alloc_array(frame_arena, collision.size.x * collision.size.y * collision.size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
     position_count := 1;
 
     player_success, player_index := get_3d_index(player.position, collision.position, collision.size);

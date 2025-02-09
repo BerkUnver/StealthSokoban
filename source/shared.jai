@@ -16,9 +16,11 @@ Game_Init_Data :: struct {
     game_memory: *void;
     gl_extension_loader: (*u8) -> *void #c_call;
     os_print: (string);
-    level_arena_memory: *void;
-    frame_arena_memory: *void;
+    read_file: (string, *Memory_Arena) -> bool, [] u8;
+    level_arena: *Memory_Arena;
+    frame_arena: *Memory_Arena;
 }
+
 Game_Init_Proc :: #type (init: *Game_Init_Data) #no_context;
 
 Game_Update :: #type (
@@ -121,6 +123,50 @@ for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #ex
 
         #insert body;
     }
+}
+
+
+Memory_Arena :: struct {
+    data: *u8;
+    count: s64;
+    current: s64;
+}
+
+make_arena :: (memory: *u8, count: s64) -> Memory_Arena {
+    return .{
+        data = memory,
+        count = count,
+        current = 0
+    };
+}
+
+
+clear_arena :: inline (arena: *Memory_Arena) {
+    arena.current = 0;
+}
+
+
+arena_alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
+    assert(count >= 0);
+    ret := arena.data + arena.current;
+    arena.current += count;
+    if zero_init memset(ret, 0, count);
+    return ret;
+}
+
+arena_alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
+    return arena_alloc(arena, size_of(T), zero_init);
+}
+
+arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
+    byte_count := size_of(T) * count; 
+    ret := arena_alloc(arena, byte_count, zero_init);
+    return .{data=xx ret, count=count};
+}
+
+
+get_mark :: (arena: *Memory_Arena) -> s64 {
+    return arena.current;
 }
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
