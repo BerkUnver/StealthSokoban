@@ -22,7 +22,7 @@ Game_Context :: struct {
     imm_color_shader: GLuint;
     color_shader: GLuint;
     wireframe_shader: GLuint;
-    viewed_shader: GLuint;
+    color_and_bitmap_shader: GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -131,6 +131,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(color_shader != 0);
         wireframe_shader = register_shader("WIREFRAM_SHADER", WIREFRAME_SHADER);
         assert(wireframe_shader != 0);
+        color_and_bitmap_shader = register_shader("COLOR_AND_BITMAP_SHADER", COLOR_AND_BITMAP_SHADER);
+        assert(color_and_bitmap_shader != 0);
        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
@@ -245,32 +247,50 @@ game_update : Game_Update : (
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
         
-
-        glUseProgram(block_shader);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, block_bitmap);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
-
-        set_uniform("bitmap", cast(s32, 0));
-        set_uniform("viewed", cast(s32, 1));
-        set_uniform("viewed_size", collision.size);
-
-        for * blocks {
-            projection := translate(world_to_camera, to_vector3(it.position));
-            set_uniform("viewed_position", it.position - collision.position);
-            set_uniform("projection", *projection);
-            set_uniform("color", it.color);
-
-            glBindVertexArray(it.mesh.vao);
-            glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
-            glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
-        }
-
         
-        if mode ==  {
+        if mode == {
+            case .GAME;
+                glUseProgram(block_shader);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+
+                set_uniform("bitmap", cast(s32, 0));
+                set_uniform("viewed", cast(s32, 1));
+                set_uniform("viewed_size", collision.size);
+
+                for * blocks {
+                    projection := translate(world_to_camera, to_vector3(it.position));
+                    set_uniform("viewed_position", it.position - collision.position);
+                    set_uniform("projection", *projection);
+                    set_uniform("color", it.color);
+
+                    glBindVertexArray(it.mesh.vao);
+                    glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
+                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
+                }
+            
             case .EDITOR;
+                glUseProgram(color_and_bitmap_shader);
+                
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+
+                set_uniform("bitmap", cast(s32, 0));
+                
+                for * blocks {
+                    projection := translate(world_to_camera, to_vector3(it.position));
+                    set_uniform("projection", *projection);
+                    set_uniform("color", it.color);
+
+                    glBindVertexArray(it.mesh.vao);
+                    glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
+                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
+                }
+
+
                 selected := get_selected(*level, *editor);
                 if selected {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
@@ -278,10 +298,8 @@ game_update : Game_Update : (
 
                     draw_wireframe_mesh(*selected.mesh, translate(world_to_camera, to_vector3(selected.position)), color);
                 }
+                
         }
-        
-
-
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
         // This might be valuable for debugging.
@@ -507,6 +525,8 @@ layout(location=0) in vec3 vertex_position;
 layout(location=0) out vec4 fragment_color;
 #endif
 
+OUTIN vec2 uv;
+
 uniform mat4 projection;
 uniform vec4 color;
 
@@ -517,6 +537,31 @@ void main() {
     gl_Position = position;
 #else
     fragment_color = color;
+#endif
+}
+END
+
+
+COLOR_AND_BITMAP_SHADER :: #string END
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=2) in vec2 vertex_uv; // @TODO: Figure out how to get multiple vertex formats to work with the same shader.
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+OUTIN vec2 uv;
+
+uniform sampler2D bitmap;
+uniform mat4 projection;
+uniform vec4 color;
+
+void main() {
+#ifdef VERTEX_SHADER
+    uv = vertex_uv;
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    fragment_color = color * texture(bitmap, uv);
 #endif
 }
 END
