@@ -13,10 +13,10 @@ Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
     os_print: (string);
-    read_file: (string, *Memory_Arena) -> bool, [] u8;
+    read_file: (string, [] u8) -> bool, int;
     imm_state: Imm_State;
 
-    frame_arena: *Memory_Arena;
+    frame_arena: Memory_Arena;
 
     block_shader: GLuint;
     block_bitmap: GLuint;
@@ -24,6 +24,8 @@ Game_Context :: struct {
     color_shader: GLuint;
     wireframe_shader: GLuint;
     color_and_bitmap_shader: GLuint;
+
+    // vaos: [Vertex_Format.COUNT] GLuint;
 }
 
 #add_context game_context: *Game_Context;
@@ -37,7 +39,7 @@ Game :: struct {
     mode: Game_Mode;
     level: Level;
     editor: Editor;
-    level_arena: *Memory_Arena;
+    level_arena: Memory_Arena;
 
     time_elapsed: float64;
 }
@@ -58,7 +60,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         using context.game_context;
 
-        frame_arena = data.frame_arena;
+        frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
 
         os_print = data.os_print;
         read_file = data.read_file;
@@ -102,30 +104,18 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
             // print("glDebugMessageCallbackARB was not found.");
         }
 
-        // @TODO: Enable OpenGL vsync by calling wglSwapIntervalEXT(1)
-       
-        imm_init();
 
         glClearColor(0, 0, 0, 1);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
-       
-        //
-        // Now that the game_context is initted, we can init the game.
-        //
-
-
-        using game_memory.game;
 
         // :GLDebugProcHotloadingHack
         stack_context := context;
         if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
         
-        level_arena = data.level_arena;
-        
-        // @TODO: Figure out how to get the name of an identifier in a macro.
-        success: bool; 
+        // imm_init();
+
         block_shader = load_shader("shaders/block.gl");
         assert(block_shader != 0);
         imm_color_shader = load_shader("shaders/imm_color.gl");
@@ -136,7 +126,27 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(wireframe_shader != 0);
         color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
         assert(color_and_bitmap_shader != 0);
-       
+        
+        /*
+        glGenVertexArrays(vaos.count, vaos.data);
+
+        vao := vaos[Vertex_Format.BLOCK];
+        glBindVertexArray(vao);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
+        glEnableVertexAttribArray(1);
+        glVertexAttribIPointer(1, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+        */
+
+        //
+        // Now that the game_context is initted, we can init the game.
+        //
+
+        using game_memory.game;
+        level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
+        
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
         bitmap_data := u8.[ 
@@ -167,7 +177,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         
         mode = .GAME;
-        make_level(*level, level_arena);
+        make_level(*level, *level_arena);
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -202,14 +212,14 @@ game_update : Game_Update : (
                     mode = .GAME;
                 }
 
-                free_level(*level, level_arena);
-                make_level(*level, level_arena);
+                free_level(*level, *level_arena);
+                make_level(*level, *level_arena);
             } else {
                 if #complete mode == {
                     case .GAME;
-                        level_handle_input(*level, level_arena, it);
+                        level_handle_input(*level, *level_arena, it);
                     case .EDITOR;
-                        editor_handle_input(*level, level_arena, *editor, input.mouse_x, input.mouse_y, it);
+                        editor_handle_input(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
                 }
             }
         }
@@ -269,7 +279,7 @@ game_update : Game_Update : (
                     set_uniform("viewed_position", it.position - collision.position);
                     set_uniform("projection", *projection);
                     set_uniform("color", it.color);
-
+                
                     glBindVertexArray(it.mesh.vao);
                     glBindBuffer(GL_ARRAY_BUFFER, it.mesh.vbo);
                     glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
@@ -282,7 +292,7 @@ game_update : Game_Update : (
                 glBindTexture(GL_TEXTURE_2D, block_bitmap);
 
                 set_uniform("bitmap", cast(s32, 0));
-                
+
                 for * blocks {
                     projection := translate(world_to_camera, to_vector3(it.position));
                     set_uniform("projection", *projection);
