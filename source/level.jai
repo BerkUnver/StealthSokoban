@@ -13,12 +13,19 @@ Level :: struct {
     // metaprogramming to do this but it seems like overkill right now.
 
     flags: enum {PULLING :: 1;};
-    camera_pitch: float;
-    camera_yaw: float;
+    
+    camera_pitch_ticks: s8 = 1;
+    camera_yaw_ticks: s8;
 
     collision: Collision;
 }
 
+
+CAMERA_PITCH_TICK_COUNT :: 5; // Starts at zero
+CAMERA_MIN_PITCH :: -PI / 3;
+CAMERA_MAX_PITCH :: PI / 3;
+
+CAMERA_YAW_TICK_COUNT :: 12;
 
 Selectable :: struct {
     position: Vector3i;
@@ -26,7 +33,7 @@ Selectable :: struct {
 }
 
 
-Player   :: Selectable;
+Player :: Selectable;
 
 
 Block :: struct {
@@ -308,10 +315,18 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     offset_matrix := make_translation_matrix4(camera_offset);
     
     position_matrix := make_translation_matrix4(-to_vector3(player.position) - Vector3.{0.5, 0.5, 0.5});
-    pitch_matrix := make_x_rotation_matrix(Matrix4, -camera_pitch);
-    yaw_matrix := make_y_rotation_matrix(Matrix4, -camera_yaw);
+
+    pitch := lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
+    pitch_matrix := make_x_rotation_matrix(Matrix4, -pitch);
+
+    yaw_matrix := make_y_rotation_matrix(Matrix4, -get_camera_yaw(level));
     
     return multiply(FRUSTUM, multiply(offset_matrix, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix))));
+}
+
+
+get_camera_yaw :: (using level: *Level) -> float {
+    return TAU * cast(float, camera_yaw_ticks) / cast(float, CAMERA_YAW_TICK_COUNT);
 }
 
 
@@ -398,7 +413,7 @@ update_level_visibility :: (using level: *Level) {
 make_level :: (using level: *Level, level_arena: *Memory_Arena) {
     // @Speed maybe we can just set what we need to be reset in case
     // this is a reused pointer from an old level. I am going to
-    // zero-init everything right now to prevent bufs.
+    // zero-init everything right now to prevent bugs.
     level.* = .{};
 
     T :: true;
@@ -422,8 +437,6 @@ make_level :: (using level: *Level, level_arena: *Memory_Arena) {
     assert(append(*selectables, *entrance));
     assert(append(*selectables, *exit));
     assert(append(*selectables, *player));
-
-    camera_pitch = -PI / 3;
 
     temp_blocks := Temporary_Block.[
         .{
@@ -493,14 +506,32 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
+    } else if event.key == #char "K" && event.down {
+        camera_pitch_ticks = max(camera_pitch_ticks - 1, 0);
+    } else if event.key == #char "I" && event.down {
+        camera_pitch_ticks = min(camera_pitch_ticks + 1, CAMERA_PITCH_TICK_COUNT);
+    } else if event.key == #char "L" && event.down {
+        camera_yaw_ticks = (camera_yaw_ticks - 1 + CAMERA_YAW_TICK_COUNT) % CAMERA_YAW_TICK_COUNT;
+    } else if event.key == #char "J" && event.down {
+        camera_yaw_ticks = (camera_yaw_ticks + 1) % CAMERA_YAW_TICK_COUNT;
     } else {
         if !event.down return;
         push_direction: Vector3i;
+
+        move :: (direction: Vector2) #expand {
+            rotated := rotate(direction, get_camera_yaw(level));
+            if abs(rotated.x) > abs(rotated.y) {
+                push_direction.x += cast(s32, sign(rotated.x));
+            } else {
+                push_direction.z += cast(s32, sign(rotated.y));
+            }
+        }
+
         if event.key == {
-            case xx #char "W"; push_direction.z += 1;
-            case xx #char "A"; push_direction.x -= 1;
-            case xx #char "S"; push_direction.z -= 1;
-            case xx #char "D"; push_direction.x += 1;
+            case xx #char "W"; move(.{0, 1});
+            case xx #char "A"; move(.{-1, 0});
+            case xx #char "S"; move(.{0, -1});
+            case xx #char "D"; move(.{1, 0});
             case xx #char "Q"; push_direction.y += 1;
             case xx #char "E"; push_direction.y -= 1;
             case; return;

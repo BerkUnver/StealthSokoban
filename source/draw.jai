@@ -328,6 +328,19 @@ update_collision_texture :: (collision: *Collision) {
     } else {
         glBufferSubData(GL_TEXTURE_BUFFER, 0, collision.size.x * collision.size.y * collision.size.z, collision.viewed.data);
     }
+    
+    // @Investigate
+
+    // For some reason, RenderDoc believes that the vbo gets set to zero size when I call
+    // glBufferSubData. It's like it's "forgetting" where the buffer is located. This causes
+    // none of the level geometry to render when I inspect it in RenderDoc (but it shows up
+    // in the game). If I re-bind the texture buffer it works again for some reason.
+    
+    // I don't know if this is because RenderDoc is bugged or because I'm subtly using OpenGL
+    // incorrectly and it's not telling me why.
+
+    glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, collision.texture.vbo);
 }
 
 
