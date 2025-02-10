@@ -3,15 +3,18 @@ Level :: struct {
 
     blocks: Fixed_Array(32, Block);
     player: Player;
-    flags: enum {PULLING :: 1;};
     
     entrance: Selectable;
     exit:     Selectable;
+    
+    // These are gameplay-only variables. In the future, we might want to better-differentiate
+    // between what is modifiable in the editor (which should be as close as we can get to a 
+    // pure-data representation of the scene) and what is gameplay state. We could use
+    // metaprogramming to do this but it seems like overkill right now.
 
-    camera_position: Vector3;
+    flags: enum {PULLING :: 1;};
     camera_pitch: float;
     camera_yaw: float;
-    camera_projection: Matrix4;
 
     collision: Collision;
 }
@@ -300,32 +303,15 @@ add_block_to_level :: (using level: *Level, using temp_block: *Temporary_Block, 
 }
 
 
-init_camera :: (using level: *Level) {
-    FOV :: PI / 3;
-    NEAR :: 0.1;
-
-    right := cast(float, NEAR * tan(FOV / 2));
-    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
+get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
+    camera_offset := Vector3.{0, 0, 12};
+    offset_matrix := make_translation_matrix4(camera_offset);
     
-    camera_projection = make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
-    camera_pitch = -PI / 3;
-    camera_position = .{0, 8, -4};
-}
-
-
-get_camera_matrix :: (using level: *Level) -> Matrix4 {
-    position_matrix := make_translation_matrix4(-camera_position);
+    position_matrix := make_translation_matrix4(-to_vector3(player.position) - Vector3.{0.5, 0.5, 0.5});
     pitch_matrix := make_x_rotation_matrix(Matrix4, -camera_pitch);
     yaw_matrix := make_y_rotation_matrix(Matrix4, -camera_yaw);
-
-    return multiply(camera_projection, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
-}
-
-
-get_camera_to_world_rotation_matrix :: (using level: *Level) -> Matrix3 {
-    yaw_matrix := make_y_rotation_matrix(Matrix3, camera_yaw);
-    pitch_matrix := make_x_rotation_matrix(Matrix3, camera_pitch);
-    return multiply(yaw_matrix, pitch_matrix);
+    
+    return multiply(FRUSTUM, multiply(offset_matrix, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix))));
 }
 
 
@@ -437,7 +423,7 @@ make_level :: (using level: *Level, level_arena: *Memory_Arena) {
     assert(append(*selectables, *exit));
     assert(append(*selectables, *player));
 
-    init_camera(level);
+    camera_pitch = -PI / 3;
 
     temp_blocks := Temporary_Block.[
         .{

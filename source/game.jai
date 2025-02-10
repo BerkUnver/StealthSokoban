@@ -188,15 +188,18 @@ game_update : Game_Update : (
         
         for input.events {
             if it.key == Key.F_BASE + 1 && it.down {
-
-                if mode == .GAME {
-                    mode = .EDITOR;
-                } else {
-                    mode = .GAME;
-                }
-
                 free_level(*level, *level_arena);
                 make_level(*level, *level_arena);
+                
+                if #complete mode == {
+                    case .GAME;
+                        mode = .EDITOR;
+                        editor.camera_position = .{0, 8, -4};
+                        editor.camera_yaw = 0;
+                        editor.camera_pitch = -PI / 3;
+                    case .EDITOR;
+                        mode = .GAME;
+                }
             } else {
                 if #complete mode == {
                     case .GAME;
@@ -235,7 +238,13 @@ game_update : Game_Update : (
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         
-        world_to_camera := get_camera_matrix(*level);
+        world_to_camera: Matrix4 = ---;
+        if #complete mode == {
+            case .GAME;
+                world_to_camera = get_gameplay_camera_matrix(*level);
+            case .EDITOR;
+                world_to_camera = get_editor_camera_matrix(*editor);
+        }
 
         using level;
         
@@ -343,6 +352,15 @@ game_update : Game_Update : (
 }
 
 
+FRUSTUM :: #run -> Matrix4 {
+    FOV :: PI / 3;
+    NEAR :: 0.1;
+
+    right := cast(float, NEAR * tan(FOV / 2));
+    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
+     
+    return make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
+}
 
 gl_debug_callback :: (
     source: GLenum,

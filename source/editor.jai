@@ -36,6 +36,10 @@ Editor :: struct {
             index: u8;
         }
     }
+
+    camera_position := Vector3.{0, 8, -4};
+    camera_pitch: float;
+    camera_yaw: float;
 }
 
 
@@ -46,8 +50,24 @@ get_selected :: (level: *Level, editor: *Editor) -> *Selectable {
 }
 
 
+get_editor_camera_matrix :: (ed: *Editor) -> Matrix4 {
+    position_matrix := make_translation_matrix4(-ed.camera_position);
+    pitch_matrix := make_x_rotation_matrix(Matrix4, -ed.camera_pitch);
+    yaw_matrix := make_y_rotation_matrix(Matrix4, -ed.camera_yaw);
+
+    return multiply(FRUSTUM, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
+}
+
+
+get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
+    yaw_matrix := make_y_rotation_matrix(Matrix3, ed.camera_yaw);
+    pitch_matrix := make_x_rotation_matrix(Matrix3, ed.camera_pitch);
+    return multiply(yaw_matrix, pitch_matrix);
+}
+
+
 editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
-    camera_to_world := inverse(get_camera_matrix(level));
+    camera_to_world := inverse(get_editor_camera_matrix(editor));
 
     if editor.selection_mode == {
         case .IDLE;
@@ -169,7 +189,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 
                 data := Raycast_Data.{col=*collision};
                 ray_end := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 1});
-                raycast(camera_position, ray_end, raycast_visitor, *data);
+                raycast(editor.camera_position, ray_end, raycast_visitor, *data);
                 
                 block := data.collided_block;
 
@@ -279,24 +299,24 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
                 mouse_movement := rotating_previous_mouse_position - mouse;
                 rotating_previous_mouse_position = mouse;
                 
-                camera_yaw += mouse_movement.x * dt * YAW_SPEED;
-                camera_yaw = fmod_cycling(camera_yaw, TAU);
+                editor.camera_yaw += mouse_movement.x * dt * YAW_SPEED;
+                editor.camera_yaw = fmod_cycling(editor.camera_yaw, TAU);
 
-                camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
-                clamp(*camera_pitch, -PI/2, PI/2);
+                editor.camera_pitch -= mouse_movement.y * dt * PITCH_SPEED; 
+                clamp(*editor.camera_pitch, -PI/2, PI/2);
             }
 
             CAMERA_SPEED :: 240.0 / 60.0;
-            camera_movement := get_camera_to_world_rotation_matrix(level) * moving_direction * (dt * CAMERA_SPEED);
-            camera_position += camera_movement;
+            camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * moving_direction * (dt * CAMERA_SPEED);
+            editor.camera_position += camera_movement;
 
         case .LOCKED;
             if editor.mode == {
                 case .DRAG; 
                     using editor.drag;
 
-                    camera_to_world_rotation_matrix := get_camera_to_world_rotation_matrix(level);
-                    camera_to_world := inverse(get_camera_matrix(level));
+                    camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(editor);
+                    camera_to_world := inverse(get_editor_camera_matrix(editor));
                     initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
                     mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
                     
@@ -319,14 +339,14 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
 
 
                         intersection_parallel, intersection, intersection_t := get_intersection_between_line_and_plane(
-                            line_point = camera_position,
-                            line_direction = mouse_position - camera_position,
+                            line_point = editor.camera_position,
+                            line_direction = mouse_position - editor.camera_position,
                             plane_point = selected_position,
                             plane_normal = normal);
 
                         initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
-                            line_point = camera_position,
-                            line_direction = initial_mouse_position - camera_position,
+                            line_point = editor.camera_position,
+                            line_direction = initial_mouse_position - editor.camera_position,
                             plane_point = selected_position,
                             plane_normal = normal);
                         
