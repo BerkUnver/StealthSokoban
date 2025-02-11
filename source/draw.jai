@@ -1,5 +1,5 @@
 Mesh :: struct {
-    vertices: [] Vector3; // We store this information on the CPU so we can raycast against it.
+    vertex_positions: [] Vector3; // We store this information on the CPU so we can raycast against it.
     vao: GLuint;
     vbo: GLuint;
 }
@@ -39,6 +39,7 @@ Layout_Location :: enum {
     POSITION;
     UV;
     VIEWED_OFFSET;
+    COLOR;
 }
 
 
@@ -162,8 +163,8 @@ free :: (mesh: *Mesh) {
 make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
     using context.game_context;
 
-    vertices := arena_alloc_array(arena, 36, Vector3);
-    make_cuboid(vertices, b, e);
+    vertex_positions := arena_alloc_array(arena, 36, Vector3);
+    make_cuboid(vertex_positions, b, e);
 
     vao, vbo: GLuint;
     
@@ -172,13 +173,13 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, byte_count(vertices), vertices.data, GL_STATIC_DRAW); // Allocate the buffer
+    glBufferData(GL_ARRAY_BUFFER, byte_count(vertex_positions), vertex_positions.data, GL_STATIC_DRAW); // Allocate the buffer
     
     using Layout_Location;
     glEnableVertexAttribArray(xx POSITION);
     glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
 
-    return .{vertices = vertices, vao = vao, vbo = vbo};
+    return .{vertex_positions = vertex_positions, vao = vao, vbo = vbo};
 }
 
 
@@ -272,7 +273,7 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
 
     // @TODO Store vertex buffers in SOA form!
     return .{
-        vertices = vertex_positions,
+        vertex_positions = vertex_positions,
         vao = vao,
         vbo = vbo
     };
@@ -280,7 +281,7 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
 
 
 update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) {
-    mesh.vertices = make_block_mesh_data(size, filled, mesh.vbo, level_arena);
+    mesh.vertex_positions = make_block_mesh_data(size, filled, mesh.vbo, level_arena);
 }
 
 
@@ -360,7 +361,7 @@ draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     glBindVertexArray(mesh.vao);
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
 
-    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertices.count);
+    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
 }
 
 
@@ -384,7 +385,7 @@ draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
     
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
-    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertices.count);
+    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
@@ -522,7 +523,7 @@ set_uniform :: (name: *u8, val: $T) {
         glUniform3i(loc, val.x, val.y, val.z);
     } else #if T == Vector4 {
         glUniform4f(loc, val.x, val.y, val.z, val.w);
-    } else #if T == *Matrix4 {
+    } else #if T == *Matrix4 /* @Cleanup: Remove this one */ || T == Matrix4 {
         glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
     } else #assert false;
 }

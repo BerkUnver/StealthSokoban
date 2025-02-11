@@ -1,7 +1,7 @@
 Vertex :: struct {
     position: Vector3;
-    color: Vector4;
     uv: Vector2;
+    color: Vector4;
 }
 
 Imm_State :: struct {
@@ -20,20 +20,25 @@ imm_init :: () {
     using context.game_context.imm_state;
     using context.game_context;
 
+    glGenVertexArrays(1, *vao);
+    glBindVertexArray(vao);
+
     glGenBuffers(1, *vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, size_of(Vertex) * vertices.count, null, GL_STREAM_DRAW); // Allocate the buffer
-    glGenVertexArrays(1, *vao);
+    glBufferData(GL_ARRAY_BUFFER, byte_count(vertices), null, GL_STREAM_DRAW); // Allocate the buffer
     
-    glBindVertexArray(vao);
-    
-    // Apparently you need to enable all the attribs on the vao before you compile the shaders,
-    // or else OpenGL will recompile your shader when you enable them.
+    v: *Vertex;
 
-    vertex_type_info := type_info(Vertex);
-    for 0..vertex_type_info.members.count-1 {
-        glEnableVertexAttribArray(xx it);
-    }
+    // @Speed make this SOA
+    using Layout_Location;
+    glEnableVertexAttribArray(xx POSITION);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.position);
+
+    glEnableVertexAttribArray(xx UV);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.uv);
+
+    glEnableVertexAttribArray(xx COLOR);
+    glVertexAttribPointer(xx COLOR, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.color);
 }
 
 
@@ -41,35 +46,10 @@ imm_flush :: () {
     using context.game_context.imm_state;
     using context.game_context;
     
-    shader_GLint: GLint;
-    glGetIntegerv(GL_CURRENT_PROGRAM, *shader_GLint);
-    assert(shader_GLint >= 0);
-    shader := cast(GLuint, shader_GLint);
-
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Vertex) * vertex_count, vertices.data);
 
     glBindVertexArray(vao);
-    
-    position_loc := glGetAttribLocation(shader, "vertex_position");
-    if position_loc >= 0 {
-        glVertexAttribPointer(xx position_loc, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).position);
-        glEnableVertexAttribArray(xx position_loc);
-    }
-
-    color_loc := glGetAttribLocation(shader, "vertex_color");
-    if color_loc >= 0 {
-        glVertexAttribPointer(xx color_loc, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).color);
-        glEnableVertexAttribArray(xx color_loc);
-    }
-
-    uv_loc := glGetAttribLocation(shader, "vertex_uv");
-    if uv_loc >= 0 {
-        glVertexAttribPointer(xx uv_loc, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), *cast(*Vertex, null).uv);
-        glEnableVertexAttribArray(xx uv_loc);
-    }
-
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Vertex) * vertex_count, vertices.data);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
     vertex_count = 0;
 }
@@ -192,7 +172,7 @@ draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: *Matrix
     offset_matrix := make_translation_matrix4(start);
    
 
-    glUseProgram(color_shader);
+    glUseProgram(imm_color_shader);
     projection_matrix := projection * multiply(offset_matrix, rot_matrix);
     set_uniform("projection", *projection_matrix);
     

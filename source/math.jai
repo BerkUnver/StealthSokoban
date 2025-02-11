@@ -93,7 +93,7 @@ get_intersection_between_line_and_plane :: (line_point: Vector3, line_direction:
     denominator := dot(plane_normal, line_direction);
     if denominator == 0 return true, .{}, 0;
     
-    t := (dot(plane_normal, plane_point) - dot(plane_normal, line_point)) / dot(plane_normal, line_direction);
+    t := (dot(plane_normal, plane_point) - dot(plane_normal, line_point)) / denominator;
     return false, line_point + line_direction * t, t;
 }
 

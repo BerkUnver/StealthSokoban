@@ -47,7 +47,7 @@ void main() {
             fragment_brightness = 1;
             gl_Position = projection * vec4(vertex_position, 1.0);
         } else if ((filled & VIEW_STATE_SEEN) != 0u) {
-            fragment_brightness = 0.5;
+            fragment_brightness = 0.25;
             gl_Position = projection * vec4(vertex_position, 1.0);
         } else {
             gl_Position = vec4(0, 0, -2, 1);

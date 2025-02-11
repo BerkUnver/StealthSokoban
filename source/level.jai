@@ -177,7 +177,7 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> Add_Block_Result {
 
 
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
-raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T) -> collided: bool {
+raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T, wiggle_room := Vector3.{}/*, projection := Matrix4_Identity*/) -> collided: bool {
     raycast_x :: (y_plane: s32, z_plane: s32, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
@@ -234,6 +234,8 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
     
     y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
     
+    wiggle_room_z := sign(ray_end.z - ray_start.z) * wiggle_room.z;
+
     if y_steps == 0 {
         if raycast_zx(xx floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data) return true;
         return false;
@@ -261,8 +263,19 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
             old_z := z;
             x = ray_start.x + ray_length.x * t;
             z = ray_start.z + ray_length.z * t;
+            
+            // If z and old_z are really close together
+            // (the ray is almost straight along the z-axis)
+            // then, the start_z and end_z values might be swapped.
+            // This is probably fine, because the ray will still
+            // be almost straight.
 
-            if raycast_zx(y_plane, old_x, old_z, x, z, user_data) return true;
+            start_z := old_z + wiggle_room_z;
+            end_z := z - wiggle_room_z;
+            
+            // draw_arrow(.{old_x, xx y_plane, start_z}, .{x, xx (y_plane + 1), end_z}, .{1, 0, 0, 1}, *projection);
+
+            if raycast_zx(y_plane, old_x, start_z, x, end_z, user_data) return true;
         }
 
         y_plane += dir;
@@ -376,8 +389,12 @@ update_level_visibility :: (using level: *Level) {
         }
         
         start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+        
+        projection := get_gameplay_camera_matrix(level);
 
-        if raycast(start, end, visitor, *collision) continue;
+        WIGGLE_ROOM :: Vector3.{0.01, 0.01, 0.01};
+        if raycast(start, end, visitor, *collision, wiggle_room=WIGGLE_ROOM/*, projection=get_gameplay_camera_matrix(level)*/) continue;
+
         collision.viewed[index] |= (.SEEN | .VISIBLE);
 
         px := position; px.x += 1;
@@ -441,35 +458,37 @@ make_level :: (using level: *Level, level_arena: *Memory_Arena) {
     temp_blocks := Temporary_Block.[
         .{
             position = .{-3, -1, -2},
-            size = .{6, 1, 4},
+            size = .{6, 1, 8},
             filled = .[
                 T, T, T, T, T, T,
                 T, T, T, T, T, T,
                 T, T, T, T, T, T,
-                T, T, T, T, T, T
+                T, T, T, T, T, T,
+                T, T, T, T, T, T,
+                T, T, T, T, T, T,
+                T, T, T, T, T, T,
+                T, T, T, T, T, T,
             ],
             color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
             moveable = false
         },
         .{
             position = .{-3, 0, -2},
-            size = .{6, 1, 4},
+            size = .{6, 1, 2},
             filled = .[
-                F, F, F, F, F, T,
-                T, F, F, F, F, F, 
-                F, F, F, F, F, F,
-                T, T, T, T, T, T
+                F, F, F, F, T, T,
+                T, T, F, T, T, F, 
             ],
             color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
             // .{1, 143.0/255.0, 0, 1} Orange color that I liked
             moveable = false
         },
         .{
-            position = .{-1, 0, -2},
-            size = .{3, 1, 2},
+            position = .{-1, 0, 4},
+            size = .{1, 2, 1},
             filled = .[
-                T, T, T,
-                T, F, T
+                T,
+                T,
             ],
             color = .{0, 0, 1, 1},
             moveable = true

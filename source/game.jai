@@ -186,6 +186,9 @@ game_update : Game_Update : (
         // Therefore, we check to make sure everyone has popped their stuff
         // off of the stack.
         
+        // glClear up here so it doesn't happen after anyone does any debug drawing
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
         for input.events {
             if it.key == Key.F_BASE + 1 && it.down {
                 free_level(*level, *level_arena);
@@ -235,7 +238,6 @@ game_update : Game_Update : (
         stack_context := context;
         if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         
         world_to_camera: Matrix4 = ---;
@@ -247,7 +249,8 @@ game_update : Game_Update : (
         }
 
         using level;
-        
+
+
         draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
@@ -273,7 +276,7 @@ game_update : Game_Update : (
                     set_uniform("color", it.color);
                 
                     glBindVertexArray(it.mesh.vao);
-                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
+                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
                 }
             
             case .EDITOR;
@@ -290,16 +293,15 @@ game_update : Game_Update : (
                     set_uniform("color", it.color);
 
                     glBindVertexArray(it.mesh.vao);
-                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertices.count);
+                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
                 }
 
 
-                selected := get_selected(*level, *editor);
-                if selected {
+                if editor.selected {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
                     color := Vector4.{t, t, t, 1};
 
-                    draw_wireframe_mesh(*selected.mesh, translate(world_to_camera, to_vector3(selected.position)), color);
+                    draw_wireframe_mesh(*editor.selected.mesh, translate(world_to_camera, to_vector3(editor.selected.position)), color);
                 }
         }
 
