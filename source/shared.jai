@@ -107,10 +107,17 @@ contains :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
     return false;
 }
 
+
+to_array :: (a: Fixed_Array($N, $T)) -> [] T {
+    return .{N, a.data.data};
+}
+
+
 operator [] :: (using array: Fixed_Array($N, $T), index: s64) -> T {
     assert(0 <= index && index < array.count);
     return array.data[index];
 }
+
 
 for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
     #assert(!(flags & .REVERSE));

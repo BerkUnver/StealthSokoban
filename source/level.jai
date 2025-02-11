@@ -1,6 +1,6 @@
 Level :: struct {
     selectables: Fixed_Array(32, *Selectable);
-
+    
     blocks: Fixed_Array(32, Block);
     player: Player;
     
@@ -72,7 +72,7 @@ Collision :: struct {
     // development period, but may make less sense later.
     // Consider coming back to this.
 
-    texture: Collision_Texture; // :SharedEditor We don't need this in the editor...
+    texture: Collision_Texture;
 }
 
 
@@ -84,44 +84,31 @@ View_State :: enum_flags u8 { // @Volatile :ViewState
 }
 
 
-// :EditorCollision
-/*
-I have arrived at a bit of a conundrum. Currently, in the game, each collision cube
-is only allowed to be occupied by one thing. This makes sense for the gameplay mode.
-However, in the editor, this makes less sense. Once we start adding multi-extrusion
-and especially dragging, we may want to allow multiple things to overlap in the
-editor, and have a visual warning if they do. This would require a different 
-collision data structure for the editor than the game. We need a collision data
-structure in the editor so we can pick individual level elements with the mouse
-cursor (though this may eventually change to using the meshes of each entity) and
-so warning us about overlaps is fast.
+get_block_extents :: (blocks: [] Block) -> position: Vector3i, size: Vector3i {
+    if blocks.count == 0 return .{}, .{};
+    start := blocks[0].position;
+    end := start + blocks[0].size;
 
-A lot of this seems to be predicting things in the future that don't exist in the
-game yet. THE GOAL IS TO GET TO A MINIMALLY WORKING LEVEL EDITOR AS FAST AS
-POSSIBLE SO I CAN START DESIGNING LEVELS! ALWAYS KEEP THAT IN MIND!
-
-            -berk, 28 - 1 - 2025
-*/
-
-
-// Fits to the given blocks. DOES NOT INSERT THEM INTO THE COLLISION MAP.
-make_collision :: (temp_blocks: [] Temporary_Block, arena: *Memory_Arena) -> Collision {
-    using context.game_context;
-
-    start := temp_blocks[0].position;
-    end := start + temp_blocks[0].size;
-
-    for 1..temp_blocks.count-1 {
-        block := *temp_blocks[it];
+    for 1..blocks.count-1 {
+        block := *blocks[it];
         start = min(start, block.position);
         end = max(end, block.position + block.size);
     }
 
     size := end - start;
+    
+    return start, size;
+}
+
+
+// Fits to the given blocks. DOES NOT INSERT THEM INTO THE COLLISION MAP.
+make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
+    position, size := get_block_extents(blocks);
+
     size_1d := size.x * size.y * size.z;
     
     return .{
-        position = start,
+        position = position,
         size = size,
         filled = arena_alloc_array(arena, size_1d, *Block),
         viewed = arena_alloc_array(arena, size_1d, View_State),
@@ -300,29 +287,6 @@ remove_block_from_collision :: (col: *Collision, block: *Block) {
 }
 
 
-add_block_to_level :: (using level: *Level, using temp_block: *Temporary_Block, level_arena: *Memory_Arena) {
-    filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
-    memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
-
-    block := append(*blocks);
-    assert(block != null);
-    
-    generated_mesh := make_block_mesh(size, filled_allocated, level_arena);
-
-    block.* = .{
-       position = position,
-       size = size,
-       filled = filled_allocated,
-       color = color,
-       moveable = moveable,
-       mesh = generated_mesh
-    };
-    
-    assert(append(*selectables, block));
-    assert(add_block_to_collision(*collision, block) == .OK);
-}
-
-
 get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     camera_offset := Vector3.{0, 0, 12};
     offset_matrix := make_translation_matrix4(camera_offset);
@@ -427,7 +391,7 @@ update_level_visibility :: (using level: *Level) {
 }
 
 
-make_level :: (using level: *Level, level_arena: *Memory_Arena) {
+make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     // @Speed maybe we can just set what we need to be reset in case
     // this is a reused pointer from an old level. I am going to
     // zero-init everything right now to prevent bugs.
@@ -495,10 +459,39 @@ make_level :: (using level: *Level, level_arena: *Memory_Arena) {
         }
     ];
 
-    collision = make_collision(temp_blocks, level_arena);
-    
-    for * temp_blocks add_block_to_level(level, it, level_arena);
+    for * temp_blocks {
+        using it;
+        filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
+        memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
+
+        block := append(*blocks);
+        assert(block != null);
+        
+        generated_mesh := make_block_mesh(size, filled_allocated, level_arena);
+
+        block.* = .{
+           position = position,
+           size = size,
+           filled = filled_allocated,
+           color = color,
+           moveable = moveable,
+           mesh = generated_mesh
+        };
+        
+        assert(append(*selectables, block));
+    }
 }
+
+
+make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
+    make_level_for_editor(level, level_arena);
+
+    collision = make_collision(to_array(blocks), level_arena);
+    for * blocks {
+        assert(add_block_to_collision(*collision, it) == .OK);
+    }
+}
+
 
 
 free_level :: (using level: *Level, level_arena: *Memory_Arena) {   
@@ -628,7 +621,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             player.position = new_player_position;
             if player.position == exit.position {
                 free_level(level, level_arena);
-                make_level(level, level_arena);
+                make_level_for_game(level, level_arena);
             }
         }
     }

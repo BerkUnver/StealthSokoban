@@ -103,26 +103,35 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
 
             if event.key == xx #char "X" && event.down {
+                // @TODO When we add multi-extrude, check to see if intersections between blocks
+                // which aren't legal in gameplay actually happen in the editor, if so, add UI 
+                // that warns about these.
+
                 Raycast_Data :: struct {
+                    blocks: [] Block;
                     previous_coord_exists: bool;
                     previous_coord: Vector3i;
                     collided_block: *Block;
-                    col: *Collision;
                 }
 
                 raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
-                    success, index := get_3d_index(position, col.position, col.size);
-                    if !success || !col.filled[index] {
-                        previous_coord_exists = true;
-                        previous_coord = position;
-                        return false;
-                    } else {
-                        collided_block = col.filled[index];
-                        return true;
+                    // @Speed
+                    for * blocks {
+                        success, index := get_3d_index(position, it.position, it.size);
+                        if success && it.filled[index] {
+                            collided_block = it;
+                            return true;
+                        }
                     }
+
+                    previous_coord_exists = true;
+                    previous_coord = position;
+                    return false;
                 }
                 
-                data := Raycast_Data.{col=*collision};
+                data := Raycast_Data.{
+                    blocks = to_array(blocks)
+                };
                 ray_end := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 1});
                 raycast(editor.camera_position, ray_end, raycast_visitor, *data);
                 
@@ -344,7 +353,6 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
                             new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
                             editor.selected.position.component[index] = new_position_component;
                         }
-                    // :EditorCollision @TODO: UPDATE THE COLLISION GRID TO REFLECT THIS!
                     }
             }
     }
