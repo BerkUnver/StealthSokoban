@@ -298,11 +298,11 @@ game_update : Game_Update : (
                 }
 
 
-                if editor.selected {
+                if !is_null(editor.selected) {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
                     color := Vector4.{t, t, t, 1};
 
-                    draw_wireframe_mesh(*editor.selected.mesh, translate(world_to_camera, to_vector3(editor.selected.position)), color);
+                    draw_wireframe_mesh(eid_mesh(editor.selected), translate(world_to_camera, to_vector3(eid_position(editor.selected))), color);
                 }
         }
 

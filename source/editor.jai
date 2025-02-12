@@ -25,7 +25,7 @@ Editor :: struct {
     
     // Do not access these directly, use the get_selected function.
     // Unless you're the code that modifies this, of course.
-    selected: *Selectable;
+    selected: Eid;
     selected_timer: float;
     
     union {
@@ -152,18 +152,20 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 mouse_position := editor.camera_position;
                 
                 smallest_t := FLOAT32_INFINITY;
-                selected: *Selectable;
+                selected: Eid;
 
                 for selectables {
-                    position := to_vector3(it.position);
-                    assert(it.mesh.vertex_positions.count % 3 == 0);
-                    tri_count := it.mesh.vertex_positions.count / 3;
+                    position := to_vector3(eid_position(it).*);
+                    mesh := eid_mesh(it);
+
+                    assert(mesh.vertex_positions.count % 3 == 0);
+                    tri_count := mesh.vertex_positions.count / 3;
 
                     for i: 0..tri_count-1 {
                         start := i * 3;
-                        v0 := it.mesh.vertex_positions[start]   + position;
-                        v1 := it.mesh.vertex_positions[start+1] + position;
-                        v2 := it.mesh.vertex_positions[start+2] + position;
+                        v0 := mesh.vertex_positions[start]   + position;
+                        v1 := mesh.vertex_positions[start+1] + position;
+                        v2 := mesh.vertex_positions[start+2] + position;
 
                         normal := cross(v1-v0, v2-v0);
 
@@ -188,16 +190,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 }
 
                 editor.selected = selected;
-                if selected editor.selected_timer = 0;
+                if !is_null(selected) editor.selected_timer = 0;
                 return;
             }
             
             enable_drag :: (index: u8) #expand {
-                if editor.selected {
+                if !is_null(editor.selected) {
                     editor.selection_mode = .LOCKED;
                     editor.drag = .{
                         mouse_start = .{mouse_x, mouse_y},
-                        selectable_start = editor.selected.position,
+                        selectable_start = eid_position(editor.selected).*,
                         index = index
                     };
                 }
@@ -292,13 +294,13 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
 
 
                     
-                    if editor.selected {
+                    if !is_null(editor.selected) {
                         camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(editor);
                         camera_to_world := inverse(get_editor_camera_matrix(editor));
                         initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
                         mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
-
-                        selected_position := to_vector3(editor.selected.position);
+                        
+                        selected_position := to_vector3(eid_position(editor.selected).*);
 
                         axis: Vector3;
                         axis.component[index] = 1;
@@ -333,18 +335,18 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
                         || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
                         || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
                         // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
-                            editor.selected.position.component[index] = selectable_start.component[index];
+                            eid_position(editor.selected).component[index] = selectable_start.component[index];
                         } else {
                             movement := intersection.component[index] - initial_intersection.component[index];
                             new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
-                            editor.selected.position.component[index] = new_position_component;
+                            eid_position(editor.selected).component[index] = new_position_component;
                         }
                     }
             }
     }
     
     FLASH_TIME :: 1;
-    if editor.selected {
+    if !is_null(editor.selected) {
         editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
     }
 }

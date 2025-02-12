@@ -1,12 +1,11 @@
 Level :: struct {
-    selectables: Fixed_Array(32, *Selectable);
+    selectables: Fixed_Array(32, Eid);
     
     blocks: Fixed_Array(32, Block);
-    enemy: Enemy;
-    player: Player;
-    
-    entrance: Selectable;
-    exit:     Selectable;
+    enemy:    Simple_Entity;
+    player:   Simple_Entity;
+    entrance: Simple_Entity;
+    exit:     Simple_Entity;
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
@@ -30,12 +29,6 @@ CAMERA_MAX_PITCH :: PI / 3;
 
 CAMERA_YAW_TICK_COUNT :: 12;
 
-Selectable :: struct {
-    position: Vector3i;
-    mesh: Mesh; // @Speed Make this a pointer to a mesh that we store in an asset manager
-    // or something of the like.
-}
-
 
 Eid :: struct { // Entity ID
     type: Type;
@@ -43,30 +36,60 @@ Eid :: struct { // Entity ID
 }
 
 
-eid :: (ptr: *$T) -> Eid {
+eid :: inline (ptr: *$T) -> Eid {
     return .{T, ptr};
 }
 
 
-as :: (eid: Eid, $T: Type) -> *T {
+as :: inline (eid: Eid, $T: Type) -> *T {
     if eid.type == T return eid.ptr;
     return null;
 }
 
 
-Player :: Selectable;
+is_null :: inline (eid: Eid) -> bool {
+    return eid.ptr == null;
+}
 
-Enemy :: Selectable;
+
+eid_position :: (eid: Eid) -> *Vector3i {
+    assert(!is_null(eid));
+    s := as(eid, Simple_Entity); 
+    if s return *s.position;
+    block := as(eid, Block);
+    if block return *block.position;
+    assert(false);
+    return null;
+}
+
+
+eid_mesh :: (eid: Eid) -> *Mesh {
+    assert(!is_null(eid));
+    s := as(eid, Simple_Entity); 
+    if s return *s.mesh;
+    block := as(eid, Block);
+    if block return *block.mesh;
+    assert(false);
+    return null;
+}
+
+
+// Right now, most of our level entities are pretty simple
+// so having this struct, which represents those,
+// is probably fine.
+Simple_Entity :: struct {
+    position: Vector3i;
+    mesh: Mesh;
+}
 
 Block :: struct {
-    using #as selectable: Selectable;
-
+    position: Vector3i;
     size: Vector3i;
     filled: [] bool;
     color: Vector4;
     moveable: bool;
+    mesh: Mesh;
     // @TODO Make a bit array data structure for better cache coherency
-
 }
 
 
@@ -375,10 +398,10 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
     };
 
-    assert(append(*selectables, *entrance));
-    assert(append(*selectables, *exit));
-    assert(append(*selectables, *player));
-    assert(append(*selectables, *enemy));
+    assert(append(*selectables, eid(*entrance)));
+    assert(append(*selectables, eid(*exit)));
+    assert(append(*selectables, eid(*player)));
+    assert(append(*selectables, eid(*enemy)));
 
     temp_blocks := Temporary_Block.[
         .{
@@ -440,7 +463,7 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
            mesh = generated_mesh
         };
         
-        assert(append(*selectables, block));
+        assert(append(*selectables, eid(block)));
     }
 }
 
