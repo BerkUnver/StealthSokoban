@@ -2,6 +2,7 @@ Level :: struct {
     selectables: Fixed_Array(32, *Selectable);
     
     blocks: Fixed_Array(32, Block);
+    enemy: Enemy;
     player: Player;
     
     entrance: Selectable;
@@ -17,6 +18,8 @@ Level :: struct {
     camera_pitch_ticks: s8 = 1;
     camera_yaw_ticks: s8;
 
+    enemy_timer: float;
+
     collision: Collision;
 }
 
@@ -29,12 +32,14 @@ CAMERA_YAW_TICK_COUNT :: 12;
 
 Selectable :: struct {
     position: Vector3i;
-    mesh: Mesh;
+    mesh: Mesh; // @Speed Make this a pointer to a mesh that we store in an asset manager
+    // or something of the like.
 }
 
 
 Player :: Selectable;
 
+Enemy :: Selectable;
 
 Block :: struct {
     using #as selectable: Selectable;
@@ -324,126 +329,6 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
-update_level_visibility :: (using level: *Level) {
-    // The following code is nontrivial so I will write an explanation.
-    // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
-    // Here's why:
-    // A cell will only be visible if it has at least one neighboring cell that is visible.
-    // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
-    // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
-    // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
-    // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
-   
-    // :SlowRaycast
-    // @Speed So, this is our first real reality check of this game.
-    // Running this with ~4000 raycasts/frame is already lagging out the game.
-    // For this initial development period this is fine, but we will soon have levels bigger than that.
-    // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
-
-    //      -berk, 2 - 3 - 2025
-
-
-    for :iterate_vector3i collision.size {
-        collision.viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
-    }
-    
-    using context.game_context;
-
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    positions := arena_alloc_array(*frame_arena, collision.size.x * collision.size.y * collision.size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
-    position_count := 1;
-
-    player_success, player_index := get_3d_index(player.position, collision.position, collision.size);
-    assert(player_success);
-    positions[0] = .{player_index, player.position};
-    collision.viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
-    
-    end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
-    while position_count != 0 {
-        position_count -= 1;
-        using index_and_position := positions[position_count];
-
-        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
-        
-        visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
-            success, index := get_3d_index(position, collision.position, collision.size);
-            if !success return false;
-            return collision.filled[index] != null;
-        }
-        
-        if raycast(start, end, visitor, *collision) continue;
-
-        collision.viewed[index] |= (.SEEN | .VISIBLE);
-
-        check_position :: (p: Vector3i) #expand {
-            success, index := get_3d_index(p, collision.position, collision.size);
-            if !success return;
-
-            if collision.filled[index] || (collision.viewed[index] & .QUEUED_FOR_FLOODFILL) return;
-            
-            collision.viewed[index] |= .QUEUED_FOR_FLOODFILL;
-            positions[position_count] = .{index, p};
-            position_count += 1;
-        }
-        
-        // We only need to floodfill in the directions facing away from where the player is facing.
-        // This is important because we add a little epsilon fudge factor to allow the raycast to
-        // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
-        // in all directions, we could end up having a successful raycast above a wall, floodfilling
-        // downwards to a place behind a wall, then doing a raycast from there and having it
-        // succeed if the ray perfectly aligns with grid boundaries.
-
-        // [*] [ ] [ ]
-        // [W] [S] [W]
-        // [S] [S] [P]
-
-        // P: Player, W: Fall, S: Succeed raycast
-        // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
-        // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
-        // factor even though it shouldn't.
-
-        // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
-        // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
-        // cause the "fudge factor" to be stricter against the player instead of looser against them,
-        // which would prevent this ambiguity from happening.
-        
-        // :SlowRaycast
-        // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
-        // fudge factor is going to have to be stricter anyway because we can't do floodfilling
-        // in a compute shader.
-
-        //          - berk, 11 - 2 - 2025
-
-        check_axis :: (i: int) #expand #no_abc {
-            diff := end.component[i] - start.component[i];
-            if diff < 0 {
-                positive := position;
-                positive.component[i] += 1;
-                check_position(positive);
-            } else if diff > 0 {
-                negative := position;
-                negative.component[i] -= 1;
-                check_position(negative);
-            } else {
-                positive := position;
-                positive.component[i] += 1;
-                check_position(positive);
-                negative := position;
-                negative.component[i] -= 1;
-                check_position(negative);
-            }
-        }
-
-        check_axis(0);
-        check_axis(1);
-        check_axis(2);
-    }
-
-    update_collision_texture(*collision);
-}
-
-
 make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     // @Speed maybe we can just set what we need to be reset in case
     // this is a reused pointer from an old level. I am going to
@@ -454,7 +339,7 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     F :: false;
     
     entrance = .{
-        position = .{-3, 0, -2},
+        position = .{-1, 0, -1},
         mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena)
     };
     
@@ -468,9 +353,15 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
     };
 
+    enemy =.{
+        position = .{0, 0, 0},
+        mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
+    };
+
     assert(append(*selectables, *entrance));
     assert(append(*selectables, *exit));
     assert(append(*selectables, *player));
+    assert(append(*selectables, *enemy));
 
     temp_blocks := Temporary_Block.[
         .{
@@ -682,3 +573,136 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 }
 
 
+level_update :: (using level: *Level, dt: float) {
+    ENEMY_SPEED :: 1;
+    enemy_timer += dt * ENEMY_SPEED;
+    if enemy_timer >= 1 {
+        enemy_timer = fmod_cycling(enemy_timer, 1);
+        new_enemy_position := enemy.position;
+        new_enemy_position.x -= 1;
+        
+        success, index := get_3d_index(new_enemy_position, collision.position, collision.size);
+        if !success return;
+
+        if collision.filled[index] return;
+
+        enemy.position = new_enemy_position;
+    }
+
+    // The following code is nontrivial so I will write an explanation.
+    // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
+    // Here's why:
+    // A cell will only be visible if it has at least one neighboring cell that is visible.
+    // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
+    // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
+    // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
+    // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
+   
+    // :SlowRaycast
+    // @Speed So, this is our first real reality check of this game.
+    // Running this with ~4000 raycasts/frame is already lagging out the game.
+    // For this initial development period this is fine, but we will soon have levels bigger than that.
+    // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
+
+    //      -berk, 2 - 3 - 2025
+
+
+    for :iterate_vector3i collision.size {
+        collision.viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
+    }
+    
+    using context.game_context;
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    positions := arena_alloc_array(*frame_arena, collision.size.x * collision.size.y * collision.size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+    position_count := 1;
+
+    player_success, player_index := get_3d_index(player.position, collision.position, collision.size);
+    assert(player_success);
+    positions[0] = .{player_index, player.position};
+    collision.viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
+    
+    end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
+    while position_count != 0 {
+        position_count -= 1;
+        using index_and_position := positions[position_count];
+
+        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+        
+        visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
+            success, index := get_3d_index(position, collision.position, collision.size);
+            if !success return false;
+            return collision.filled[index] != null;
+        }
+        
+        if raycast(start, end, visitor, *collision) continue;
+
+        collision.viewed[index] |= (.SEEN | .VISIBLE);
+
+        check_position :: (p: Vector3i) #expand {
+            success, index := get_3d_index(p, collision.position, collision.size);
+            if !success return;
+
+            if collision.filled[index] || (collision.viewed[index] & .QUEUED_FOR_FLOODFILL) return;
+            
+            collision.viewed[index] |= .QUEUED_FOR_FLOODFILL;
+            positions[position_count] = .{index, p};
+            position_count += 1;
+        }
+        
+        // We only need to floodfill in the directions facing away from where the player is facing.
+        // This is important because we add a little epsilon fudge factor to allow the raycast to
+        // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
+        // in all directions, we could end up having a successful raycast above a wall, floodfilling
+        // downwards to a place behind a wall, then doing a raycast from there and having it
+        // succeed if the ray perfectly aligns with grid boundaries.
+
+        // [*] [ ] [ ]
+        // [W] [S] [W]
+        // [S] [S] [P]
+
+        // P: Player, W: Fall, S: Succeed raycast
+        // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
+        // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
+        // factor even though it shouldn't.
+
+        // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
+        // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
+        // cause the "fudge factor" to be stricter against the player instead of looser against them,
+        // which would prevent this ambiguity from happening.
+        
+        // :SlowRaycast
+        // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
+        // fudge factor is going to have to be stricter anyway because we can't do floodfilling
+        // in a compute shader.
+
+        //          - berk, 11 - 2 - 2025
+
+        check_axis :: (i: int) #expand #no_abc {
+            diff := end.component[i] - start.component[i];
+            if diff < 0 {
+                positive := position;
+                positive.component[i] += 1;
+                check_position(positive);
+            } else if diff > 0 {
+                negative := position;
+                negative.component[i] -= 1;
+                check_position(negative);
+            } else {
+                positive := position;
+                positive.component[i] += 1;
+                check_position(positive);
+                negative := position;
+                negative.component[i] -= 1;
+                check_position(negative);
+            }
+        }
+
+        check_axis(0);
+        check_axis(1);
+        check_axis(2);
+    }
+
+    update_collision_texture(*collision);
+}

@@ -228,7 +228,7 @@ game_update : Game_Update : (
             case .EDITOR;
                 editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
             case .GAME;
-                update_level_visibility(*level);
+                level_update(*level, dt);
         }
 
 
@@ -255,7 +255,7 @@ game_update : Game_Update : (
         draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
-        
+        draw_vertex_mesh(*enemy.mesh, translate(world_to_camera, to_vector3(enemy.position)), .{1, 0, 0, 1});
         
         if mode == {
             case .GAME;
