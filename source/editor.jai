@@ -138,24 +138,10 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 block := data.collided_block;
 
                 if block && data.previous_coord_exists {
-                    block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, data.previous_coord, Vector3i.{1, 1, 1}, level_arena);
-                   
-
-                    // @Speed do both of these at once
-                    _:, _:, collision.filled = realloc_3d_array_to_fit_subarea(collision.position, collision.size, collision.filled, block.position, block.size, level_arena);
-
-                    collision.position, collision.size, collision.viewed = realloc_3d_array_to_fit_subarea(collision.position, collision.size, collision.viewed, block.position, block.size, level_arena);
-
-
                     block_success, block_index := get_3d_index(data.previous_coord, block.position, block.size);
                     assert(block_success);
                     block.filled[block_index] = true;
                     update_block_mesh(*block.mesh, block.size, block.filled, level_arena);
-
-                    
-                    collision_success, collision_index := get_3d_index(data.previous_coord, collision.position, collision.size);
-                    assert(collision_success);
-                    collision.filled[collision_index] = block;
                 }
                 return;
             }

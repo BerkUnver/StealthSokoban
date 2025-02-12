@@ -37,6 +37,23 @@ Selectable :: struct {
 }
 
 
+Eid :: struct { // Entity ID
+    type: Type;
+    ptr: *void;
+}
+
+
+eid :: (ptr: *$T) -> Eid {
+    return .{T, ptr};
+}
+
+
+as :: (eid: Eid, $T: Type) -> *T {
+    if eid.type == T return eid.ptr;
+    return null;
+}
+
+
 Player :: Selectable;
 
 Enemy :: Selectable;
@@ -63,12 +80,11 @@ Temporary_Block :: struct {
 }
 
 
-
 Collision :: struct {
     position: Vector3i;
     size: Vector3i;
 
-    filled: [] *Block;
+    filled: [] Eid;
     viewed: [] View_State;
     // This is stored SOA because we don't want to touch these at the same time.
     // @TODO This is stored x-major, then z, then y.
@@ -115,17 +131,17 @@ make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
     return .{
         position = position,
         size = size,
-        filled = arena_alloc_array(arena, size_1d, *Block),
+        filled = arena_alloc_array(arena, size_1d, Eid),
         viewed = arena_alloc_array(arena, size_1d, View_State),
         texture = make_collision_texture(size)
     };
 }
 
 
-get_block :: (col: *Collision, position: Vector3i) -> in_bounds: bool, block: *Block {
-    success, index := get_3d_index(position, col.position, col.size);
-    if !success return false, null;
-    return true, col.filled[index];
+get_filled :: (collision: *Collision, position: Vector3i) -> in_bounds: bool, eid: Eid {
+    success, index := get_3d_index(position, collision.position, collision.size);
+    if !success return false, .{};
+    return true, collision.filled[index];
 }
 
 
@@ -136,13 +152,13 @@ Add_Block_Result :: enum {
 }
 
 
-add_block_to_collision :: (col: *Collision, block: *Block) -> Add_Block_Result {
-    offset := block.position - col.position;
+add_block_to_collision :: (collision: *Collision, block: *Block) -> Add_Block_Result {
+    offset := block.position - collision.position;
     end := offset + block.size;
-    if !inside_positive_bounding_box(offset, col.size) return .OUT_OF_BOUNDS;
-    if (end.x < 0 || col.size.x < end.x ||
-        end.x < 0 || col.size.x < end.x ||
-        end.x < 0 || col.size.x < end.x ) return .OUT_OF_BOUNDS;
+    if !inside_positive_bounding_box(offset, collision.size) return .OUT_OF_BOUNDS;
+    if (end.x < 0 || collision.size.x < end.x ||
+        end.x < 0 || collision.size.x < end.x ||
+        end.x < 0 || collision.size.x < end.x ) return .OUT_OF_BOUNDS;
 
     // @Speed we could just detect when the failure happens and unwind what we've
     // already added instead of first checking, then adding.
@@ -151,17 +167,17 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> Add_Block_Result {
         filled := block.filled[it_index];
         if !filled continue;
         collision_coord := it + offset;
-        success, collision_index := get_3d_index(collision_coord, col.size);
-        block_already_there := col.filled[collision_index];
-        if block_already_there return .CELL_ALREADY_OCCUPIED;
+        success, collision_index := get_3d_index(collision_coord, collision.size);
+        already_there := collision.filled[collision_index];
+        if as(already_there, Block) return .CELL_ALREADY_OCCUPIED;
     }
 
     for :iterate_vector3i block.size {
         filled := block.filled[it_index];
         if !filled continue;
         collision_coord := it + offset;
-        collision_index := get_3d_index_unchecked(collision_coord, col.size);
-        col.filled[collision_index] = block;
+        collision_index := get_3d_index_unchecked(collision_coord, collision.size);
+        collision.filled[collision_index] = eid(block);
     }
 
     return .OK;
@@ -294,17 +310,18 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
 }
 
 
-remove_block_from_collision :: (col: *Collision, block: *Block) {
+remove_block_from_collision :: (collision: *Collision, block: *Block) {
     for :iterate_vector3i block.size {
         filled := block.filled[it_index];
         if !filled continue;
         absolute_coord := block.position + it;
-        collision_coord := absolute_coord - col.position;
+        collision_coord := absolute_coord - collision.position;
 
-        collision_index := get_3d_index_unchecked(collision_coord, col.size);
-        block_already_there := col.filled[collision_index];
+        collision_index := get_3d_index_unchecked(collision_coord, collision.size);
+        block_already_there := as(collision.filled[collision_index], Block);
+        
         assert(block_already_there == block);
-        col.filled[collision_index] = null;
+        collision.filled[collision_index] = .{};
     }
 }
 
@@ -521,18 +538,22 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
         moving_blocks: Fixed_Array(2, *Block);
         
-        pushed_in_bounds, pushed_block := get_block(*collision, new_player_position);
-        if !pushed_in_bounds return;
-
+        pushed_success, pushed_eid := get_filled(*collision, new_player_position);
+        if !pushed_success return;
+        pushed_block := as(pushed_eid, Block);
         if pushed_block {
             if !pushed_block.moveable return;
             assert(append(*moving_blocks, pushed_block));
         }
-
+        
         if flags & .PULLING {
-            pulled_in_bounds, pulled_block := get_block(*collision, player.position - push_direction);
-            if pulled_in_bounds && pulled_block && pulled_block.moveable && !contains(*moving_blocks, pulled_block) {
-                assert(append(*moving_blocks, pulled_block));
+            pulled_success, pulled_index := get_3d_index(player.position - push_direction, collision.position, collision.size);
+            pulled_in_bounds, pulled_eid := get_filled(*collision, player.position - push_direction);
+            if pulled_in_bounds {
+                pulled_block := as(pulled_eid, Block);
+                if pulled_block && pulled_block.moveable && !contains(*moving_blocks, pulled_block) {
+                    assert(append(*moving_blocks, pulled_block));
+                }
             }
         }
         
@@ -583,8 +604,10 @@ level_update :: (using level: *Level, dt: float) {
         
         success, index := get_3d_index(new_enemy_position, collision.position, collision.size);
         if !success return;
-
-        if collision.filled[index] return;
+            
+        eid := collision.filled[index];
+        block := as(eid, Block);
+        if block return;
 
         enemy.position = new_enemy_position;
     }
@@ -633,7 +656,7 @@ level_update :: (using level: *Level, dt: float) {
         visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
             success, index := get_3d_index(position, collision.position, collision.size);
             if !success return false;
-            return collision.filled[index] != null;
+            return as(collision.filled[index], Block) != null;
         }
         
         if raycast(start, end, visitor, *collision) continue;
@@ -644,7 +667,7 @@ level_update :: (using level: *Level, dt: float) {
             success, index := get_3d_index(p, collision.position, collision.size);
             if !success return;
 
-            if collision.filled[index] || (collision.viewed[index] & .QUEUED_FOR_FLOODFILL) return;
+            if as(collision.filled[index], Block) || (collision.viewed[index] & .QUEUED_FOR_FLOODFILL) return;
             
             collision.viewed[index] |= .QUEUED_FOR_FLOODFILL;
             positions[position_count] = .{index, p};
