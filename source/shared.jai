@@ -59,6 +59,7 @@ Key :: enum {
     RIGHT_ARROW;
     DOWN_ARROW;
     UP_ARROW;
+    TILDE;
 }
 
 

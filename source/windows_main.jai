@@ -37,6 +37,7 @@ main :: () {
                     else if keycode == VK_UP return true, .UP_ARROW;
                     else if keycode == VK_RIGHT return true, .RIGHT_ARROW;
                     else if keycode == VK_DOWN return true, .DOWN_ARROW;
+                    else if keycode == VK_OEM_3 return true, .TILDE;
 
                     return false, 0;
                 }
@@ -84,6 +85,7 @@ main :: () {
                         return 0;
 
                     case WM_RBUTTONDOWN;
+                        print("Mouse down\n");
                         windows.mouse_buttons_down |= .RIGHT;
                         SetCapture(window);
                         event := append(*input_events);
@@ -99,6 +101,7 @@ main :: () {
                         return 0;
                         
                     case WM_RBUTTONUP;
+                        print("Mouse up\n");
                         windows.mouse_buttons_down &= ~.RIGHT;
                         if !windows.mouse_buttons_down ReleaseCapture();
                         event := append(*input_events);

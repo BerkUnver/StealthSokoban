@@ -18,6 +18,7 @@ Editor :: struct {
     selection: union {
         camera: struct {
             rotating: bool;
+            rotating_key: Key;
             rotating_previous_mouse_position: Vector2;
             moving_direction: Vector3;
         }
@@ -65,10 +66,11 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
     if editor.selection_mode == {
         case .IDLE;
-            if event.key == .MOUSE_RIGHT_BUTTON && event.down {
+            if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.down {
                 editor.selection_mode = .CAMERA;
                 editor.selection.camera = .{
                     rotating = true,
+                    rotating_key = event.key,
                     rotating_previous_mouse_position = .{mouse_x, mouse_y}
                 };
                 return;
@@ -222,14 +224,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
         case .CAMERA;
             using editor.selection.camera; if event.key == {
-                case .MOUSE_RIGHT_BUTTON;
-                    if rotating && !event.down {
-                        rotating = false;
-                    }
-
-                    if !rotating && event.down {
-                        rotating = true;
-                        rotating_previous_mouse_position = .{mouse_x, mouse_y};
+                case .MOUSE_RIGHT_BUTTON; #through;
+                case xx #char " "; // There's no easy way to right-click and hold on a trackpad.
+                    if rotating {
+                        if event.key == rotating_key && !event.down rotating = false;
+                    } else {
+                        if event.down {
+                            rotating = true;
+                            rotating_key = event.key;
+                            rotating_previous_mouse_position = .{mouse_x, mouse_y};
+                        }
                     }
                 case xx #char "W";
                     moving_direction.z += ifx event.down then 1.0 else -1.0;
