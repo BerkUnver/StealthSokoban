@@ -164,8 +164,19 @@ add_block_to_collision :: (col: *Collision, block: *Block) -> Add_Block_Result {
 
 
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
-raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T, wiggle_room := Vector3.{}/*, projection := Matrix4_Identity*/) -> collided: bool {
+raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T, wiggle_room := 0.0) -> collided: bool {
+    EPSILON :: 0.001;
+
     raycast_x :: (y_plane: s32, z_plane: s32, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
+
+        if abs(round(ray_start_x) - ray_start_x) < EPSILON {
+            ray_start_x = round(ray_start_x) + sign(ray_end_x - ray_start_x) * EPSILON;
+        }
+
+        if abs(round(ray_end_x) - ray_end_x) < EPSILON {
+            ray_end_x = round(ray_end_x) - sign(ray_end_x - ray_start_x) * EPSILON;
+        }
+
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
         x := cast(s32, floor(ray_start_x));
@@ -186,7 +197,17 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
 
 
     raycast_zx :: (y_plane: s32, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) -> bool {
+
+        if abs(round(ray_start_z) - ray_start_z) < EPSILON {
+            ray_start_z = round(ray_start_z) + sign(ray_end_z - ray_start_z) * EPSILON;
+        }
+
+        if abs(round(ray_end_z) - ray_end_z) < EPSILON {
+            ray_end_z = round(ray_end_z) - sign(ray_end_z - ray_start_z) * EPSILON;
+        }
+
         z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
+        dir := sign(z_steps);
 
         if z_steps == 0 {
             return raycast_x(y_plane, xx floor(ray_start_z), ray_start_x, ray_end_x, user_data);
@@ -221,12 +242,12 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
     
     y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
     
-    wiggle_room_z := sign(ray_end.z - ray_start.z) * wiggle_room.z;
 
     if y_steps == 0 {
         if raycast_zx(xx floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data) return true;
         return false;
     } else {
+
         ray_length := ray_end - ray_start;
 
         y_plane := cast(s32, floor(ray_start.y));
@@ -235,7 +256,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
 
         x := ray_start.x + ray_length.x * t;
         z := ray_start.z + ray_length.z * t;
-
+        
         if raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data) return true;
         
         i := 0;
@@ -257,15 +278,11 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
             // This is probably fine, because the ray will still
             // be almost straight.
 
-            start_z := old_z + wiggle_room_z;
-            end_z := z - wiggle_room_z;
-            
-            // draw_arrow(.{old_x, xx y_plane, start_z}, .{x, xx (y_plane + 1), end_z}, .{1, 0, 0, 1}, *projection);
-
-            if raycast_zx(y_plane, old_x, start_z, x, end_z, user_data) return true;
+            if raycast_zx(y_plane, old_x, old_z, x, z, user_data) return true;
         }
 
         y_plane += dir;
+
         if raycast_zx(y_plane, x, z, ray_end.x, ray_end.z, user_data) return true;
         return false; // We made it to the end of the raycast.
     }
@@ -316,9 +333,10 @@ update_level_visibility :: (using level: *Level) {
     // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
     // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
     // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
-    
+   
+    // :SlowRaycast
     // @Speed So, this is our first real reality check of this game.
-    // Running this on a 20x20x20 level already starts to lag out the game.
+    // Running this with ~4000 raycasts/frame is already lagging out the game.
     // For this initial development period this is fine, but we will soon have levels bigger than that.
     // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
 
@@ -346,45 +364,80 @@ update_level_visibility :: (using level: *Level) {
         position_count -= 1;
         using index_and_position := positions[position_count];
 
+        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+        
         visitor :: (position: Vector3i, collision: *Collision) -> terminate_raycast: bool {
             success, index := get_3d_index(position, collision.position, collision.size);
             if !success return false;
             return collision.filled[index] != null;
         }
         
-        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
-        
-        projection := get_gameplay_camera_matrix(level);
-
-        WIGGLE_ROOM :: Vector3.{0.01, 0.01, 0.01};
-        if raycast(start, end, visitor, *collision, wiggle_room=WIGGLE_ROOM/*, projection=get_gameplay_camera_matrix(level)*/) continue;
+        if raycast(start, end, visitor, *collision) continue;
 
         collision.viewed[index] |= (.SEEN | .VISIBLE);
 
-        px := position; px.x += 1;
-        nx := position; nx.x -= 1;
-        py := position; py.y += 1;
-        ny := position; ny.y -= 1;
-        pz := position; pz.z += 1;
-        nz := position; nz.z -= 1;
-       
         check_position :: (p: Vector3i) #expand {
-            success, index := get_3d_index(p, `collision.position, collision.size);
+            success, index := get_3d_index(p, collision.position, collision.size);
             if !success return;
 
             if collision.filled[index] || (collision.viewed[index] & .QUEUED_FOR_FLOODFILL) return;
             
             collision.viewed[index] |= .QUEUED_FOR_FLOODFILL;
-            `positions[`position_count] = .{index, p};
+            positions[position_count] = .{index, p};
             position_count += 1;
         }
         
-        check_position(px);
-        check_position(nx);
-        check_position(py);
-        check_position(ny);
-        check_position(pz);
-        check_position(nz);
+        // We only need to floodfill in the directions facing away from where the player is facing.
+        // This is important because we add a little epsilon fudge factor to allow the raycast to
+        // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
+        // in all directions, we could end up having a successful raycast above a wall, floodfilling
+        // downwards to a place behind a wall, then doing a raycast from there and having it
+        // succeed if the ray perfectly aligns with grid boundaries.
+
+        // [*] [ ] [ ]
+        // [W] [S] [W]
+        // [S] [S] [P]
+
+        // P: Player, W: Fall, S: Succeed raycast
+        // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
+        // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
+        // factor even though it shouldn't.
+
+        // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
+        // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
+        // cause the "fudge factor" to be stricter against the player instead of looser against them,
+        // which would prevent this ambiguity from happening.
+        
+        // :SlowRaycast
+        // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
+        // fudge factor is going to have to be stricter anyway because we can't do floodfilling
+        // in a compute shader.
+
+        //          - berk, 11 - 2 - 2025
+
+        check_axis :: (i: int) #expand #no_abc {
+            diff := end.component[i] - start.component[i];
+            if diff < 0 {
+                positive := position;
+                positive.component[i] += 1;
+                check_position(positive);
+            } else if diff > 0 {
+                negative := position;
+                negative.component[i] -= 1;
+                check_position(negative);
+            } else {
+                positive := position;
+                positive.component[i] += 1;
+                check_position(positive);
+                negative := position;
+                negative.component[i] -= 1;
+                check_position(negative);
+            }
+        }
+
+        check_axis(0);
+        check_axis(1);
+        check_axis(2);
     }
 
     update_collision_texture(*collision);
@@ -449,8 +502,9 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         },
         .{
             position = .{-1, 0, 4},
-            size = .{1, 2, 1},
+            size = .{1, 3, 1},
             filled = .[
+                T,
                 T,
                 T,
             ],

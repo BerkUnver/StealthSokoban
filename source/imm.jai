@@ -164,7 +164,7 @@ imm_cuboid_outline :: (start: Vector3, end: Vector3, width: float, color: Vector
 
 
 // @TODO Make a version of imm_vertex that doesn't require uvs!
-draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: *Matrix4,  radius := 0.03) {
+draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: Matrix4,  radius := 0.03) {
     using context.game_context;
     difference := end - start;
     rot_quaternion := make_quaternion(Vector3.{1, 0, 0}, difference);
