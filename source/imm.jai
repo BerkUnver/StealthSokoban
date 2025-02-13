@@ -174,7 +174,7 @@ draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: Matrix4
 
     glUseProgram(imm_color_shader);
     projection_matrix := projection * multiply(offset_matrix, rot_matrix);
-    set_uniform("projection", *projection_matrix);
+    set_uniform("projection", projection_matrix);
     
     cuboid_start := Vector3.{0, -radius, -radius};
 

@@ -47,6 +47,15 @@ as :: inline (eid: Eid, $T: Type) -> *T {
 }
 
 
+eq :: inline (a: Eid, b: Eid) -> bool {
+    if a.ptr == b.ptr {
+        assert(a.type == b.type);
+        return true;
+    }
+    return false;
+}
+
+
 is_null :: inline (eid: Eid) -> bool {
     return eid.ptr == null;
 }
@@ -444,27 +453,7 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         }
     ];
 
-    for * temp_blocks {
-        using it;
-        filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
-        memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
-
-        block := append(*blocks);
-        assert(block != null);
-        
-        generated_mesh := make_block_mesh(size, filled_allocated, level_arena);
-
-        block.* = .{
-           position = position,
-           size = size,
-           filled = filled_allocated,
-           color = color,
-           moveable = moveable,
-           mesh = generated_mesh
-        };
-        
-        assert(append(*selectables, eid(block)));
-    }
+    for * temp_blocks add_temporary_block_to_level(it, level, level_arena);
 }
 
 
@@ -477,6 +466,28 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
     }
 }
 
+
+add_temporary_block_to_level :: (using temp_block: *Temporary_Block, using level: *Level, level_arena: *Memory_Arena) {
+    filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
+    memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
+
+    block := append(*blocks);
+    assert(block != null);
+    
+    generated_mesh := make_block_mesh(size, filled_allocated, level_arena);
+
+    block.* = .{
+       position = position,
+       size = size,
+       filled = filled_allocated,
+       color = color,
+       moveable = moveable,
+       mesh = generated_mesh
+    };
+    
+    // @TODO: Figure out what to do when we exceed the maximum number of blocks we're allowing right now.
+    assert(append(*selectables, eid(block)));
+}
 
 
 free_level :: (using level: *Level, level_arena: *Memory_Arena) {   

@@ -188,6 +188,8 @@ game_update : Game_Update : (
         
         // glClear up here so it doesn't happen after anyone does any debug drawing
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        mouse := Vector2.{input.mouse_x, input.mouse_y};
         
         for input.events {
             if it.key == Key.F_BASE + 1 && it.down {
@@ -209,7 +211,7 @@ game_update : Game_Update : (
                     case .GAME;
                         level_handle_input(*level, *level_arena, it);
                     case .EDITOR;
-                        editor_handle_input(*level, *level_arena, *editor, input.mouse_x, input.mouse_y, it);
+                        editor_handle_input(*level, *level_arena, *editor, mouse, it);
                 }
             }
         }
@@ -226,7 +228,7 @@ game_update : Game_Update : (
         // However, we need to update the camera movement before we can set the projection for imm_state.
         if #complete mode == {
             case .EDITOR;
-                editor_update(*level, *editor, input.mouse_x, input.mouse_y, dt);
+                editor_update(*level, *editor, mouse, dt);
             case .GAME;
                 level_update(*level, dt);
         }
@@ -273,7 +275,7 @@ game_update : Game_Update : (
                 for * blocks {
                     projection := translate(world_to_camera, to_vector3(it.position));
                     set_uniform("viewed_position", it.position - collision.position);
-                    set_uniform("projection", *projection);
+                    set_uniform("projection", projection);
                     set_uniform("color", it.color);
                 
                     glBindVertexArray(it.mesh.vao);
@@ -290,7 +292,7 @@ game_update : Game_Update : (
 
                 for * blocks {
                     projection := translate(world_to_camera, to_vector3(it.position));
-                    set_uniform("projection", *projection);
+                    set_uniform("projection", projection);
                     set_uniform("color", it.color);
 
                     glBindVertexArray(it.mesh.vao);
@@ -303,6 +305,18 @@ game_update : Game_Update : (
                     color := Vector4.{t, t, t, 1};
 
                     draw_wireframe_mesh(eid_mesh(editor.selected), translate(world_to_camera, to_vector3(eid_position(editor.selected))), color);
+                }
+
+                if editor.mode == .EXTRUDE {
+                    glUseProgram(imm_color_shader);
+                    set_uniform("projection", world_to_camera);
+                    for 0..4 {
+                        position := editor.extrude.position;
+                        position.y += xx it;
+                        end := position + Vector3i.{1, 1, 1};
+                        imm_cuboid_outline(to_vector3(position), to_vector3(end), 0.03, .{1, 1, 1, 1});
+                    }
+                    imm_flush();
                 }
         }
 

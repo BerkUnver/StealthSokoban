@@ -1,42 +1,42 @@
 Editor_Mode :: enum {
+    IDLE;
+    // We can change the selection in this mode. Other modes expect the selection
+    // (and camera angle) to be fixed.
+
+    CAMERA; // The camera is moving. DO NOT CHANGE THE SELECTION.
+
+    // Do not allow changing the camera angle or selection in any of the below modes,
+    // or else it could mess up what the user is working on.
+    EXTRUDE; // We're extruding a block we clicked on
     DRAG;
-}
-
-
-Editor_Selection_Mode :: enum {
-    IDLE; // The user isn't doing anything. We can select new entities, rotate the camera, etc.
-    CAMERA; // The camera is moving.
-    LOCKED; // The user is using the current mode.
-    // DON'T ALLOW CHANGING CAMERA ANGLE / CURRENTLY SELECTED BLOCK.
-    // It could mess up what they're working on.
 }
 
 
 Editor :: struct {
     mode: Editor_Mode;
-    selection_mode: Editor_Selection_Mode;
-    selection: union {
+
+    union {
         camera: struct {
             rotating: bool;
             rotating_key: Key;
             rotating_previous_mouse_position: Vector2;
             moving_direction: Vector3;
         }
-    }
-    
-    // Do not access these directly, use the get_selected function.
-    // Unless you're the code that modifies this, of course.
-    selected: Eid;
-    selected_timer: float;
-    
-    union {
+
+        extrude: struct {
+             position: Vector3i;
+        }
+
         drag: struct {
             mouse_start: Vector2;
             selectable_start: Vector3i;
             index: u8;
         }
     }
-
+    
+    selected: Eid;
+    selected_timer: float;
+    
     camera_position := Vector3.{0, 8, -4};
     camera_pitch: float;
     camera_yaw: float;
@@ -59,19 +59,19 @@ get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
 }
 
 
-editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse_x: float, mouse_y: float, event: Input_Event) {
+editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event) {
     using context.game_context;
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
 
-    if editor.selection_mode == {
+    if editor.mode == {
         case .IDLE;
             if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.down {
-                editor.selection_mode = .CAMERA;
-                editor.selection.camera = .{
+                editor.mode = .CAMERA;
+                editor.camera = .{
                     rotating = true,
                     rotating_key = event.key,
-                    rotating_previous_mouse_position = .{mouse_x, mouse_y}
+                    rotating_previous_mouse_position = mouse
                 };
                 return;
             }
@@ -95,12 +95,24 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 }
 
                 if moving_direction != Vector3.{} {
-                    editor.selection_mode = .CAMERA;
-                    editor.selection.camera = .{
+                    editor.mode = .CAMERA;
+                    editor.camera = .{
                         moving_direction = moving_direction
                     };
                     return;
                 }
+            }
+
+            
+            // @TODO Merge this with "X", this is a better version of "X".
+            if event.key == xx #char "Z" && event.down {
+                ray_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
+                block, previous_position_exists, previous_position := editor_raycast_to_block(level, editor.camera_position, ray_end);
+
+                if !block || !previous_position_exists return;
+                editor.mode = .EXTRUDE;
+                editor.extrude.position = previous_position;
+                return;
             }
 
 
@@ -109,48 +121,46 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 // which aren't legal in gameplay actually happen in the editor, if so, add UI 
                 // that warns about these.
 
-                Raycast_Data :: struct {
-                    blocks: [] Block;
-                    previous_coord_exists: bool;
-                    previous_coord: Vector3i;
-                    collided_block: *Block;
-                }
-
-                raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
-                    // @Speed
-                    for * blocks {
-                        success, index := get_3d_index(position, it.position, it.size);
-                        if success && it.filled[index] {
-                            collided_block = it;
-                            return true;
-                        }
+                ray_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
+                block, previous_position_exists, previous_position := editor_raycast_to_block(level, editor.camera_position, ray_end);
+                
+                if block {    
+                    // There won't be a previous position if we started the raycast
+                    // while the camera was inside of a block. We shouldn't do 
+                    // anything in that case.
+                    if previous_position_exists {
+                        block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, previous_position, Vector3i.{1, 1, 1}, level_arena);
+                       
+                        block_success, block_index := get_3d_index(previous_position, block.position, block.size);
+                        assert(block_success);
+                        block.filled[block_index] = true;
+                        update_block_mesh(*block.mesh, block.size, block.filled, level_arena);
                     }
+                } else {
+                    parallel, point, t := get_intersection_between_line_and_plane(
+                        line_point = editor.camera_position,
+                        line_direction = ray_end - editor.camera_position,
+                        plane_point = .{0, 0, 0},
+                        plane_normal = .{0, 1, 0}
+                    );
 
-                    previous_coord_exists = true;
-                    previous_coord = position;
-                    return false;
-                }
-                
-                data := Raycast_Data.{
-                    blocks = to_array(blocks)
-                };
-                ray_end := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 1});
-                raycast(editor.camera_position, ray_end, raycast_visitor, *data);
-                
-                block := data.collided_block;
-
-                if block && data.previous_coord_exists {
-                    block_success, block_index := get_3d_index(data.previous_coord, block.position, block.size);
-                    assert(block_success);
-                    block.filled[block_index] = true;
-                    update_block_mesh(*block.mesh, block.size, block.filled, level_arena);
+                    if !parallel && t > 0 {
+                        block := Temporary_Block.{
+                            position = .{xx floor(point.x), xx floor(point.y), xx floor(point.z)},
+                            size = .{1, 1, 1},
+                            filled = .[true],
+                            color = .{1, 1, 1, 1},
+                            moveable = false
+                        };
+                        add_temporary_block_to_level(*block, level, level_arena);
+                    }
                 }
                 return;
             }
 
 
             if event.key == .MOUSE_LEFT_BUTTON && event.down {
-                mouse_direction := multiply_homogeneous(inverse(get_editor_camera_matrix(editor)), .{mouse_x, mouse_y, 0}) - editor.camera_position;
+                mouse_direction := multiply_homogeneous(inverse(get_editor_camera_matrix(editor)), .{mouse.x, mouse.y, 0}) - editor.camera_position;
                 mouse_position := editor.camera_position;
                 
                 smallest_t := FLOAT32_INFINITY;
@@ -195,12 +205,37 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 if !is_null(selected) editor.selected_timer = 0;
                 return;
             }
+
+            if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
+                if is_null(editor.selected) return;
+                block := as(editor.selected, Block);
+                if !block return;
+                
+                // @TODO: Figure out an ACTUALLY GOOD WAY TO DELETE ENTITIES
+                // that doesn't risk leaving dangling entity references.
+
+                for * blocks {
+                    if it == block {
+                        remove it;
+                        break;
+                    }
+                }
+
+                for selectables {
+                    if eq(it, editor.selected) {
+                        remove it;
+                        break;
+                    }
+                }
+
+                editor.selected = .{};
+            }
             
             enable_drag :: (index: u8) #expand {
                 if !is_null(editor.selected) {
-                    editor.selection_mode = .LOCKED;
+                    editor.mode = .DRAG;
                     editor.drag = .{
-                        mouse_start = .{mouse_x, mouse_y},
+                        mouse_start = mouse,
                         selectable_start = eid_position(editor.selected).*,
                         index = index
                     };
@@ -223,7 +258,8 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
         case .CAMERA;
-            using editor.selection.camera; if event.key == {
+            using editor.camera;
+            if event.key == {
                 case .MOUSE_RIGHT_BUTTON; #through;
                 case xx #char " "; // There's no easy way to right-click and hold on a trackpad.
                     if rotating {
@@ -232,7 +268,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                         if event.down {
                             rotating = true;
                             rotating_key = event.key;
-                            rotating_previous_mouse_position = .{mouse_x, mouse_y};
+                            rotating_previous_mouse_position = mouse;
                         }
                     }
                 case xx #char "W";
@@ -252,31 +288,67 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             // The user has released all keys.
             // :AltTab this might not be true on Windows.
             if !rotating && moving_direction == .{} {
-                editor.selection_mode = .IDLE;
+                editor.mode = .IDLE;
             }
 
-        case .LOCKED;
-            if #complete editor.mode == {
-                case .DRAG;
-                    using editor.drag;
-                    if !event.down && ((index == 0 && event.key == xx #char "1")
-                                    || (index == 1 && event.key == xx #char "2")
-                                    || (index == 2 && event.key == xx #char "3")) {
-                        editor.selection_mode = .IDLE;
-                    }
+        case .EXTRUDE;
+            if event.key == #char "Z" && !event.down {
+                editor.mode = .IDLE;
+            }
+        
+        case .DRAG;
+            using editor.drag;
+            if !event.down && ((index == 0 && event.key == xx #char "1")
+                            || (index == 1 && event.key == xx #char "2")
+                            || (index == 2 && event.key == xx #char "3")) {
+                editor.mode = .IDLE;
             }
     }
 }
 
 
-editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y: float, dt: float) {
-    if editor.selection_mode == {
+editor_raycast_to_block :: (using level: *Level, ray_start: Vector3, ray_end: Vector3) -> *Block, previous_position_exists: bool, previous_position: Vector3i {
+    Raycast_Data :: struct {
+        blocks: [] Block;
+        previous_position_exists: bool;
+        previous_position: Vector3i;
+        collided_block: *Block;
+    }
+
+    raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
+        // @Speed
+        for * blocks {
+            success, index := get_3d_index(position, it.position, it.size);
+            if success && it.filled[index] {
+                collided_block = it;
+                return true;
+            }
+        }
+
+        previous_position_exists = true;
+        previous_position = position;
+        return false;
+    }
+    
+    data := Raycast_Data.{
+        blocks = to_array(blocks)
+    };
+
+    raycast(ray_start, ray_end, raycast_visitor, *data);
+
+    block := data.collided_block;
+    if block return block, data.previous_position_exists, data.previous_position;
+    return null, false, .{}; 
+}
+
+
+editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: float) {
+    if editor.mode == {
         case .CAMERA;
-            using editor.selection.camera;
+            using editor.camera;
             if rotating {
                 PITCH_SPEED :: 50;
                 YAW_SPEED :: 100;
-                mouse := Vector2.{mouse_x, mouse_y};
                 mouse_movement := rotating_previous_mouse_position - mouse;
                 rotating_previous_mouse_position = mouse;
                 
@@ -290,62 +362,55 @@ editor_update :: (using level: *Level, editor: *Editor, mouse_x: float, mouse_y:
             CAMERA_SPEED :: 240.0 / 60.0;
             camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * moving_direction * (dt * CAMERA_SPEED);
             editor.camera_position += camera_movement;
+        
+        case .DRAG;
+            assert(!is_null(editor.selected));
+            using editor.drag;
+            camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(editor);
+            camera_to_world := inverse(get_editor_camera_matrix(editor));
+            initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
+            mouse_position := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
+            
+            selected_position := to_vector3(eid_position(editor.selected).*);
 
-        case .LOCKED;
-            if editor.mode == {
-                case .DRAG; 
-                    using editor.drag;
-
-
-                    
-                    if !is_null(editor.selected) {
-                        camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(editor);
-                        camera_to_world := inverse(get_editor_camera_matrix(editor));
-                        initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
-                        mouse_position := multiply_homogeneous(camera_to_world, .{mouse_x, mouse_y, 0});
-                        
-                        selected_position := to_vector3(eid_position(editor.selected).*);
-
-                        axis: Vector3;
-                        axis.component[index] = 1;
+            axis: Vector3;
+            axis.component[index] = 1;
 
 
-                        camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
-                        
-                        // When we do cross(camera_normal, axis) we get a vector that runs parallel to the camera plane
-                        // We cross that with the axis to get the normal of the plane formed by the axis and that parallel vector.
-                        normal := cross(normalize(cross(camera_normal, axis)), axis);
-                        // We don't need to normalize again because the parallel vector and the axis are already perpendicular.
-                        // @TODO: Establish defined behavior for when the axis and the camera_normal are parallel.
-                        // We should still be able to drag, and it looks like that is working right now, but I'm not sure why.
+            camera_normal := camera_to_world_rotation_matrix * Vector3.{0, 0, 1};
+            
+            // When we do cross(camera_normal, axis) we get a vector that runs parallel to the camera plane
+            // We cross that with the axis to get the normal of the plane formed by the axis and that parallel vector.
+            normal := cross(normalize(cross(camera_normal, axis)), axis);
+            // We don't need to normalize again because the parallel vector and the axis are already perpendicular.
+            // @TODO: Establish defined behavior for when the axis and the camera_normal are parallel.
+            // We should still be able to drag, and it looks like that is working right now, but I'm not sure why.
 
 
-                        intersection_parallel, intersection, intersection_t := get_intersection_between_line_and_plane(
-                            line_point = editor.camera_position,
-                            line_direction = mouse_position - editor.camera_position,
-                            plane_point = selected_position,
-                            plane_normal = normal);
+            intersection_parallel, intersection, intersection_t := get_intersection_between_line_and_plane(
+                line_point = editor.camera_position,
+                line_direction = mouse_position - editor.camera_position,
+                plane_point = selected_position,
+                plane_normal = normal);
 
-                        initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
-                            line_point = editor.camera_position,
-                            line_direction = initial_mouse_position - editor.camera_position,
-                            plane_point = selected_position,
-                            plane_normal = normal);
-                        
-                        using context.game_context;
+            initial_intersection_parallel, initial_intersection := get_intersection_between_line_and_plane(
+                line_point = editor.camera_position,
+                line_direction = initial_mouse_position - editor.camera_position,
+                plane_point = selected_position,
+                plane_normal = normal);
+            
+            using context.game_context;
 
-                        if initial_intersection_parallel
-                        || intersection_parallel
-                        || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
-                        || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
-                        // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
-                            eid_position(editor.selected).component[index] = selectable_start.component[index];
-                        } else {
-                            movement := intersection.component[index] - initial_intersection.component[index];
-                            new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
-                            eid_position(editor.selected).component[index] = new_position_component;
-                        }
-                    }
+            if initial_intersection_parallel
+            || intersection_parallel
+            || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
+            || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
+            // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
+                eid_position(editor.selected).component[index] = selectable_start.component[index];
+            } else {
+                movement := intersection.component[index] - initial_intersection.component[index];
+                new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
+                eid_position(editor.selected).component[index] = new_position_component;
             }
     }
     

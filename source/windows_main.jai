@@ -37,6 +37,8 @@ main :: () {
                     else if keycode == VK_UP return true, .UP_ARROW;
                     else if keycode == VK_RIGHT return true, .RIGHT_ARROW;
                     else if keycode == VK_DOWN return true, .DOWN_ARROW;
+                    else if keycode == VK_BACK return true, .BACKSPACE;
+                    else if keycode == VK_DELETE return true, .DELETE;
                     else if keycode == VK_OEM_3 return true, .TILDE;
 
                     return false, 0;

@@ -523,7 +523,7 @@ set_uniform :: (name: *u8, val: $T) {
         glUniform3i(loc, val.x, val.y, val.z);
     } else #if T == Vector4 {
         glUniform4f(loc, val.x, val.y, val.z, val.w);
-    } else #if T == *Matrix4 /* @Cleanup: Remove this one */ || T == Matrix4 {
+    } else #if T == Matrix4 {
         glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
     } else #assert false;
 }

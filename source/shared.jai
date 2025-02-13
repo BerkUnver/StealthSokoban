@@ -59,6 +59,8 @@ Key :: enum {
     RIGHT_ARROW;
     DOWN_ARROW;
     UP_ARROW;
+    BACKSPACE;
+    DELETE;
     TILDE;
 }
 
@@ -121,6 +123,13 @@ operator [] :: (using array: Fixed_Array($N, $T), index: s64) -> T {
 
 
 for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
+    remove_element :: (array: *Fixed_Array($N, $T), index: int) {
+        array.count -= 1;
+        if index != array.count {
+            array.data[index] = array.data[array.count];
+        }
+    }
+
     #assert(!(flags & .REVERSE));
     for `it_index: 0..array.count-1 {
         #if flags & .POINTER {
@@ -129,9 +138,10 @@ for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #ex
             `it := array.data[it_index];
         }
 
-        #insert body;
+        #insert(remove=remove_element(array, it_index)) body;
     }
 }
+
 
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
