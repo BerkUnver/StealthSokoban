@@ -12,6 +12,15 @@ Editor_Mode :: enum {
 }
 
 
+Moving_Direction :: enum_flags u8 {
+    X_NEGATIVE;
+    X_POSITIVE;
+    Y_NEGATIVE;
+    Y_POSITIVE;
+    Z_NEGATIVE;
+    Z_POSITIVE;
+}
+
 Editor :: struct {
     mode: Editor_Mode;
 
@@ -20,7 +29,7 @@ Editor :: struct {
             rotating: bool;
             rotating_key: Key;
             rotating_previous_mouse_position: Vector2;
-            moving_direction: Vector3;
+            moving_direction: Moving_Direction;
         }
 
         extrude: struct {
@@ -79,24 +88,18 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
             
             // Check to see if the camera is moving
-            {
-                moving_direction: Vector3;
+            if event.down {
+                moving_direction: Moving_Direction;
                 if event.key == {
-                    case xx #char "W";
-                        moving_direction.z = ifx event.down then 1.0;
-                    case xx #char "A";
-                        moving_direction.x = ifx event.down then -1.0;
-                    case xx #char "S";
-                        moving_direction.z = ifx event.down then -1.0;
-                    case xx #char "D";
-                        moving_direction.x = ifx event.down then 1.0;
-                    case xx #char "Q";
-                        moving_direction.y = ifx event.down then 1.0;
-                    case xx #char "E";
-                        moving_direction.y = ifx event.down then -1.0;
+                    case xx #char "W"; moving_direction = .Z_POSITIVE;
+                    case xx #char "A"; moving_direction = .X_NEGATIVE;
+                    case xx #char "S"; moving_direction = .Z_NEGATIVE;
+                    case xx #char "D"; moving_direction = .X_POSITIVE;
+                    case xx #char "Q"; moving_direction = .Y_POSITIVE;
+                    case xx #char "E"; moving_direction = .Y_NEGATIVE;
                 }
 
-                if moving_direction != Vector3.{} {
+                if moving_direction != 0 {
                     editor.mode = .CAMERA;
                     editor.camera = .{
                         moving_direction = moving_direction
@@ -255,23 +258,17 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                             rotating_previous_mouse_position = mouse;
                         }
                     }
-                case xx #char "W";
-                    moving_direction.z += ifx event.down then 1.0 else -1.0;
-                case xx #char "A";
-                    moving_direction.x += ifx event.down then -1.0 else 1.0;
-                case xx #char "S";
-                    moving_direction.z += ifx event.down then -1.0 else 1.0;
-                case xx #char "D";
-                    moving_direction.x += ifx event.down then 1.0 else -1.0;
-                case xx #char "Q";
-                    moving_direction.y += ifx event.down then 1.0 else -1.0;
-                case xx #char "E";
-                    moving_direction.y += ifx event.down then -1.0 else 1.0;
+                case xx #char "W"; if event.down moving_direction |= .Z_POSITIVE; else moving_direction &= ~.Z_POSITIVE;
+                case xx #char "A"; if event.down moving_direction |= .X_NEGATIVE; else moving_direction &= ~.X_NEGATIVE;
+                case xx #char "S"; if event.down moving_direction |= .Z_NEGATIVE; else moving_direction &= ~.Z_NEGATIVE;
+                case xx #char "D"; if event.down moving_direction |= .X_POSITIVE; else moving_direction &= ~.X_POSITIVE;
+                case xx #char "Q"; if event.down moving_direction |= .Y_POSITIVE; else moving_direction &= ~.Y_POSITIVE;
+                case xx #char "E"; if event.down moving_direction |= .Y_POSITIVE; else moving_direction &= ~.Y_NEGATIVE;
             }
             
             // The user has released all keys.
             // :AltTab this might not be true on Windows.
-            if !rotating && moving_direction == .{} {
+            if !rotating && moving_direction == 0 {
                 editor.mode = .IDLE;
             }
 
@@ -423,7 +420,16 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             }
 
             CAMERA_SPEED :: 240.0 / 60.0;
-            camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * moving_direction * (dt * CAMERA_SPEED);
+
+            x_p := ifx moving_direction & .X_POSITIVE then 1.0 else 0.0;
+            x_n := ifx moving_direction & .X_NEGATIVE then 1.0 else 0.0;
+            y_p := ifx moving_direction & .Y_POSITIVE then 1.0 else 0.0;
+            y_n := ifx moving_direction & .Y_NEGATIVE then 1.0 else 0.0;
+            z_p := ifx moving_direction & .Z_POSITIVE then 1.0 else 0.0;
+            z_n := ifx moving_direction & .Z_NEGATIVE then 1.0 else 0.0;
+
+            dir := Vector3.{x_p - x_n, y_p - y_n, z_p - z_n};
+            camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * dir * (dt * CAMERA_SPEED);
             editor.camera_position += camera_movement;
 
         case .EXTRUDE;
