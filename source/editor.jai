@@ -263,7 +263,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 case xx #char "S"; if event.down moving_direction |= .Z_NEGATIVE; else moving_direction &= ~.Z_NEGATIVE;
                 case xx #char "D"; if event.down moving_direction |= .X_POSITIVE; else moving_direction &= ~.X_POSITIVE;
                 case xx #char "Q"; if event.down moving_direction |= .Y_POSITIVE; else moving_direction &= ~.Y_POSITIVE;
-                case xx #char "E"; if event.down moving_direction |= .Y_POSITIVE; else moving_direction &= ~.Y_NEGATIVE;
+                case xx #char "E"; if event.down moving_direction |= .Y_NEGATIVE; else moving_direction &= ~.Y_NEGATIVE;
             }
             
             // The user has released all keys.
