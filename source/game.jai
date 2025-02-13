@@ -308,14 +308,28 @@ game_update : Game_Update : (
                 }
 
                 if editor.mode == .EXTRUDE {
+                    start := floor(editor.extrude.start_position);
+                    end := floor(editor.extrude.end_position);
+
                     glUseProgram(imm_color_shader);
                     set_uniform("projection", world_to_camera);
-                    for 0..4 {
-                        position := editor.extrude.position;
-                        position.y += xx it;
-                        end := position + Vector3i.{1, 1, 1};
-                        imm_cuboid_outline(to_vector3(position), to_vector3(end), 0.03, .{1, 1, 1, 1});
+                    
+                    WIDTH :: 0.03;
+                    COLOR :: Vector4.{1, 1, 1, 1};
+                    if abs(start.x - end.x) >= 100 || abs(start.z - end.z) >= 100 {
+                        imm_cuboid_outline(start, start + Vector3.{1, 1, 1}, WIDTH, COLOR);
+                    } else {
+                        min_x, max_x := min_max(cast(s32, start.x), cast(s32, end.x));
+                        min_z, max_z := min_max(cast(s32, start.z), cast(s32, end.z));
+
+                        for x: min_x..max_x {
+                            for z: min_z..max_z {
+                                cuboid_start := Vector3.{xx x, start.y, xx z};
+                                imm_cuboid_outline(cuboid_start, cuboid_start + Vector3.{1, 1, 1}, WIDTH, COLOR);
+                            }
+                        }
                     }
+
                     imm_flush();
                 }
         }

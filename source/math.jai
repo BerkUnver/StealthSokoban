@@ -38,6 +38,10 @@ to_vector3i :: (v: Vector3) -> Vector3i {
     return .{xx v.x, xx v.y, xx v.z};
 }
 
+floor :: (v: Vector3) -> Vector3 {
+    return .{floor(v.x), floor(v.y), floor(v.z)};
+}
+
 make_y_rotation_matrix :: ($T: Type, r: float) -> T {
     // Rotate about the y-axis
     sin_r := sin(r);
@@ -124,6 +128,12 @@ max :: (a: Vector3i, b: Vector3i) -> Vector3i {
 
 min :: (a: $T, b: T) -> T {
     return ifx a < b then a else b;
+}
+
+
+min_max :: (a: $T, b: T) -> min: T, max: T {
+    if a < b return a, b;
+    return b, a;
 }
 
 
