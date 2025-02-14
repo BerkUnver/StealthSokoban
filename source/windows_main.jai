@@ -358,12 +358,13 @@ main :: () {
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
 
     data := Game_Init_Data.{
-        game_memory         = game_memory,
-        gl_extension_loader = wglGetProcAddress,
-        os_print            = os_print,
-        read_file           = read_file,
-        level_arena_memory  = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
-        frame_arena_memory  = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE)
+        game_memory            = game_memory,
+        gl_extension_loader    = wglGetProcAddress,
+        os_print               = os_print,
+        read_file              = read_file,
+        level_arena_memory     = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
+        frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
+        permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
     };
 
     game_init(*data);

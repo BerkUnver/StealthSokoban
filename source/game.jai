@@ -17,6 +17,7 @@ Game_Context :: struct {
     imm_state: Imm_State;
 
     frame_arena: Memory_Arena;
+    permanent_arena: Memory_Arena;
 
     block_shader: GLuint;
     block_bitmap: GLuint;
@@ -24,6 +25,8 @@ Game_Context :: struct {
     color_shader: GLuint;
     wireframe_shader: GLuint;
     color_and_bitmap_shader: GLuint;
+    
+    enemy_mesh: Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -59,6 +62,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         using context.game_context;
 
         frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
+        permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
 
         os_print = data.os_print;
         read_file = data.read_file;
@@ -158,6 +162,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        enemy_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
         
         mode = .GAME;
         make_level_for_game(*level, *level_arena);
@@ -257,7 +263,8 @@ game_update : Game_Update : (
         draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
-        draw_vertex_mesh(*enemy.mesh, translate(world_to_camera, to_vector3(enemy.position)), .{1, 0, 0, 1});
+
+        for * enemies draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, to_vector3(it.position)), .{1, 0, 0, 1});
         
         if mode == {
             case .GAME;

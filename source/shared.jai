@@ -8,9 +8,11 @@ BACKGROUND_B :: 19;
 INNER_WINDOW_W :: 1920;
 INNER_WINDOW_H :: 1080;
 
-GAME_MEMORY_SIZE :: 1 << 24; // @TODO: See how much of this memory is actually used!
-LEVEL_ARENA_SIZE :: 1 << 24;
-FRAME_ARENA_SIZE :: 1 << 20;
+// @TODO: See how much of this memory is actually used!
+GAME_MEMORY_SIZE     :: 1 << 24; 
+LEVEL_ARENA_SIZE     :: 1 << 24;
+PERMANENT_ARENA_SIZE :: 1 << 22;
+FRAME_ARENA_SIZE     :: 1 << 20;
 
 Game_Init_Data :: struct {
     game_memory: *void;
@@ -19,6 +21,7 @@ Game_Init_Data :: struct {
     read_file: (string, [] u8) -> bool, int;
     level_arena_memory: *void;
     frame_arena_memory: *void;
+    permanent_arena_memory: *void;
 }
 
 Game_Init_Proc :: #type (init: *Game_Init_Data) #no_context;

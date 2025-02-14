@@ -1,8 +1,8 @@
 Level :: struct {
     selectables: Fixed_Array(32, Eid);
     
-    blocks: Fixed_Array(32, Block);
-    enemy:    Simple_Entity;
+    blocks:   Fixed_Array(32, Block);
+    enemies:  Fixed_Array(32, Enemy); // @TODO: Get deleting these to work in the editor!
     player:   Simple_Entity;
     entrance: Simple_Entity;
     exit:     Simple_Entity;
@@ -65,6 +65,8 @@ eid_position :: (eid: Eid) -> *Vector3i {
     assert(!is_null(eid));
     s := as(eid, Simple_Entity); 
     if s return *s.position;
+    e := as(eid, Enemy);
+    if e return *e.position;
     block := as(eid, Block);
     if block return *block.position;
     assert(false);
@@ -73,9 +75,13 @@ eid_position :: (eid: Eid) -> *Vector3i {
 
 
 eid_mesh :: (eid: Eid) -> *Mesh {
+    using context.game_context;
+
     assert(!is_null(eid));
     s := as(eid, Simple_Entity); 
     if s return *s.mesh;
+    e := as(eid, Enemy);
+    if e return *enemy_mesh;
     block := as(eid, Block);
     if block return *block.mesh;
     assert(false);
@@ -90,6 +96,13 @@ Simple_Entity :: struct {
     position: Vector3i;
     mesh: Mesh;
 }
+
+
+Enemy :: struct {
+    position: Vector3i;
+    desired_position: Vector3i; // Only used when the enemy is making a move.
+}
+
 
 Block :: struct {
     position: Vector3i;
@@ -118,6 +131,8 @@ Collision :: struct {
 
     filled: [] Eid;
     viewed: [] View_State;
+    desired_enemy_moves: [] Desired_Enemy_Move;
+
     // This is stored SOA because we don't want to touch these at the same time.
     // @TODO This is stored x-major, then z, then y.
     // This makes sense from the perspective of wanting to be
@@ -136,6 +151,12 @@ View_State :: enum_flags u8 { // @Volatile :ViewState
     QUEUED_FOR_FLOODFILL;
 }
 
+
+Desired_Enemy_Move :: enum {
+    EMPTY;
+    WILL_BE_FILLED;
+    MUTUAL_ANNHILATION;
+}
 
 get_block_extents :: (blocks: [] Block) -> position: Vector3i, size: Vector3i {
     if blocks.count == 0 return .{}, .{};
@@ -165,7 +186,8 @@ make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
         size = size,
         filled = arena_alloc_array(arena, size_1d, Eid),
         viewed = arena_alloc_array(arena, size_1d, View_State),
-        texture = make_collision_texture(size)
+        desired_enemy_moves = arena_alloc_array(arena, size_1d, Desired_Enemy_Move),
+        texture = make_collision_texture(size),
     };
 }
 
@@ -408,16 +430,19 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         position = entrance.position,
         mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
     };
-
-    enemy =.{
+    
+    append(*enemies).* = .{
         position = .{0, 0, 0},
-        mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
+    };
+
+    append(*enemies).* = .{
+        position = .{-1, 0, 0},
     };
 
     assert(append(*selectables, make_eid(*entrance)));
     assert(append(*selectables, make_eid(*exit)));
     assert(append(*selectables, make_eid(*player)));
-    assert(append(*selectables, make_eid(*enemy)));
+    for * enemies assert(append(*selectables, make_eid(it)));
 
     temp_blocks := Temporary_Block.[
         .{
@@ -472,10 +497,12 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
         assert(add_block_to_collision(*collision, it) == .OK);
     }
     
-
-    in_bounds, eid, index := get_filled(*collision, enemy.position);
-    assert(in_bounds && is_null(eid));
-    collision.filled[index] = make_eid(*enemy);
+    
+    for * enemies {
+        in_bounds, eid, index := get_filled(*collision, it.position);
+        assert(in_bounds && is_null(eid));
+        collision.filled[index] = make_eid(it);
+    }
 }
 
 
@@ -592,7 +619,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 if !pushed_block.moveable return;
                 assert(append(*moving_blocks, pushed_block));
             } else {
-                enemy := as(pushed_eid, Simple_Entity);
+                enemy := as(pushed_eid, Enemy);
                 if enemy return;
             }
         }
@@ -648,25 +675,6 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
 
 level_update :: (using level: *Level, dt: float) {
-    ENEMY_SPEED :: 1;
-    enemy_timer += dt * ENEMY_SPEED;
-    if enemy_timer >= 1 {
-        enemy_timer = fmod_cycling(enemy_timer, 1);
-        new_enemy_position := enemy.position;
-        new_enemy_position.x -= 1;
-        
-        in_bounds, eid, index := get_filled(*collision, new_enemy_position);
-        if in_bounds && is_null(eid) {
-            old_in_bounds, old_eid, old_index := get_filled(*collision, enemy.position);
-            assert(old_in_bounds);
-            assert(old_eid.ptr == *enemy);
-
-            collision.filled[old_index] = .{};
-            enemy.position = new_enemy_position;
-            collision.filled[index] = make_eid(*enemy);
-        }
-    }
-
     // The following code is nontrivial so I will write an explanation.
     // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
     // Here's why:
@@ -777,6 +785,62 @@ level_update :: (using level: *Level, dt: float) {
         check_axis(0);
         check_axis(1);
         check_axis(2);
+    }
+
+
+    ENEMY_SPEED :: 1;
+    enemy_timer += dt * ENEMY_SPEED;
+
+    // @Temporary Get the enemies to move in lockstep with each other.
+    if enemy_timer >= 1 {
+        enemy_timer = fmod_cycling(enemy_timer, 1);
+
+        memset(collision.desired_enemy_moves.data, xx Desired_Enemy_Move.EMPTY, byte_count(collision.desired_enemy_moves));
+
+        for * enemies { 
+            desired_position := it.position;
+            desired_position.x -= 1;
+
+            in_bounds, index := get_3d_index(desired_position, collision.position, collision.size);
+            if !in_bounds it.desired_position = it.position;
+            else it.desired_position = desired_position;
+
+            in_bounds, index = get_3d_index(it.desired_position, collision.position, collision.size);
+            assert(in_bounds);
+            
+            if #complete collision.desired_enemy_moves[index] == {
+                case .EMPTY;
+                    collision.desired_enemy_moves[index] = .WILL_BE_FILLED;
+                case .WILL_BE_FILLED;
+                    collision.desired_enemy_moves[index] = .MUTUAL_ANNHILATION;
+                case .MUTUAL_ANNHILATION;
+                    // Do nothing because this enemy will be destroyed too.
+            }
+        }
+        
+        // Remove all the enemies from the collision to make sure that when we reinsert them, all of the old ones
+        // have been cleaned up. Otherwise, if we cleared the collision.filled[index] of the old enemy position,
+        // a new enemy could be there!
+        for * enemies {
+            in_bounds, eid, index := get_filled(*collision, it.position);
+            assert(eid.ptr == it);
+            collision.filled[index] = .{};
+        }
+
+        for * enemies {
+            in_bounds, index := get_3d_index(it.desired_position, collision.position, collision.size);
+            if #complete collision.desired_enemy_moves[index] == {
+                case .EMPTY;
+                    assert(false);
+
+                case .WILL_BE_FILLED;
+                    it.position = it.desired_position;
+                    collision.filled[index] = make_eid(it);
+
+                case .MUTUAL_ANNHILATION;
+                    remove it;
+            }
+        }
     }
 
     update_collision_texture(*collision);
