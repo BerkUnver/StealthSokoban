@@ -87,7 +87,6 @@ main :: () {
                         return 0;
 
                     case WM_RBUTTONDOWN;
-                        print("Mouse down\n");
                         windows.mouse_buttons_down |= .RIGHT;
                         SetCapture(window);
                         event := append(*input_events);
@@ -103,7 +102,6 @@ main :: () {
                         return 0;
                         
                     case WM_RBUTTONUP;
-                        print("Mouse up\n");
                         windows.mouse_buttons_down &= ~.RIGHT;
                         if !windows.mouse_buttons_down ReleaseCapture();
                         event := append(*input_events);

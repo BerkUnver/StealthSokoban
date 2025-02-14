@@ -4,6 +4,7 @@ Level :: struct {
     blocks:   Fixed_Array(32, Block);
     ENEMY_COUNT :: 32;
     enemies:  Fixed_Array(ENEMY_COUNT, Enemy); // @TODO: Get deleting these to work in the editor!
+
     player:   Simple_Entity;
     entrance: Simple_Entity;
     exit:     Simple_Entity;
@@ -102,10 +103,18 @@ Simple_Entity :: struct {
 }
 
 
+Enemy_State :: enum {
+    IDLE;
+    MOVING;
+}
+
 Enemy :: struct {
     position: Vector3i;
-    desired_position: Vector3i; // Only used when the enemy is making a move.
-    old_position: Vector3i; // Used to visually interpolate to the new position.
+    desired_position: Vector3i; // Only used when we are updating all the enemies.
+    MOVING_TIME :: 0.15;
+    moving_from: Vector3;
+    moving_timer: float; // We could find a way to store one of these for all enemies.
+    state: Enemy_State;
 }
 
 
@@ -512,12 +521,10 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
         assert(add_block_to_collision(*collision, it) == .OK);
     }
     
-    
     for * enemies {
         in_bounds, eid, index := get_filled(*collision, it.position);
         assert(in_bounds && is_null(eid));
         collision.filled[index] = make_eid(it);
-        it.old_position = it.position;
     }
 }
 
@@ -804,10 +811,10 @@ level_update :: (using level: *Level, dt: float) {
     }
 
 
-    ENEMY_MOVE_TIME :: 1;
+    ENEMY_TICK_TIME :: 1;
     enemy_timer += dt;
-    if enemy_timer >= ENEMY_MOVE_TIME {
-        enemy_timer = fmod_cycling(enemy_timer, ENEMY_MOVE_TIME);
+    if enemy_timer >= ENEMY_TICK_TIME {
+        enemy_timer = fmod_cycling(enemy_timer, ENEMY_TICK_TIME);
 
         memset(collision.desired_enemy_moves.data, xx Desired_Enemy_Move.EMPTY, byte_count(collision.desired_enemy_moves));
 
@@ -852,7 +859,9 @@ level_update :: (using level: *Level, dt: float) {
                     assert(false);
 
                 case .WILL_BE_FILLED;
-                    it.old_position = it.position;
+                    it.state = .MOVING;
+                    it.moving_timer = 0;
+                    it.moving_from = to_vector3(it.position);
                     it.position = it.desired_position;
                     collision.filled[index] = make_eid(it);
 
@@ -866,5 +875,14 @@ level_update :: (using level: *Level, dt: float) {
         }
     }
 
+    for * enemies { 
+        if it.state == .MOVING {
+            it.moving_timer += dt;
+            if it.moving_timer >= Enemy.MOVING_TIME {
+                it.state = .IDLE;
+            }
+        }
+    }
+    
     update_collision_texture(*collision);
 }

@@ -266,16 +266,17 @@ game_update : Game_Update : (
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
 
-        for * enemies { 
+        for * enemies {
             position: Vector3;
-            ENEMY_INTERPOLATION_TIME :: 0.15;
-            if enemy_timer >= ENEMY_INTERPOLATION_TIME {
-                position = to_vector3(it.position);
-            } else {
-                time := enemy_timer / ENEMY_INTERPOLATION_TIME;
-                weight := time * time;
-                position = lerp(to_vector3(it.old_position), to_vector3(it.position), weight);
+            if #complete it.state == {
+                case .IDLE;
+                    position = to_vector3(it.position);
+                case.MOVING;
+                    time := it.moving_timer / Enemy.MOVING_TIME;
+                    weight := time * time;
+                    position = lerp(it.moving_from, to_vector3(it.position), weight);
             }
+
             draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
         }
         
