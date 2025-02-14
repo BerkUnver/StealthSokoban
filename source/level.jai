@@ -2,7 +2,8 @@ Level :: struct {
     selectables: Fixed_Array(32, Eid);
     
     blocks:   Fixed_Array(32, Block);
-    enemies:  Fixed_Array(32, Enemy); // @TODO: Get deleting these to work in the editor!
+    ENEMY_COUNT :: 32;
+    enemies:  Fixed_Array(ENEMY_COUNT, Enemy); // @TODO: Get deleting these to work in the editor!
     player:   Simple_Entity;
     entrance: Simple_Entity;
     exit:     Simple_Entity;
@@ -11,6 +12,9 @@ Level :: struct {
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
+    
+    enemy_annihilations: Fixed_Array(ENEMY_COUNT / 2, Vector3);
+    #assert ENEMY_COUNT % 2 == 0;
 
     flags: enum {PULLING :: 1;};
     
@@ -101,6 +105,7 @@ Simple_Entity :: struct {
 Enemy :: struct {
     position: Vector3i;
     desired_position: Vector3i; // Only used when the enemy is making a move.
+    old_position: Vector3i; // Used to visually interpolate to the new position.
 }
 
 
@@ -132,6 +137,7 @@ Collision :: struct {
     filled: [] Eid;
     viewed: [] View_State;
     desired_enemy_moves: [] Desired_Enemy_Move;
+    enemy_move_results: [] Enemy_Move_Result;
 
     // This is stored SOA because we don't want to touch these at the same time.
     // @TODO This is stored x-major, then z, then y.
@@ -152,11 +158,19 @@ View_State :: enum_flags u8 { // @Volatile :ViewState
 }
 
 
-Desired_Enemy_Move :: enum {
+Desired_Enemy_Move :: enum u8 {
     EMPTY;
     WILL_BE_FILLED;
-    MUTUAL_ANNHILATION;
+    MUTUAL_ANNIHILATION;
+    // we may move it somewhere else in the future.
 }
+
+
+Enemy_Move_Result :: enum u8 {
+    NOTHING;
+    MUTUAL_ANNIHILATION_HAPPENED;
+}
+
 
 get_block_extents :: (blocks: [] Block) -> position: Vector3i, size: Vector3i {
     if blocks.count == 0 return .{}, .{};
@@ -187,6 +201,7 @@ make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
         filled = arena_alloc_array(arena, size_1d, Eid),
         viewed = arena_alloc_array(arena, size_1d, View_State),
         desired_enemy_moves = arena_alloc_array(arena, size_1d, Desired_Enemy_Move),
+        enemy_move_results = arena_alloc_array(arena, size_1d, Enemy_Move_Result),
         texture = make_collision_texture(size),
     };
 }
@@ -502,6 +517,7 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
         in_bounds, eid, index := get_filled(*collision, it.position);
         assert(in_bounds && is_null(eid));
         collision.filled[index] = make_eid(it);
+        it.old_position = it.position;
     }
 }
 
@@ -788,12 +804,10 @@ level_update :: (using level: *Level, dt: float) {
     }
 
 
-    ENEMY_SPEED :: 1;
-    enemy_timer += dt * ENEMY_SPEED;
-
-    // @Temporary Get the enemies to move in lockstep with each other.
-    if enemy_timer >= 1 {
-        enemy_timer = fmod_cycling(enemy_timer, 1);
+    ENEMY_MOVE_TIME :: 1;
+    enemy_timer += dt;
+    if enemy_timer >= ENEMY_MOVE_TIME {
+        enemy_timer = fmod_cycling(enemy_timer, ENEMY_MOVE_TIME);
 
         memset(collision.desired_enemy_moves.data, xx Desired_Enemy_Move.EMPTY, byte_count(collision.desired_enemy_moves));
 
@@ -812,15 +826,19 @@ level_update :: (using level: *Level, dt: float) {
                 case .EMPTY;
                     collision.desired_enemy_moves[index] = .WILL_BE_FILLED;
                 case .WILL_BE_FILLED;
-                    collision.desired_enemy_moves[index] = .MUTUAL_ANNHILATION;
-                case .MUTUAL_ANNHILATION;
+                    collision.desired_enemy_moves[index] = .MUTUAL_ANNIHILATION;
+                case .MUTUAL_ANNIHILATION;
                     // Do nothing because this enemy will be destroyed too.
             }
         }
+       
         
+        // @Speed this is very dumb that this array is so big.
+        memset(collision.enemy_move_results.data, xx Enemy_Move_Result.NOTHING, byte_count(collision.enemy_move_results));
+
         // Remove all the enemies from the collision to make sure that when we reinsert them, all of the old ones
         // have been cleaned up. Otherwise, if we cleared the collision.filled[index] of the old enemy position,
-        // a new enemy could be there!
+        // a new enemy could already be there!
         for * enemies {
             in_bounds, eid, index := get_filled(*collision, it.position);
             assert(eid.ptr == it);
@@ -834,10 +852,15 @@ level_update :: (using level: *Level, dt: float) {
                     assert(false);
 
                 case .WILL_BE_FILLED;
+                    it.old_position = it.position;
                     it.position = it.desired_position;
                     collision.filled[index] = make_eid(it);
 
-                case .MUTUAL_ANNHILATION;
+                case .MUTUAL_ANNIHILATION;
+                    if collision.enemy_move_results[index] == .NOTHING {
+                        collision.enemy_move_results[index] = .MUTUAL_ANNIHILATION_HAPPENED;
+                        assert(append(*enemy_annihilations, to_vector3(it.desired_position)));
+                    }
                     remove it;
             }
         }

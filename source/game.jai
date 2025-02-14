@@ -27,6 +27,7 @@ Game_Context :: struct {
     color_and_bitmap_shader: GLuint;
     
     enemy_mesh: Mesh;
+    enemy_annihilation_mesh: Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -164,6 +165,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         enemy_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
+        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0, 0, 0}, .{1, 1, 1}, *permanent_arena);
         
         mode = .GAME;
         make_level_for_game(*level, *level_arena);
@@ -264,7 +266,27 @@ game_update : Game_Update : (
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
 
-        for * enemies draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, to_vector3(it.position)), .{1, 0, 0, 1});
+        for * enemies { 
+            position: Vector3;
+            ENEMY_INTERPOLATION_TIME :: 0.15;
+            if enemy_timer >= ENEMY_INTERPOLATION_TIME {
+                position = to_vector3(it.position);
+            } else {
+                time := enemy_timer / ENEMY_INTERPOLATION_TIME;
+                weight := time * time;
+                position = lerp(to_vector3(it.old_position), to_vector3(it.position), weight);
+            }
+            draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
+        }
+        
+        ENEMY_ANNIHILATION_TIME :: 0.15;
+        if enemy_timer < ENEMY_ANNIHILATION_TIME {
+            for enemy_annihilations {
+                draw_vertex_mesh(*enemy_annihilation_mesh, translate(world_to_camera, it), .{1, 143.0/255.0, 0, 1});
+            }
+        } else {
+            enemy_annihilations.count = 0;
+        }
         
         if mode == {
             case .GAME;
