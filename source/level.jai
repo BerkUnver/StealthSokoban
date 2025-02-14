@@ -14,7 +14,7 @@ Level :: struct {
 
     flags: enum {PULLING :: 1;};
     
-    camera_pitch_ticks: s8 = 1;
+    camera_pitch_ticks: s8 = 0;
     camera_yaw_ticks: s8;
 
     enemy_timer: float;
@@ -36,7 +36,7 @@ Eid :: struct { // Entity ID
 }
 
 
-eid :: inline (ptr: *$T) -> Eid {
+make_eid :: inline (ptr: *$T) -> Eid {
     return .{T, ptr};
 }
 
@@ -209,7 +209,7 @@ add_block_to_collision :: (collision: *Collision, block: *Block) -> Add_Block_Re
         if !filled continue;
         collision_coord := it + offset;
         collision_index := get_3d_index_unchecked(collision_coord, collision.size);
-        collision.filled[collision_index] = eid(block);
+        collision.filled[collision_index] = make_eid(block);
     }
 
     return .OK;
@@ -219,22 +219,25 @@ add_block_to_collision :: (collision: *Collision, block: *Block) -> Add_Block_Re
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
 raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T, wiggle_room := 0.0) -> collided: bool {
     EPSILON :: 0.001;
+    
+    // @TODO @Speed: A sanity-check optimization pass where we factor the repeated calculations out of these sub-functions.
 
     raycast_x :: (y_plane: s32, z_plane: s32, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
+        sign_x := sign(ray_end_x - ray_start_x);
 
         if abs(round(ray_start_x) - ray_start_x) < EPSILON {
-            ray_start_x = round(ray_start_x) + sign(ray_end_x - ray_start_x) * EPSILON;
+            ray_start_x = round(ray_start_x) + sign_x * EPSILON;
         }
 
         if abs(round(ray_end_x) - ray_end_x) < EPSILON {
-            ray_end_x = round(ray_end_x) - sign(ray_end_x - ray_start_x) * EPSILON;
+            ray_end_x = round(ray_end_x) - sign_x * EPSILON;
         }
 
         x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
 
         x := cast(s32, floor(ray_start_x));
         start := Vector3i.{x, y_plane, z_plane};
-        if inline visitor(start, user_data) return true;
+        if inline visitor(start, user_data) return true /*, x*/;
 
         i : s32 = 0;
         dir := cast(s32, sign(x_steps));
@@ -242,7 +245,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
             i += dir;
             start.x += dir;
 
-            if inline visitor(start, user_data) return true;
+            if inline visitor(start, user_data) return true/*, start_x + ifx sign_x == 1 then 0 else 1*/;
         }
 
         return false;
@@ -407,10 +410,10 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
     };
 
-    assert(append(*selectables, eid(*entrance)));
-    assert(append(*selectables, eid(*exit)));
-    assert(append(*selectables, eid(*player)));
-    assert(append(*selectables, eid(*enemy)));
+    assert(append(*selectables, make_eid(*entrance)));
+    assert(append(*selectables, make_eid(*exit)));
+    assert(append(*selectables, make_eid(*player)));
+    assert(append(*selectables, make_eid(*enemy)));
 
     temp_blocks := Temporary_Block.[
         .{
@@ -464,6 +467,12 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
     for * blocks {
         assert(add_block_to_collision(*collision, it) == .OK);
     }
+    
+    success, index := get_3d_index(enemy.position, collision.position, collision.size);
+    assert(success);
+    eid := collision.filled[index];
+    assert(is_null(eid));
+    collision.filled[index] = make_eid(*enemy);
 }
 
 
@@ -486,7 +495,7 @@ add_temporary_block_to_level :: (using temp_block: *Temporary_Block, using level
     };
     
     // @TODO: Figure out what to do when we exceed the maximum number of blocks we're allowing right now.
-    assert(append(*selectables, eid(block)));
+    assert(append(*selectables, make_eid(block)));
 }
 
 
@@ -572,13 +581,21 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
         moving_blocks: Fixed_Array(2, *Block);
         
-        pushed_success, pushed_eid := get_filled(*collision, new_player_position);
-        if !pushed_success return;
-        pushed_block := as(pushed_eid, Block);
-        if pushed_block {
-            if !pushed_block.moveable return;
-            assert(append(*moving_blocks, pushed_block));
+        pushed_in_bounds, pushed_eid := get_filled(*collision, new_player_position);
+        if !pushed_in_bounds return;
+        if !is_null(pushed_eid) {
+            pushed_block := as(pushed_eid, Block);
+            if pushed_block {
+                if !pushed_block.moveable return;
+                assert(append(*moving_blocks, pushed_block));
+            } else {
+                enemy := as(pushed_eid, Simple_Entity);
+                if enemy return;
+            }
         }
+
+
+
         
         if flags & .PULLING {
             pulled_success, pulled_index := get_3d_index(player.position - push_direction, collision.position, collision.size);
@@ -637,13 +654,13 @@ level_update :: (using level: *Level, dt: float) {
         new_enemy_position.x -= 1;
         
         success, index := get_3d_index(new_enemy_position, collision.position, collision.size);
-        if !success return;
-            
-        eid := collision.filled[index];
-        block := as(eid, Block);
-        if block return;
-
-        enemy.position = new_enemy_position;
+        if success && is_null(collision.filled[index]) {
+            old_success, old_index := get_3d_index(enemy.position, collision.position, collision.size);
+            assert(old_success);
+            collision.filled[old_index] = .{};
+            enemy.position = new_enemy_position;
+            collision.filled[index] = make_eid(*enemy);
+        }
     }
 
     // The following code is nontrivial so I will write an explanation.
