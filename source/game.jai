@@ -349,21 +349,27 @@ game_update : Game_Update : (
                     imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
                     imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
                     
+                    min_x, max_x := min_max(start.x, end.x);
+                    min_y, max_y := min_max(start.y, end.y);
+                    min_z, max_z := min_max(start.z, end.z);
+                    
+                    position := Vector3i.{min_x, min_y, min_z};
+
+                    size := Vector3i.{max_x - min_x + 1, max_y - min_y + 1, max_z - min_z + 1};
+
+                    for * size.component {
+                        if it_index != axis_0 && it_index != axis_1 {
+                            it.* = 1;
+                            break;
+                        }
+                    }
+                    
+                    
                     WIDTH :: 0.03;
                     COLOR :: Vector4.{1, 1, 1, 1};
-                    if abs(start.x - end.x) >= 100 || abs(start.z - end.z) >= 100 {
-                        cuboid_start := to_vector3(start);
-                        imm_cuboid_outline(cuboid_start, cuboid_start + Vector3.{1, 1, 1}, WIDTH, COLOR);
-                    } else {
-                        min_x, max_x := min_max(start.x, end.x);
-                        min_z, max_z := min_max(start.z, end.z);
-
-                        for x: min_x..max_x {
-                            for z: min_z..max_z {
-                                cuboid_start := Vector3.{xx x, xx start.y, xx z};
-                                imm_cuboid_outline(cuboid_start, cuboid_start + Vector3.{1, 1, 1}, WIDTH, COLOR);
-                            }
-                        }
+                    for :iterate_vector3i size {
+                        cuboid_position := to_vector3(position + it);
+                        imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, COLOR);
                     }
 
                     imm_flush();

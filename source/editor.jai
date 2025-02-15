@@ -37,6 +37,10 @@ Editor :: struct {
             start_position: Vector3i;
             start_intersection: Vector3;
             end_intersection: Vector3;
+
+            // Index of the axis in the component part of the Vector3i
+            axis_0: u8;
+            axis_1: u8;
         }
 
         drag: struct {
@@ -146,6 +150,8 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     start_position = data.selected_position,
                     start_intersection = intersection,
                     end_intersection = intersection,
+                    axis_0 = 2,
+                    axis_1 = 0,
                 };
 
                 return;
@@ -292,7 +298,14 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
         case .EXTRUDE;
             using editor.extrude;
-            if event.key == #char "Z" && !event.down {
+            if event.key == #char " " && event.down {
+                new_axis_0 := axis_1;
+                new_axis_1 := (axis_1 + 1) % 3;
+                axis_0 = new_axis_0;
+                axis_1 = new_axis_1;
+
+            } else if event.key == #char "Z" && !event.down {
+
                 start := start_position;
                 end := to_vector3i(floor(end_intersection));
 
@@ -457,11 +470,18 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             camera_to_world := inverse(world_to_camera);
             mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0}) - editor.camera_position;
 
+            v0: Vector3;
+            v0.component[axis_0] = 1;
+            v1: Vector3;
+            v1.component[axis_1] = 1;
+
+            normal := cross(v0, v1);
+
             parallel, intersection := get_intersection_between_line_and_plane(
                 line_point = editor.camera_position,
                 line_direction = mouse_direction,
                 plane_point = start_intersection,
-                plane_normal = .{0, 1, 0} // @Temporary
+                plane_normal = normal
             );
 
             if parallel {
