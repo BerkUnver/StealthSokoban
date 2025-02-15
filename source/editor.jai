@@ -33,9 +33,10 @@ Editor :: struct {
         }
 
         extrude: struct {
-            block: Eid;
-            start_position: Vector3;
-            end_position: Vector3;
+            selected_block: Eid;
+            start_position: Vector3i;
+            start_intersection: Vector3;
+            end_intersection: Vector3;
         }
 
         drag: struct {
@@ -111,23 +112,40 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             
             // @TODO Merge this with "X", this is a better version of "X".
             if event.key == xx #char "Z" && event.down {
-                mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1}) - editor.camera_position;
+                mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
+                mouse_start := editor.camera_position;
+                mouse_end := mouse_start + mouse_direction;
 
-                // @TODO: Use a raycast selection instead of this, because due to floating-point error the 
-                // points of each mesh might not be within the same integer range as the filled part of the
-                // block.
+                Data :: struct {
+                    blocks: [] Block;
+                    selected: *Block;
+                    selected_position: Vector3i;
+                }
+
+                visitor :: (position: Vector3i, using data: *Data) -> bool {
+                    for * blocks {
+                        success, index := get_3d_index(position, it.position, it.size);
+                        if success && it.filled[index] {
+                            selected = it;
+                            selected_position = position;
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+
+                data := Data.{blocks = to_array(blocks)};
+                collided, t := raycast(mouse_start, mouse_end, visitor, *data);
                 
-                success, eid, intersection := get_intersection_with_selectable_meshes(level, editor, editor.camera_position, mouse_direction);
+                if !collided return;
 
-                if !success return;
-                block := as(eid, Block);
-                if !block return;
-
+                intersection := mouse_start + mouse_direction * t;
                 editor.mode = .EXTRUDE;
                 editor.extrude = .{
-                    start_position = intersection,
-                    end_position = intersection,
-                    block = eid
+                    selected_block = make_eid(data.selected),
+                    start_position = data.selected_position,
+                    start_intersection = intersection,
+                    end_intersection = intersection,
                 };
 
                 return;
@@ -273,24 +291,25 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
         case .EXTRUDE;
+            using editor.extrude;
             if event.key == #char "Z" && !event.down {
-                start := floor(editor.extrude.start_position);
-                end := floor(editor.extrude.end_position);
+                start := start_position;
+                end := to_vector3i(floor(end_intersection));
 
-                position_x, end_x := min_max(cast(s32, start.x), cast(s32, end.x));
-                position_z, end_z := min_max(cast(s32, start.z), cast(s32, end.z));
+                position_x, end_x := min_max(start.x, end.x);
+                position_z, end_z := min_max(start.z, end.z);
 
                 size_x := end_x - position_x + 1;
                 size_z := end_z - position_z + 1;
-
-                position := Vector3i.{position_x, xx start.y, position_z};
-                size := Vector3i.{size_x, 1, size_z};
                 
-                block := as(editor.extrude.block, Block);
+                position := Vector3i.{position_x, start.y, position_z};
+                size := Vector3i.{size_x, 1, size_z};
+
+                block := as(selected_block, Block);
                 assert(block != null);
                 
                 block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, position, size, level_arena);
-                
+
                 offset := position - block.position;
 
                 for :iterate_vector3i size {
@@ -303,7 +322,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
                 editor.mode = .IDLE;
             }
-        
+
         case .DRAG;
             using editor.drag;
             if !event.down && ((index == 0 && event.key == xx #char "1")
@@ -441,14 +460,14 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             parallel, intersection := get_intersection_between_line_and_plane(
                 line_point = editor.camera_position,
                 line_direction = mouse_direction,
-                plane_point = start_position, 
+                plane_point = start_intersection,
                 plane_normal = .{0, 1, 0} // @Temporary
             );
 
             if parallel {
-                end_position = start_position;
+                end_intersection = start_intersection;
             } else {
-                end_position = intersection;
+                end_intersection = intersection;
             }
 
         case .DRAG;

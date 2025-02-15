@@ -338,23 +338,29 @@ game_update : Game_Update : (
                 }
 
                 if editor.mode == .EXTRUDE {
-                    start := floor(editor.extrude.start_position);
-                    end := floor(editor.extrude.end_position);
+                    using editor.extrude;
+                    start := start_position;
+                    end := to_vector3i(floor(end_intersection));
 
                     glUseProgram(imm_color_shader);
                     set_uniform("projection", world_to_camera);
+
+                    R :: Vector3.{0.1, 0.1, 0.1};
+                    imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
+                    imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
                     
                     WIDTH :: 0.03;
                     COLOR :: Vector4.{1, 1, 1, 1};
                     if abs(start.x - end.x) >= 100 || abs(start.z - end.z) >= 100 {
-                        imm_cuboid_outline(start, start + Vector3.{1, 1, 1}, WIDTH, COLOR);
+                        cuboid_start := to_vector3(start);
+                        imm_cuboid_outline(cuboid_start, cuboid_start + Vector3.{1, 1, 1}, WIDTH, COLOR);
                     } else {
-                        min_x, max_x := min_max(cast(s32, start.x), cast(s32, end.x));
-                        min_z, max_z := min_max(cast(s32, start.z), cast(s32, end.z));
+                        min_x, max_x := min_max(start.x, end.x);
+                        min_z, max_z := min_max(start.z, end.z);
 
                         for x: min_x..max_x {
                             for z: min_z..max_z {
-                                cuboid_start := Vector3.{xx x, start.y, xx z};
+                                cuboid_start := Vector3.{xx x, xx start.y, xx z};
                                 imm_cuboid_outline(cuboid_start, cuboid_start + Vector3.{1, 1, 1}, WIDTH, COLOR);
                             }
                         }

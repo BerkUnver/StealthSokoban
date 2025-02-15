@@ -115,7 +115,7 @@ contains :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
 
 
 to_array :: (a: Fixed_Array($N, $T)) -> [] T {
-    return .{N, a.data.data};
+    return .{a.count, a.data.data};
 }
 
 

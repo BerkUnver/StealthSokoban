@@ -271,111 +271,135 @@ add_block_to_collision :: (collision: *Collision, block: *Block) -> Add_Block_Re
 
 
 // @Speed @TODO: When we add the player seeing mechanic, we want to have this routine know about Collision and do some early-out checks and possibly automatically do index conversion because this is going to get called hundreds of times every frame.
-raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T, wiggle_room := 0.0) -> collided: bool {
+raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i, user_data: $T) -> terminate_raycast: bool, user_data: T) -> collided: bool, t: float {
     EPSILON :: 0.001;
     
-    // @TODO @Speed: A sanity-check optimization pass where we factor the repeated calculations out of these sub-functions.
+    sign_x := sign(ray_end.x - ray_start.x);
+    sign_z := sign(ray_end.z - ray_start.z);
 
-    raycast_x :: (y_plane: s32, z_plane: s32, ray_start_x: float, ray_end_x: float, user_data: T) -> bool {
-        sign_x := sign(ray_end_x - ray_start_x);
+    raycast_x :: (y_plane: s32, z_plane: s32, ray_start_x: float, ray_end_x: float, user_data: T) #expand {
+        round_start_x := round(ray_start_x);
+        round_end_x := round(ray_end_x);
 
-        if abs(round(ray_start_x) - ray_start_x) < EPSILON {
-            ray_start_x = round(ray_start_x) + sign_x * EPSILON;
+        if abs(round_start_x - ray_start_x) < EPSILON {
+            ray_start_x = round_start_x + sign_x * EPSILON;
         }
 
-        if abs(round(ray_end_x) - ray_end_x) < EPSILON {
-            ray_end_x = round(ray_end_x) - sign_x * EPSILON;
+        if abs(round_end_x - ray_end_x) < EPSILON {
+            ray_end_x = round_end_x - sign_x * EPSILON;
         }
 
-        x_steps := cast(s32, floor(ray_end_x) - floor(ray_start_x));
+        floor_start_x := floor(ray_start_x);
+        floor_end_x := floor(ray_end_x);
 
-        x := cast(s32, floor(ray_start_x));
+        x_steps := cast(s32, floor_end_x - floor_start_x);
+
+        // This cannot be factored outside of these helper functions because floating point
+        // error may cause the values of ray_start_x and ray_end_x to be slightly wrong,
+        // causing the value of (ray_end_x - ray_start_x) to have the opposite sign of what 
+        // we expect. I don't want to do a deep investigation right now to find out
+        // precisely what the problem is.
+
+        // The correct thing to do might just be having different branches for positive
+        // and negative. When I come back to this I might rewrite it to be like that,
+        // which will DEFINITELY be simpler and maybe faster.
+
+        //          - berk, 14 - 2 - 2025
+
+        dir_x := sign(x_steps);
+
+        x := cast(s32, floor_start_x);
         start := Vector3i.{x, y_plane, z_plane};
-        if inline visitor(start, user_data) return true /*, x*/;
+        if visitor(start, user_data) `return true, (ray_start_x - ray_start.x) / (ray_end.x - ray_start.x);
 
         i : s32 = 0;
-        dir := cast(s32, sign(x_steps));
         while i != x_steps {
-            i += dir;
-            start.x += dir;
+            i += dir_x;
+            start.x += dir_x;
 
-            if inline visitor(start, user_data) return true/*, start_x + ifx sign_x == 1 then 0 else 1*/;
+            if visitor(start, user_data) `return true, (start.x + ifx dir_x == 1 then 0 else 1 - ray_start.x) / (ray_end.x - ray_start.x);
         }
-
-        return false;
     }
 
 
-    raycast_zx :: (y_plane: s32, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) -> bool {
+    raycast_zx :: (y_plane: s32, ray_start_x: float, ray_start_z: float, ray_end_x: float, ray_end_z: float, user_data: T) #expand {
 
-        if abs(round(ray_start_z) - ray_start_z) < EPSILON {
-            ray_start_z = round(ray_start_z) + sign(ray_end_z - ray_start_z) * EPSILON;
+        round_start_z := round(ray_start_z);
+        round_end_z := round(ray_end_z);
+
+        if abs(round_start_z - ray_start_z) < EPSILON {
+            ray_start_z = round_start_z + sign_z * EPSILON;
         }
 
-        if abs(round(ray_end_z) - ray_end_z) < EPSILON {
-            ray_end_z = round(ray_end_z) - sign(ray_end_z - ray_start_z) * EPSILON;
+        if abs(round_end_z - ray_end_z) < EPSILON {
+            ray_end_z = round_end_z - sign_z * EPSILON;
         }
+        
+        floor_start_z := floor(ray_start_z);
+        floor_end_z := floor(ray_end_z);
 
-        z_steps := cast(s32, floor(ray_end_z) - floor(ray_start_z));
-        dir := sign(z_steps);
+        z_steps := cast(s32, floor_end_z - floor_start_z);
 
         if z_steps == 0 {
-            return raycast_x(y_plane, xx floor(ray_start_z), ray_start_x, ray_end_x, user_data);
+            raycast_x(y_plane, xx floor_start_z, ray_start_x, ray_end_x, user_data);
         } else {
+            dir_z := sign(z_steps);
+
             m := (ray_end_x - ray_start_x) / (ray_end_z - ray_start_z);
             b := ray_start_x - m * ray_start_z;
             
-            z_plane := cast(s32, floor(ray_start_z));
+            z_plane := cast(s32, floor_start_z);
             z := z_plane + cast(s32, z_steps > 0);
 
             x := m * z + b;
 
-            if raycast_x(y_plane, z_plane, ray_start_x, x, user_data) return true;
+            raycast_x(y_plane, z_plane, ray_start_x, x, user_data);
             
             i := 0;
-            dir := sign(z_steps);
-            range_end := z_steps - dir; // Every cube except the last one
+            range_end := z_steps - dir_z; // Every cube except the last one
 
             while i != range_end {
-                i += dir;
-                z_plane += dir;
-                z += dir;
+                i += dir_z;
+                z_plane += dir_z;
+                z += dir_z;
                 old_x := x;
                 x = m * z + b;
-                if raycast_x(y_plane, z_plane, old_x, x, user_data) return true;
+                raycast_x(y_plane, z_plane, old_x, x, user_data);
             }
             
-            z_plane += dir;
-            return raycast_x(y_plane, z_plane, x, ray_end_x, user_data);
+            z_plane += dir_z;
+            raycast_x(y_plane, z_plane, x, ray_end_x, user_data);
         }
     }
-    
-    y_steps := cast(s32, floor(ray_end.y) - floor(ray_start.y));
-    
+   
+    floor_start_y := floor(ray_start.y);
+    floor_end_y := floor(ray_end.y);
+
+    y_steps := cast(s32, floor_end_y - floor_start_y);
 
     if y_steps == 0 {
-        if raycast_zx(xx floor(ray_start.y), ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data) return true;
-        return false;
+        raycast_zx(xx floor_start_y, ray_start.x, ray_start.z, ray_end.x, ray_end.z, user_data);
+        return false, 0;
     } else {
+        dir_y := sign(y_steps);
 
         ray_length := ray_end - ray_start;
 
-        y_plane := cast(s32, floor(ray_start.y));
+        y_plane := cast(s32, floor_start_y);
         y := y_plane + cast(s32, y_steps > 0);
         t := (y - ray_start.y) / ray_length.y;
 
         x := ray_start.x + ray_length.x * t;
         z := ray_start.z + ray_length.z * t;
         
-        if raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data) return true;
+        raycast_zx(y_plane, ray_start.x, ray_start.z, x, z, user_data);
         
         i := 0;
-        dir := sign(y_steps);
-        range_end := y_steps - dir;
+        range_end := y_steps - dir_y;
         while i != range_end {
-            i += dir;
-            y_plane += dir;
-            y += dir;
+            i += dir_y;
+            y_plane += dir_y;
+            y += dir_y;
             t := (y - ray_start.y) / ray_length.y;
             old_x := x;
             old_z := z;
@@ -388,13 +412,14 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
             // This is probably fine, because the ray will still
             // be almost straight.
 
-            if raycast_zx(y_plane, old_x, old_z, x, z, user_data) return true;
+            raycast_zx(y_plane, old_x, old_z, x, z, user_data);
         }
 
-        y_plane += dir;
+        y_plane += dir_y;
 
-        if raycast_zx(y_plane, x, z, ray_end.x, ray_end.z, user_data) return true;
-        return false; // We made it to the end of the raycast.
+        raycast_zx(y_plane, x, z, ray_end.x, ray_end.z, user_data);
+
+        return false, 0;
     }
 }
 
