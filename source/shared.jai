@@ -126,22 +126,25 @@ operator [] :: (using array: Fixed_Array($N, $T), index: s64) -> T {
 
 
 for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
-    remove_element :: (array: *Fixed_Array($N, $T), index: int) {
+    remove_element :: (array: *Fixed_Array($N, $T)) #expand {
         array.count -= 1;
-        if index != array.count {
-            array.data[index] = array.data[array.count];
+        if it_index != array.count {
+            array.data[it_index] = array.data[array.count];
         }
+        it_index -= 1;
     }
 
     #assert(!(flags & .REVERSE));
-    for `it_index: 0..array.count-1 {
+    `it_index := 0;
+    while it_index < array.count {
         #if flags & .POINTER {
             `it := *array.data[it_index];
         } else {
             `it := array.data[it_index];
         }
 
-        #insert(remove=remove_element(array, it_index)) body;
+        #insert(remove=remove_element(array)) body;
+        it_index += 1;
     }
 }
 

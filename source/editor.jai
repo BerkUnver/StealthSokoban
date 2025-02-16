@@ -220,11 +220,12 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
-                // @TODO: Figure out an ACTUALLY GOOD WAY TO DELETE ENTITIES.
+                // @TODO: Figure out an ACTUALLY GOOD WAY TO DELETE ENTITIES
+                // that doesn't risk leaving dangling entity references.
+
                 // The best way to do it might just to be to suck it up and do the 
                 // Thekla thing.
 
-                // that doesn't risk leaving dangling entity references.
                 
                 /*
                 if is_null(editor.selected) return;

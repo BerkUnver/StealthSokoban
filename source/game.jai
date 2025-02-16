@@ -272,14 +272,20 @@ game_update : Game_Update : (
             position: Vector3;
             if #complete it.state == {
                 case .IDLE;
-                    position = to_vector3(it.position);
+                    position := to_vector3(it.position);
+                    draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
                 case.MOVING;
-                    time := it.moving_timer / Enemy.MOVING_TIME;
-                    weight := time * time;
-                    position = lerp(it.moving_from, to_vector3(it.position), weight);
+                    weight := enemy_timer / Enemy.MOVING_TIME;
+                    weight = weight * weight;
+                    position := lerp(it.moving_from, to_vector3(it.position), weight);
+                    draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
+                case .SPAWNING;
+                    weight := enemy_timer / Enemy.SPAWNING_TIME;
+                    position := to_vector3(it.position) + (1 - weight) * Vector3.{0.5, 0.5, 0.5};
+                    scale := make_scale_matrix4(.{weight, weight, weight});
+                    matrix := translate(world_to_camera, position) * scale;
+                    draw_vertex_mesh(*enemy_mesh, matrix, .{weight, 0, 0, 1});
             }
-
-            draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
         }
 
         for * enemy_spawners {

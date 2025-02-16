@@ -89,12 +89,14 @@ Simple_Entity :: struct {
 Enemy_State :: enum {
     IDLE;
     MOVING;
+    SPAWNING;
 }
 
 Enemy :: struct {
     position: Vector3i;
     desired_position: Vector3i; // Only used when we are updating all the enemies.
-    MOVING_TIME :: 0.15;
+    MOVING_TIME :: 0.1;
+    SPAWNING_TIME :: 0.2;
     moving_from: Vector3;
     moving_timer: float; // We could find a way to store one of these for all enemies.
     state: Enemy_State;
@@ -202,6 +204,7 @@ make_collision :: (blocks: [] Block, arena: *Memory_Arena) -> Collision {
 }
 
 
+// @Cleanup delete this and the below function. Just use the index-getting functions directly.
 get_filled :: (collision: *Collision, position: Vector3i) -> in_bounds: bool, eid: Eid, index: s64 {
     success, index := get_3d_index(position, collision.position, collision.size);
     if !success return false, .{}, -1;
@@ -879,6 +882,21 @@ level_update :: (using level: *Level, dt: float) {
                     // Do nothing because this enemy will be destroyed too.
             }
         }
+
+        for * enemy_spawners {
+            in_bounds, index := get_3d_index(it.position, collision.position, collision.size);
+            assert(in_bounds);
+
+            // @Copypasta from above
+            if #complete collision.desired_enemy_moves[index] == {
+                case .EMPTY;
+                    collision.desired_enemy_moves[index] = .WILL_BE_FILLED;
+                case .WILL_BE_FILLED;
+                    collision.desired_enemy_moves[index] = .MUTUAL_ANNIHILATION;
+                case .MUTUAL_ANNIHILATION;
+                    // Do nothing because this enemy will be destroyed too.
+            }
+        }
        
         
         // @Speed this is very dumb that this array is so big.
@@ -895,13 +913,13 @@ level_update :: (using level: *Level, dt: float) {
 
         for * enemies {
             in_bounds, index := get_3d_index(it.desired_position, collision.position, collision.size);
+            assert(in_bounds);
             if #complete collision.desired_enemy_moves[index] == {
                 case .EMPTY;
                     assert(false);
 
                 case .WILL_BE_FILLED;
                     it.state = .MOVING;
-                    it.moving_timer = 0;
                     it.moving_from = to_vector3(it.position);
                     it.position = it.desired_position;
                     collision.filled[index] = make_eid(it);
@@ -914,14 +932,37 @@ level_update :: (using level: *Level, dt: float) {
                     remove it;
             }
         }
+
+        for * enemy_spawners {
+            in_bounds, index := get_3d_index(it.position, collision.position, collision.size);
+            assert(in_bounds); 
+            if #complete collision.desired_enemy_moves[index] == {
+                case .EMPTY;
+                    assert(false);
+
+                case .WILL_BE_FILLED;
+                    e := append(*enemies);
+                    e.* = .{position = it.position, state = .SPAWNING};
+                    assert(is_null(collision.filled[index]));
+                    collision.filled[index] = make_eid(e);
+
+                case .MUTUAL_ANNIHILATION;
+                    // @TODO: If two enemy spawners end up on the same square
+                    // (The player pushed a block with an enemy spawner attached
+                    // into it), we need a special effect for this situation.
+            }
+        }
+    }
+    
+    if enemy_timer >= Enemy.MOVING_TIME {
+        for * enemies {
+            if it.state == .MOVING it.state = .IDLE;
+        }
     }
 
-    for * enemies { 
-        if it.state == .MOVING {
-            it.moving_timer += dt;
-            if it.moving_timer >= Enemy.MOVING_TIME {
-                it.state = .IDLE;
-            }
+    if enemy_timer >= Enemy.SPAWNING_TIME {
+        for * enemies {
+            if it.state == .SPAWNING it.state = .IDLE;
         }
     }
     
