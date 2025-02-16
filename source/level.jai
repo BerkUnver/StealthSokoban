@@ -243,7 +243,7 @@ add_block_to_collision :: (collision: *Collision, block: *Block) -> Add_Block_Re
         collision_coord := it + offset;
         
         in_bounds, eid := get_filled_relative(collision, it + offset);
-        if in_bounds && !is_null(eid) && as(eid, Block) return .CELL_ALREADY_OCCUPIED;
+        if in_bounds && !is_null(eid) return .CELL_ALREADY_OCCUPIED;
     }
 
     for :iterate_vector3i block.size {
@@ -867,8 +867,12 @@ level_update :: (using level: *Level, dt: float) {
             desired_position.x -= 1;
 
             in_bounds, index := get_3d_index(desired_position, collision.position, collision.size);
-            if !in_bounds it.desired_position = it.position;
-            else it.desired_position = desired_position;
+            
+            if !in_bounds || as(collision.filled[index], Block) {
+                it.desired_position = it.position;
+            } else {
+                it.desired_position = desired_position;
+            }
 
             in_bounds, index = get_3d_index(it.desired_position, collision.position, collision.size);
             assert(in_bounds);
@@ -886,7 +890,7 @@ level_update :: (using level: *Level, dt: float) {
         for * enemy_spawners {
             in_bounds, index := get_3d_index(it.position, collision.position, collision.size);
             assert(in_bounds);
-
+ 
             // @Copypasta from above
             if #complete collision.desired_enemy_moves[index] == {
                 case .EMPTY;
