@@ -28,6 +28,7 @@ Game_Context :: struct {
     
     enemy_mesh: Mesh;
     enemy_annihilation_mesh: Mesh;
+    enemy_spawner_mesh: Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -166,6 +167,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         enemy_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0, 0, 0}, .{1, 1, 1}, *permanent_arena);
+        enemy_spawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         
         mode = .GAME;
         make_level_for_game(*level, *level_arena);
@@ -279,6 +281,10 @@ game_update : Game_Update : (
 
             draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
         }
+
+        for * enemy_spawners {
+            draw_vertex_mesh(*enemy_spawner_mesh, translate(world_to_camera, to_vector3(it.position)), .{0.5, 0, 0, 1});
+        }
         
         ENEMY_ANNIHILATION_TIME :: 0.15;
         if enemy_timer < ENEMY_ANNIHILATION_TIME {
@@ -330,11 +336,11 @@ game_update : Game_Update : (
                 }
 
 
-                if !is_null(editor.selected) {
+                if editor.selected_exists {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
                     color := Vector4.{t, t, t, 1};
 
-                    draw_wireframe_mesh(eid_mesh(editor.selected), translate(world_to_camera, to_vector3(eid_position(editor.selected))), color);
+                    draw_wireframe_mesh(editor.selected.mesh, translate(world_to_camera, to_vector3(editor.selected.position.*)), color);
                 }
 
                 if editor.mode == .EXTRUDE {

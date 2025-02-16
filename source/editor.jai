@@ -33,7 +33,7 @@ Editor :: struct {
         }
 
         extrude: struct {
-            selected_block: Eid;
+            selected_block: *Block;
             start_position: Vector3i;
             start_intersection: Vector3;
             end_intersection: Vector3;
@@ -50,7 +50,8 @@ Editor :: struct {
         }
     }
     
-    selected: Eid;
+    selected_exists: bool;
+    selected: Selectable;
     selected_timer: float;
     
     camera_position := Vector3.{0, 8, -4};
@@ -146,7 +147,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 intersection := mouse_start + mouse_direction * t;
                 editor.mode = .EXTRUDE;
                 editor.extrude = .{
-                    selected_block = make_eid(data.selected),
+                    selected_block = data.selected,
                     start_position = data.selected_position,
                     start_intersection = intersection,
                     end_intersection = intersection,
@@ -208,22 +209,27 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_position, mouse_direction);
                 
                 if success {
+                    editor.selected_exists = true;
                     editor.selected = selected;
                     editor.selected_timer = 0;
                 } else {
-                    editor.selected = .{};
+                    editor.selected_exists = false;
                 }
 
                 return;
             }
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
+                // @TODO: Figure out an ACTUALLY GOOD WAY TO DELETE ENTITIES.
+                // The best way to do it might just to be to suck it up and do the 
+                // Thekla thing.
+
+                // that doesn't risk leaving dangling entity references.
+                
+                /*
                 if is_null(editor.selected) return;
                 block := as(editor.selected, Block);
                 if !block return;
-                
-                // @TODO: Figure out an ACTUALLY GOOD WAY TO DELETE ENTITIES
-                // that doesn't risk leaving dangling entity references.
 
                 for * blocks {
                     if it == block {
@@ -238,16 +244,17 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                         break;
                     }
                 }
+                */
 
-                editor.selected = .{};
+                editor.selected_exists = false;
             }
             
             enable_drag :: (index: u8) #expand {
-                if !is_null(editor.selected) {
+                if editor.selected_exists {
                     editor.mode = .DRAG;
                     editor.drag = .{
                         mouse_start = mouse,
-                        selectable_start = eid_position(editor.selected).*,
+                        selectable_start = editor.selected.position.*,
                         index = index
                     };
                 }
@@ -318,9 +325,8 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 position := Vector3i.{position_x, start.y, position_z};
                 size := Vector3i.{size_x, 1, size_z};
 
-                block := as(selected_block, Block);
-                assert(block != null);
-                
+                block := selected_block;
+
                 block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, position, size, level_arena);
 
                 offset := position - block.position;
@@ -347,24 +353,23 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 }
 
 
-get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_position: Vector3, line_direction: Vector3) -> bool, Eid, intersection: Vector3 { 
+get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_position: Vector3, line_direction: Vector3) -> bool, Selectable, intersection: Vector3 { 
     smallest_t := FLOAT32_INFINITY;
-    selected: Eid;
+    selected_found := false;
+    selected: Selectable;
     selected_intersection: Vector3;
 
     for selectables {
-        position := to_vector3(eid_position(it).*);
-        mesh := eid_mesh(it);
-
-
-        assert(mesh.vertex_positions.count % 3 == 0);
-        tri_count := mesh.vertex_positions.count / 3;
+        position := to_vector3(it.position.*);
+        
+        assert(it.mesh.vertex_positions.count % 3 == 0);
+        tri_count := it.mesh.vertex_positions.count / 3;
 
         for i: 0..tri_count-1 {
             start := i * 3;
-            v0 := mesh.vertex_positions[start]   + position;
-            v1 := mesh.vertex_positions[start+1] + position;
-            v2 := mesh.vertex_positions[start+2] + position;
+            v0 := it.mesh.vertex_positions[start]   + position;
+            v1 := it.mesh.vertex_positions[start+1] + position;
+            v2 := it.mesh.vertex_positions[start+2] + position;
 
             normal := cross(v1-v0, v2-v0);
 
@@ -384,14 +389,13 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
             if dot(normal, cross(v0-v2, intersection-v2)) <= 0 continue;
             
             smallest_t = t;
+            selected_found = true;
             selected = it;
             selected_intersection = intersection;
         }
     }
 
-    if is_null(selected) return false, .{}, .{};
-
-    return true, selected, selected_intersection;
+    return selected_found, selected, selected_intersection;
 }
 
 
@@ -497,7 +501,7 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
             mouse_position := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
             
-            selected_position := to_vector3(eid_position(editor.selected).*);
+            selected_position := to_vector3(editor.selected.position.*);
 
             axis: Vector3;
             axis.component[index] = 1;
@@ -532,16 +536,16 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
             || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
             // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
-                eid_position(editor.selected).component[index] = selectable_start.component[index];
+                editor.selected.position.component[index] = selectable_start.component[index];
             } else {
                 movement := intersection.component[index] - initial_intersection.component[index];
                 new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
-                eid_position(editor.selected).component[index] = new_position_component;
+                editor.selected.position.component[index] = new_position_component;
             }
     }
     
     FLASH_TIME :: 1;
-    if !is_null(editor.selected) {
+    if editor.selected_exists {
         editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
     }
 }

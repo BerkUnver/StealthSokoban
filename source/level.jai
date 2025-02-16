@@ -1,9 +1,10 @@
 Level :: struct {
-    selectables: Fixed_Array(32, Eid);
+    selectables: Fixed_Array(32, Selectable);
     
-    blocks:   Fixed_Array(32, Block);
+    blocks: Fixed_Array(32, Block);
     ENEMY_COUNT :: 32;
-    enemies:  Fixed_Array(ENEMY_COUNT, Enemy); // @TODO: Get deleting these to work in the editor!
+    enemies: Fixed_Array(ENEMY_COUNT, Enemy); // @TODO: Get deleting these to work in the editor!
+    enemy_spawners: Fixed_Array(32, Enemy_Spawner);
 
     player:   Simple_Entity;
     entrance: Simple_Entity;
@@ -35,10 +36,20 @@ CAMERA_MAX_PITCH :: PI / 3;
 CAMERA_YAW_TICK_COUNT :: 12;
 
 
+Selectable :: struct {
+    position: *Vector3i;
+    mesh: *Mesh;
+    delete_index := -1;
+    delete_size: u64;
+    delete_array: *void; // @TODO: Make sure this is at least a Fixed_Array of something.
+}
+
+
 Eid :: struct { // Entity ID
     type: Type;
     ptr: *void;
 }
+
 
 
 make_eid :: inline (ptr: *$T) -> Eid {
@@ -66,34 +77,6 @@ is_null :: inline (eid: Eid) -> bool {
 }
 
 
-eid_position :: (eid: Eid) -> *Vector3i {
-    assert(!is_null(eid));
-    s := as(eid, Simple_Entity); 
-    if s return *s.position;
-    e := as(eid, Enemy);
-    if e return *e.position;
-    block := as(eid, Block);
-    if block return *block.position;
-    assert(false);
-    return null;
-}
-
-
-eid_mesh :: (eid: Eid) -> *Mesh {
-    using context.game_context;
-
-    assert(!is_null(eid));
-    s := as(eid, Simple_Entity); 
-    if s return *s.mesh;
-    e := as(eid, Enemy);
-    if e return *enemy_mesh;
-    block := as(eid, Block);
-    if block return *block.mesh;
-    assert(false);
-    return null;
-}
-
-
 // Right now, most of our level entities are pretty simple
 // so having this struct, which represents those,
 // is probably fine.
@@ -117,6 +100,9 @@ Enemy :: struct {
     state: Enemy_State;
 }
 
+Enemy_Spawner :: struct {
+    position: Vector3i;
+}
 
 Block :: struct {
     position: Vector3i;
@@ -457,6 +443,8 @@ get_camera_yaw :: (using level: *Level) -> float {
 
 
 make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
+    using context.game_context;
+
     // @Speed maybe we can just set what we need to be reset in case
     // this is a reused pointer from an old level. I am going to
     // zero-init everything right now to prevent bugs.
@@ -488,10 +476,30 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         position = .{-1, 0, 0},
     };
 
-    assert(append(*selectables, make_eid(*entrance)));
-    assert(append(*selectables, make_eid(*exit)));
-    assert(append(*selectables, make_eid(*player)));
-    for * enemies assert(append(*selectables, make_eid(it)));
+    append(*enemy_spawners).* = .{
+        position = .{2, 0, 0},
+    };
+    
+    // @TODO: Factor this to be editor-only.
+    assert(append(*selectables, .{position=*entrance.position, mesh=*entrance.mesh}));
+    assert(append(*selectables, .{position=*exit.position,     mesh=*exit.mesh}));
+    assert(append(*selectables, .{position=*player.position,   mesh=*player.mesh}));
+    
+    register_selectables :: (array: *Fixed_Array($N, $T), mesh: *Mesh) #expand {
+        for * array {
+            s := append(*selectables);
+            s.* = .{
+                position = *it.position,
+                mesh = mesh,
+                delete_index = it_index,
+                delete_size = size_of(type_of(it.*)),
+                delete_array = *array
+            };
+        }
+    }
+    
+    register_selectables(*enemies, *enemy_mesh);
+    register_selectables(*enemy_spawners, *enemy_spawner_mesh);
 
     temp_blocks := Temporary_Block.[
         .{
@@ -557,7 +565,8 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
 add_temporary_block_to_level :: (using temp_block: *Temporary_Block, using level: *Level, level_arena: *Memory_Arena) {
     filled_allocated := arena_alloc_array(level_arena, filled.count, bool);
     memcpy(filled_allocated.data, filled.data, size_of(type_of(filled.data.*)) * filled.count);
-
+    
+    index := blocks.count;
     block := append(*blocks);
     assert(block != null);
     
@@ -573,7 +582,14 @@ add_temporary_block_to_level :: (using temp_block: *Temporary_Block, using level
     };
     
     // @TODO: Figure out what to do when we exceed the maximum number of blocks we're allowing right now.
-    assert(append(*selectables, make_eid(block)));
+    s := append(*selectables);
+    s.* = .{
+        position = *block.position,
+        mesh = *block.mesh,
+        delete_index = index,
+        delete_size = size_of(Block),
+        delete_array = *blocks
+    };
 }
 
 
