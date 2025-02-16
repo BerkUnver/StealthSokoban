@@ -25,6 +25,7 @@ Game_Context :: struct {
     color_shader: GLuint;
     wireframe_shader: GLuint;
     color_and_bitmap_shader: GLuint;
+    enemy_shader: GLuint;
     
     enemy_mesh: Mesh;
     enemy_annihilation_mesh: Mesh;
@@ -128,6 +129,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(wireframe_shader != 0);
         color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
         assert(color_and_bitmap_shader != 0);
+        enemy_shader = load_shader("shaders/enemy.gl");
+        assert(enemy_shader != 0);
        
         //
         // Now that the game_context is initted, we can init the game.
@@ -267,26 +270,59 @@ game_update : Game_Update : (
         draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
         draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
+        
+
+
+
+
+
+        glDisable(GL_CULL_FACE);
+        glUseProgram(enemy_shader);
+        set_uniform("viewed_position", collision.position);
+        set_uniform("viewed_size", collision.size);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+        set_uniform("viewed", cast(s32, 0));
+
+        glBindVertexArray(enemy_mesh.vao);
 
         for * enemies {
-            position: Vector3;
+            matrix: Matrix4;
+            color: Vector4;
             if #complete it.state == {
                 case .IDLE;
-                    position := to_vector3(it.position);
-                    draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
+                    matrix = make_translation_matrix4(to_vector3(it.position));
+                    color = .{1, 0, 0, 1};
+
                 case.MOVING;
                     weight := enemy_timer / Enemy.MOVING_TIME;
                     weight = weight * weight;
                     position := lerp(it.moving_from, to_vector3(it.position), weight);
-                    draw_vertex_mesh(*enemy_mesh, translate(world_to_camera, position), .{1, 0, 0, 1});
+
+                    matrix = make_translation_matrix4(position);
+                    color = .{1, 0, 0, 1};
+
                 case .SPAWNING;
                     weight := enemy_timer / Enemy.SPAWNING_TIME;
                     position := to_vector3(it.position) + (1 - weight) * Vector3.{0.5, 0.5, 0.5};
                     scale := make_scale_matrix4(.{weight, weight, weight});
-                    matrix := translate(world_to_camera, position) * scale;
-                    draw_vertex_mesh(*enemy_mesh, matrix, .{weight, 0, 0, 1});
+
+                    matrix = make_translation_matrix4(position) * scale;
+                    color = .{weight, 0, 0, 1};
             }
+
+            set_uniform("model_to_world", matrix);
+            set_uniform("projection", world_to_camera * matrix);
+            set_uniform("color", color);
+
+            glDrawArrays(GL_TRIANGLES, 0, xx enemy_mesh.vertex_positions.count);
         }
+        glEnable(GL_CULL_FACE);
+
+
+
+
 
         for * enemy_spawners {
             draw_vertex_mesh(*enemy_spawner_mesh, translate(world_to_camera, to_vector3(it.position)), .{0.5, 0, 0, 1});

@@ -1,0 +1,50 @@
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform usamplerBuffer viewed;
+uniform ivec3 viewed_position;
+uniform ivec3 viewed_size;
+
+uniform mat4 model_to_world;
+uniform mat4 projection;
+uniform vec4 color;
+
+OUTIN vec3 fragment_position;
+
+// @Volatile :ViewState :ShaderInclude @Copypasta from block.gl
+#define VIEW_STATE_SEEN 1u
+#define VIEW_STATE_VISIBLE 2u
+
+void main() {
+#ifdef VERTEX_SHADER
+    vec4 position = vec4(vertex_position, 1.0);
+    fragment_position = (model_to_world * position).xyz;
+    gl_Position = projection * position;
+#else
+    ivec3 position = ivec3(floor(fragment_position)) - viewed_position;
+
+    // :ShaderInclude @Copypasta from block.gl
+    if ((position.x < 0 || viewed_size.x < position.x)
+     || (position.y < 0 || viewed_size.y < position.y)
+     || (position.z < 0 || viewed_size.z < position.z)) {
+        discard;
+    }
+    
+    int index = 
+        position.y * viewed_size.x * viewed_size.z +
+        position.z * viewed_size.x +
+        position.x;
+    
+    uint filled = texelFetch(viewed, index).r;
+    if ((filled & VIEW_STATE_VISIBLE) == 0u) discard;
+    
+    if (gl_FrontFacing) {
+        fragment_color = color;
+    } else {
+        fragment_color = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+#endif
+}

@@ -521,6 +521,8 @@ set_uniform :: (name: *u8, val: $T) {
         glUniform1i(loc, val);
     } else #if T == Vector3i {
         glUniform3i(loc, val.x, val.y, val.z);
+    } else #if T == Vector3 {
+        glUniform3f(loc, val.x, val.y, val.z);
     } else #if T == Vector4 {
         glUniform4f(loc, val.x, val.y, val.z, val.w);
     } else #if T == Matrix4 {
