@@ -188,14 +188,20 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     );
 
                     if !parallel && t > 0 {
-                        block := Temporary_Block.{
+                        temp_block := Temporary_Block.{
                             position = .{xx floor(point.x), xx floor(point.y), xx floor(point.z)},
                             size = .{1, 1, 1},
                             filled = .[true],
                             color = .{1, 1, 1, 1},
                             moveable = false
                         };
-                        add_temporary_block_to_level(*block, level, level_arena);
+                        
+                        block := add_temporary_block_to_level(*temp_block, level, level_arena);
+
+                        append(*selectables).* = .{
+                            position = *block.position,
+                            mesh = *block.mesh,
+                        };
                     }
                 }
                 return;
@@ -313,21 +319,10 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 axis_1 = new_axis_1;
 
             } else if event.key == #char "Z" && !event.down {
-
-                start := start_position;
-                end := to_vector3i(floor(end_intersection));
-
-                position_x, end_x := min_max(start.x, end.x);
-                position_z, end_z := min_max(start.z, end.z);
-
-                size_x := end_x - position_x + 1;
-                size_z := end_z - position_z + 1;
                 
-                position := Vector3i.{position_x, start.y, position_z};
-                size := Vector3i.{size_x, 1, size_z};
+                position, size := get_editor_extrude_size(editor);
 
                 block := selected_block;
-
                 block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, position, size, level_arena);
 
                 offset := position - block.position;
@@ -550,4 +545,39 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
     if editor.selected_exists {
         editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
     }
+}
+
+
+get_editor_extrude_size :: (editor: *Editor) -> position: Vector3i, size: Vector3i {
+    assert(editor.mode == .EXTRUDE);
+    using editor.extrude;
+    start := start_position;
+    end := to_vector3i(floor(end_intersection));
+    
+    MAX_SIZE :: 40;
+    if end.x > start.x end.x = min(start.x + MAX_SIZE, end.x);
+    else end.x = max(start.x - MAX_SIZE, end.x);
+
+    if end.y > start.y end.y = min(start.y + MAX_SIZE, end.y);
+    else end.y = max(start.y - MAX_SIZE, end.y);
+
+    if end.z > start.z end.z = min(start.z + MAX_SIZE, end.z);
+    else end.z = max(start.z - MAX_SIZE, end.z);
+    
+    min_x, max_x := min_max(start.x, end.x);
+    min_y, max_y := min_max(start.y, end.y);
+    min_z, max_z := min_max(start.z, end.z);
+    
+    position := Vector3i.{min_x, min_y, min_z};
+
+    size := Vector3i.{max_x - min_x + 1, max_y - min_y + 1, max_z - min_z + 1};
+
+    for * size.component {
+        if it_index != axis_0 && it_index != axis_1 {
+            it.* = 1;
+            break;
+        }
+    }
+
+    return position, size;
 }

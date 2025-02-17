@@ -198,7 +198,7 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    vertices := arena_alloc_array(*frame_arena, 10000, Block_Vertex, zero_init=false);
+    vertices := arena_alloc_array(*frame_arena, 100000, Block_Vertex, zero_init=false);
     vertex_count := 0;
 
     for :iterate_vector3i size {

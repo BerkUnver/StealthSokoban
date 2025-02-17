@@ -55,9 +55,6 @@ CAMERA_YAW_TICK_COUNT :: 12;
 Selectable :: struct {
     position: *Vector3i;
     mesh: *Mesh;
-    delete_index := -1;
-    delete_size: u64;
-    delete_array: *void; // @TODO: Make sure this is at least a Fixed_Array of something.
 }
 
 
@@ -448,27 +445,6 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
     append(*enemy_spawners).* = .{
         position = .{2, 0, 0},
     };
-    
-    // @TODO: Factor this to be editor-only.
-    assert(append(*selectables, .{position=*entrance.position, mesh=*entrance.mesh}));
-    assert(append(*selectables, .{position=*exit.position,     mesh=*exit.mesh}));
-    assert(append(*selectables, .{position=*player.position,   mesh=*player.mesh}));
-    
-    register_selectables :: (array: *Fixed_Array($N, $T), mesh: *Mesh) #expand {
-        for * array {
-            s := append(*selectables);
-            s.* = .{
-                position = *it.position,
-                mesh = mesh,
-                delete_index = it_index,
-                delete_size = size_of(type_of(it.*)),
-                delete_array = *array
-            };
-        }
-    }
-    
-    register_selectables(*enemies, *enemy_mesh);
-    register_selectables(*enemy_spawners, *enemy_spawner_mesh);
 
     temp_blocks := Temporary_Block.[
         .{
@@ -521,11 +497,37 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
 make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     using context.game_context;
     make_level_base(level, level_arena);
+
+    assert(append(*selectables, .{position=*entrance.position, mesh=*entrance.mesh}));
+    assert(append(*selectables, .{position=*exit.position,     mesh=*exit.mesh}));
+    assert(append(*selectables, .{position=*player.position,   mesh=*player.mesh}));
+    
+    register_selectables :: (array: *Fixed_Array($N, $T), mesh: *Mesh) #expand {
+        for * array {
+            s := append(*selectables);
+            s.* = .{
+                position = *it.position,
+                mesh = mesh,
+            };
+        }
+    }
+    
+    register_selectables(*enemies, *enemy_mesh);
+    register_selectables(*enemy_spawners, *enemy_spawner_mesh);
+
+    for * blocks {
+        append(*selectables).* = .{
+            position = *it.position,
+            mesh = *it.mesh,
+        };
+    }
+
+
     
     size_1d := level_size.x * level_size.y * level_size.z;
 
     // This is really, really stupid.
-    // I would use glClearBufferSubData but it was added on OpenGL 4.3.
+    // I would use glClearBufferSubData but it was added in OpenGL 4.3.
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
@@ -558,7 +560,7 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
 }
 
 
-add_temporary_block_to_level :: (t: *Temporary_Block, using level: *Level, level_arena: *Memory_Arena) {
+add_temporary_block_to_level :: (t: *Temporary_Block, using level: *Level, level_arena: *Memory_Arena) -> *Block {
     filled_allocated := arena_alloc_array(level_arena, t.filled.count, bool);
     memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
     
@@ -575,16 +577,8 @@ add_temporary_block_to_level :: (t: *Temporary_Block, using level: *Level, level
        moveable = t.moveable,
        mesh = generated_mesh
     };
-    
-    // @TODO: Figure out what to do when we exceed the maximum number of blocks we're allowing right now.
-    s := append(*selectables);
-    s.* = .{
-        position = *block.position,
-        mesh = *block.mesh,
-        delete_index = index,
-        delete_size = size_of(Block),
-        delete_array = *blocks
-    };
+
+    return block;
 }
 
 

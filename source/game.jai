@@ -370,32 +370,19 @@ game_update : Game_Update : (
 
             if editor.mode == .EXTRUDE {
                 using editor.extrude;
+
                 start := start_position;
                 end := to_vector3i(floor(end_intersection));
+
+                position, size := get_editor_extrude_size(*editor);
 
                 glUseProgram(imm_color_shader);
                 set_uniform("projection", world_to_camera);
 
                 R :: Vector3.{0.1, 0.1, 0.1};
+
                 imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
                 imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
-                
-                min_x, max_x := min_max(start.x, end.x);
-                min_y, max_y := min_max(start.y, end.y);
-                min_z, max_z := min_max(start.z, end.z);
-                
-                position := Vector3i.{min_x, min_y, min_z};
-
-                size := Vector3i.{max_x - min_x + 1, max_y - min_y + 1, max_z - min_z + 1};
-
-                for * size.component {
-                    if it_index != axis_0 && it_index != axis_1 {
-                        it.* = 1;
-                        break;
-                    }
-                }
-                
-                
                 WIDTH :: 0.03;
                 COLOR :: Vector4.{1, 1, 1, 1};
                 for :iterate_vector3i size {
