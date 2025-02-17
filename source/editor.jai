@@ -348,6 +348,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             if !event.down && ((index == 0 && event.key == xx #char "1")
                             || (index == 1 && event.key == xx #char "2")
                             || (index == 2 && event.key == xx #char "3")) {
+                // @TODO: change level_position or level_size to accomidate the new position.
                 editor.mode = .IDLE;
             }
     }

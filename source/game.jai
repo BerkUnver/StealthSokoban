@@ -272,17 +272,18 @@ game_update : Game_Update : (
         draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
         
 
-
-
-
+        
+        // @TODO
+        // Figure out how to consolidate this with the other code that
+        // does per-block drawing.
 
         glDisable(GL_CULL_FACE);
         glUseProgram(enemy_shader);
-        set_uniform("viewed_position", collision.position);
-        set_uniform("viewed_size", collision.size);
+        set_uniform("viewed_position", level_position);
+        set_uniform("viewed_size", level_size);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
         set_uniform("viewed", cast(s32, 0));
 
         glBindVertexArray(enemy_mesh.vao);
@@ -344,15 +345,15 @@ game_update : Game_Update : (
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, block_bitmap);
                 glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
+                glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
 
                 set_uniform("bitmap", cast(s32, 0));
                 set_uniform("viewed", cast(s32, 1));
-                set_uniform("viewed_size", collision.size);
+                set_uniform("viewed_size", level_size);
 
                 for * blocks {
                     projection := translate(world_to_camera, to_vector3(it.position));
-                    set_uniform("viewed_position", it.position - collision.position);
+                    set_uniform("viewed_position", it.position - level_position);
                     set_uniform("projection", projection);
                     set_uniform("color", it.color);
                 

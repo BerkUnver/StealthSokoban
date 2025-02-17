@@ -285,14 +285,14 @@ update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool, level_arena:
 }
 
 
-Collision_Texture :: struct {
+View_Texture :: struct {
     vbo: GLuint; // The backing store for the tbo
     tbo: GLuint; // "tbo" = texture buffer object
     size: Vector3i;
 }
 
 
-make_collision_texture :: (size: Vector3i) -> Collision_Texture {
+make_view_texture :: (size: Vector3i) -> View_Texture {
     using context.game_context;
     
     vbo, tbo: GLuint;
@@ -310,24 +310,23 @@ make_collision_texture :: (size: Vector3i) -> Collision_Texture {
 }
 
 
-free :: (tex: *Collision_Texture) {
+free :: (tex: *View_Texture) {
     using context.game_context;
     glDeleteBuffers(1, *tex.vbo);
     glDeleteTextures(1, *tex.tbo);
 }
 
 
-update_collision_texture :: (collision: *Collision) {
+update_view_texture :: (tex: *View_Texture, size: Vector3i, data: [] View_State) {
     using context.game_context;
     
-    glBindBuffer(GL_TEXTURE_BUFFER, collision.texture.vbo);
+    glBindBuffer(GL_TEXTURE_BUFFER, tex.vbo);
     
-    // Should we just resize it when the collision resizes?
-    if collision.texture.size != collision.size {
-        collision.texture.size = collision.size;
-        glBufferData(GL_TEXTURE_BUFFER, collision.size.x * collision.size.y * collision.size.z, collision.viewed.data, GL_DYNAMIC_DRAW);
+    if tex.size != size {
+        tex.size = size;
+        glBufferData(GL_TEXTURE_BUFFER, size.x * size.y * size.z * size_of(View_State), data.data, GL_DYNAMIC_DRAW);
     } else {
-        glBufferSubData(GL_TEXTURE_BUFFER, 0, collision.size.x * collision.size.y * collision.size.z, collision.viewed.data);
+        glBufferSubData(GL_TEXTURE_BUFFER, 0, size.x * size.y * size.z * size_of(View_State), data.data);
     }
     
     // @Investigate
@@ -340,8 +339,8 @@ update_collision_texture :: (collision: *Collision) {
     // I don't know if this is because RenderDoc is bugged or because I'm subtly using OpenGL
     // incorrectly and it's not telling me why.
 
-    glBindTexture(GL_TEXTURE_BUFFER, collision.texture.tbo);
-    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, collision.texture.vbo);
+    glBindTexture(GL_TEXTURE_BUFFER, tex.tbo);
+    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, tex.vbo);
 }
 
 
