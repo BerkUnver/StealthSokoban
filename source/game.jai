@@ -322,6 +322,26 @@ game_update : Game_Update : (
         glEnable(GL_CULL_FACE);
 
 
+        glUseProgram(block_shader);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, block_bitmap);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+
+        set_uniform("bitmap", cast(s32, 0));
+        set_uniform("viewed", cast(s32, 1));
+        set_uniform("viewed_size", level_size);
+
+        for * blocks {
+            projection := translate(world_to_camera, to_vector3(it.position));
+            set_uniform("viewed_position", it.position - level_position);
+            set_uniform("projection", projection);
+            set_uniform("color", it.color);
+        
+            glBindVertexArray(it.mesh.vao);
+            glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
+        }
 
 
 
@@ -337,92 +357,54 @@ game_update : Game_Update : (
         } else {
             enemy_annihilations.count = 0;
         }
+
+
         
-        if mode == {
-            case .GAME;
-                glUseProgram(block_shader);
+        if mode == .EDITOR {
+            if editor.selected_exists {
+                t := (cos(editor.selected_timer * TAU) + 1) / 2;
+                color := Vector4.{t, t, t, 1};
 
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, block_bitmap);
-                glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+                draw_wireframe_mesh(editor.selected.mesh, translate(world_to_camera, to_vector3(editor.selected.position.*)), color);
+            }
 
-                set_uniform("bitmap", cast(s32, 0));
-                set_uniform("viewed", cast(s32, 1));
-                set_uniform("viewed_size", level_size);
+            if editor.mode == .EXTRUDE {
+                using editor.extrude;
+                start := start_position;
+                end := to_vector3i(floor(end_intersection));
 
-                for * blocks {
-                    projection := translate(world_to_camera, to_vector3(it.position));
-                    set_uniform("viewed_position", it.position - level_position);
-                    set_uniform("projection", projection);
-                    set_uniform("color", it.color);
+                glUseProgram(imm_color_shader);
+                set_uniform("projection", world_to_camera);
+
+                R :: Vector3.{0.1, 0.1, 0.1};
+                imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
+                imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
                 
-                    glBindVertexArray(it.mesh.vao);
-                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
-                }
-            
-            case .EDITOR;
-                glUseProgram(color_and_bitmap_shader);
+                min_x, max_x := min_max(start.x, end.x);
+                min_y, max_y := min_max(start.y, end.y);
+                min_z, max_z := min_max(start.z, end.z);
                 
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+                position := Vector3i.{min_x, min_y, min_z};
 
-                set_uniform("bitmap", cast(s32, 0));
+                size := Vector3i.{max_x - min_x + 1, max_y - min_y + 1, max_z - min_z + 1};
 
-                for * blocks {
-                    projection := translate(world_to_camera, to_vector3(it.position));
-                    set_uniform("projection", projection);
-                    set_uniform("color", it.color);
-
-                    glBindVertexArray(it.mesh.vao);
-                    glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
-                }
-
-
-                if editor.selected_exists {
-                    t := (cos(editor.selected_timer * TAU) + 1) / 2;
-                    color := Vector4.{t, t, t, 1};
-
-                    draw_wireframe_mesh(editor.selected.mesh, translate(world_to_camera, to_vector3(editor.selected.position.*)), color);
-                }
-
-                if editor.mode == .EXTRUDE {
-                    using editor.extrude;
-                    start := start_position;
-                    end := to_vector3i(floor(end_intersection));
-
-                    glUseProgram(imm_color_shader);
-                    set_uniform("projection", world_to_camera);
-
-                    R :: Vector3.{0.1, 0.1, 0.1};
-                    imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
-                    imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
-                    
-                    min_x, max_x := min_max(start.x, end.x);
-                    min_y, max_y := min_max(start.y, end.y);
-                    min_z, max_z := min_max(start.z, end.z);
-                    
-                    position := Vector3i.{min_x, min_y, min_z};
-
-                    size := Vector3i.{max_x - min_x + 1, max_y - min_y + 1, max_z - min_z + 1};
-
-                    for * size.component {
-                        if it_index != axis_0 && it_index != axis_1 {
-                            it.* = 1;
-                            break;
-                        }
+                for * size.component {
+                    if it_index != axis_0 && it_index != axis_1 {
+                        it.* = 1;
+                        break;
                     }
-                    
-                    
-                    WIDTH :: 0.03;
-                    COLOR :: Vector4.{1, 1, 1, 1};
-                    for :iterate_vector3i size {
-                        cuboid_position := to_vector3(position + it);
-                        imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, COLOR);
-                    }
-
-                    imm_flush();
                 }
+                
+                
+                WIDTH :: 0.03;
+                COLOR :: Vector4.{1, 1, 1, 1};
+                for :iterate_vector3i size {
+                    cuboid_position := to_vector3(position + it);
+                    imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, COLOR);
+                }
+
+                imm_flush();
+            }
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

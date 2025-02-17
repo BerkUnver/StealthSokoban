@@ -324,9 +324,9 @@ update_view_texture :: (tex: *View_Texture, size: Vector3i, data: [] View_State)
     
     if tex.size != size {
         tex.size = size;
-        glBufferData(GL_TEXTURE_BUFFER, size.x * size.y * size.z * size_of(View_State), data.data, GL_DYNAMIC_DRAW);
+        glBufferData(GL_TEXTURE_BUFFER, byte_count(data), data.data, GL_DYNAMIC_DRAW);
     } else {
-        glBufferSubData(GL_TEXTURE_BUFFER, 0, size.x * size.y * size.z * size_of(View_State), data.data);
+        glBufferSubData(GL_TEXTURE_BUFFER, 0, byte_count(data), data.data);
     }
     
     // @Investigate

@@ -411,7 +411,7 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
-make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
+make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
     using context.game_context;
 
     // @Speed maybe we can just set what we need to be reset in case
@@ -514,20 +514,35 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     for * temp_blocks add_temporary_block_to_level(it, level, level_arena);
 
     level_position, level_size = get_block_extents(to_array(blocks));
+    view_texture = make_view_texture(level_size);
+}
 
+
+make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
+    using context.game_context;
+    make_level_base(level, level_arena);
+    
     size_1d := level_size.x * level_size.y * level_size.z;
-    viewed = arena_alloc_array(level_arena, size_1d, View_State);
+
+    // This is really, really stupid.
+    // I would use glClearBufferSubData but it was added on OpenGL 4.3.
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+
+    all_viewed := arena_alloc_array(*frame_arena, size_1d, View_State, zero_init = false);
+    memset(all_viewed.data, xx (View_State.VISIBLE | View_State.SEEN), byte_count(all_viewed));
+    update_view_texture(*view_texture, level_size, all_viewed);
 }
 
 
 make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
-    make_level_for_editor(level, level_arena);
+    make_level_base(level, level_arena);
 
     size_1d := level_size.x * level_size.y * level_size.z;
+    viewed = arena_alloc_array(level_arena, size_1d, View_State);
     collision = arena_alloc_array(level_arena, size_1d, Eid);
     enemy_move_results = arena_alloc_array(level_arena, size_1d, Enemy_Move_Result);
     desired_enemy_moves = arena_alloc_array(level_arena, size_1d, Desired_Enemy_Move);
-    view_texture = make_view_texture(level_size);
 
     for * blocks {
         assert(add_block_to_collision(level, it) == .OK);
