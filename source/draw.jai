@@ -344,26 +344,6 @@ update_view_texture :: (tex: *View_Texture, size: Vector3i, data: [] View_State)
 }
 
 
-draw_vertex_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
-    using context.game_context;
-
-    glUseProgram(color_shader);
-
-    projection_loc := glGetUniformLocation(color_shader, "projection");
-    assert(projection_loc >= 0);
-    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
-
-    color_loc := glGetUniformLocation(color_shader, "color");
-    assert(color_loc >= 0);
-    glUniform4f(color_loc, color.x, color.y, color.z, color.w);
-
-    glBindVertexArray(mesh.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
-
-    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
-}
-
-
 draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
     using context.game_context;
 
@@ -389,7 +369,7 @@ draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
 }
 
 
-load_shader :: (file_name: string) -> GLuint {
+load_shader :: (file_name: string, prefix := "") -> GLuint {
     using context.game_context;
     
     mark := get_mark(*frame_arena);
@@ -402,36 +382,39 @@ load_shader :: (file_name: string) -> GLuint {
         return 0;
     }
 
-    return load_shader(file_name, .{count, buf.data});
+    return load_shader(file_name, .{count, buf.data}, prefix);
 }
 
 
-load_shader :: (name: string, text: string) -> GLuint {
+load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     using context.game_context;
 
     LOG_SIZE :: 1024;
 
+    make_string_arrays :: (strings: [$N] string) -> [N] *u8, [N] GLint #expand {
+        lines: [N] *u8;
+        lengths: [N] GLint;
+
+        for strings {
+            lines[it_index] = it.data;
+            lengths[it_index] = xx it.count;
+        }
+
+        return lines, lengths;
+    }
+
     vertex := glCreateShader(GL_VERTEX_SHADER);
     defer glDeleteShader(vertex);
-    
+
     // You need the "#line 0" directive or else the NVIDIA shader compiler will report the line number including the
     // prefix lines in its compilation errors.
-
-    VERTEX_PREFIX :: #string END
-#version 330 core
-#define VERTEX_SHADER
-#define OUTIN out
-#line 0
-END
-    vertex_lines := *u8.[
-        VERTEX_PREFIX,
-        text.data
+    vertex_strings := string.[
+        "#version 330 core\n#define VERTEX_SHADER\n#define OUTIN out\n",
+        prefix,
+        "#line 0\n",
+        text
     ];
-
-    vertex_lengths :=  GLint.[
-        xx VERTEX_PREFIX.count,
-        xx text.count
-    ];
+    vertex_lines, vertex_lengths := make_string_arrays(vertex_strings);
 
     glShaderSource(vertex, xx vertex_lines.count, vertex_lines.data, vertex_lengths.data);
     glCompileShader(vertex);
@@ -452,21 +435,13 @@ END
     fragment := glCreateShader(GL_FRAGMENT_SHADER);
     defer glDeleteShader(fragment);
     
-    FRAGMENT_PREFIX :: #string END
-#version 330 core
-#define OUTIN in
-#line 0
-END
-
-    fragment_lines := *u8.[
-        FRAGMENT_PREFIX,
-        text.data
+    fragment_strings := string.[
+        "#version 330 core\n#define OUTIN in\n",
+        prefix,
+        "#line 0\n",
+        text
     ];
-
-    fragment_lengths := GLint.[
-        xx FRAGMENT_PREFIX.count,
-        xx text.count
-    ];
+    fragment_lines, fragment_lengths := make_string_arrays(fragment_strings);
 
     glShaderSource(fragment, xx fragment_lines.count, fragment_lines.data, fragment_lengths.data);
     glCompileShader(fragment);

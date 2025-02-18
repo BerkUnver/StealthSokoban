@@ -9,8 +9,12 @@ uniform ivec3 viewed_position;
 uniform ivec3 viewed_size;
 
 uniform mat4 model_to_world;
-uniform mat4 projection;
+uniform mat4 world_to_camera;
 uniform vec4 color;
+
+#ifdef UNVIEWED_COLOR
+uniform vec4 unviewed_color;
+#endif
 
 OUTIN vec3 fragment_position;
 
@@ -20,9 +24,9 @@ OUTIN vec3 fragment_position;
 
 void main() {
 #ifdef VERTEX_SHADER
-    vec4 position = vec4(vertex_position, 1.0);
-    fragment_position = (model_to_world * position).xyz;
-    gl_Position = projection * position;
+    vec4 world_position = model_to_world * vec4(vertex_position, 1.0);
+    fragment_position = world_position.xyz;
+    gl_Position = world_to_camera * world_position;
 #else
     ivec3 position = ivec3(floor(fragment_position)) - viewed_position;
 
@@ -39,9 +43,16 @@ void main() {
         position.x;
     
     uint filled = texelFetch(viewed, index).r;
-    if ((filled & VIEW_STATE_VISIBLE) == 0u) discard;
-    
-    if (gl_FrontFacing) {
+    if ((filled & VIEW_STATE_VISIBLE) == 0u) {
+#ifdef UNVIEWED_COLOR
+        fragment_color = unviewed_color;
+#else
+        discard;
+#endif
+    } else if (gl_FrontFacing) {   
+        // @Speed We could make a mesh bounding box and detect whenever a mesh
+        // is between grid squares. When it is, draw the mesh again with the 
+        // vertex winding order flipped, and shade it all black.
         fragment_color = color;
     } else {
         fragment_color = vec4(0.0, 0.0, 0.0, 1.0);

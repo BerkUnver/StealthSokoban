@@ -19,7 +19,7 @@ Level :: struct {
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
     
-    enemy_annihilations: Fixed_Array(ENEMY_COUNT / 2, Vector3);
+    enemy_annihilations: Fixed_Array(ENEMY_COUNT / 2, Vector3i);
     #assert ENEMY_COUNT % 2 == 0;
 
     flags: enum {PULLING :: 1;};
@@ -95,7 +95,6 @@ is_null :: inline (eid: Eid) -> bool {
 // is probably fine.
 Simple_Entity :: struct {
     position: Vector3i;
-    mesh: Mesh;
 }
 
 
@@ -110,6 +109,7 @@ Enemy :: struct {
     desired_position: Vector3i; // Only used when we are updating all the enemies.
     MOVING_TIME :: 0.1;
     SPAWNING_TIME :: 0.2;
+    ANNIHILATION_TIME :: 0.15;
     moving_from: Vector3;
     moving_timer: float; // We could find a way to store one of these for all enemies.
     state: Enemy_State;
@@ -421,17 +421,14 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
     
     entrance = .{
         position = .{-1, 0, -1},
-        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena)
     };
     
     exit = .{
         position = .{2, 0, -1},
-        mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, level_arena)
     };
     
     player = .{
         position = entrance.position,
-        mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, level_arena)
     };
     
     append(*enemies).* = .{
@@ -498,9 +495,9 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     using context.game_context;
     make_level_base(level, level_arena);
 
-    assert(append(*selectables, .{position=*entrance.position, mesh=*entrance.mesh}));
-    assert(append(*selectables, .{position=*exit.position,     mesh=*exit.mesh}));
-    assert(append(*selectables, .{position=*player.position,   mesh=*player.mesh}));
+    assert(append(*selectables, .{position=*entrance.position, mesh=*entrance_mesh}));
+    assert(append(*selectables, .{position=*exit.position,     mesh=*exit_mesh}));
+    assert(append(*selectables, .{position=*player.position,   mesh=*player_mesh}));
     
     register_selectables :: (array: *Fixed_Array($N, $T), mesh: *Mesh) #expand {
         for * array {
@@ -589,10 +586,6 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
     // way to natively get that information from OpenGL.
 
     free(*view_texture);
-
-    free(*player.mesh);
-    free(*entrance.mesh);
-    free(*exit.mesh);
 
     for blocks {
         free(*it.mesh);
@@ -927,7 +920,7 @@ level_update :: (using level: *Level, dt: float) {
                 case .MUTUAL_ANNIHILATION;
                     if enemy_move_results[index] == .NOTHING {
                         enemy_move_results[index] = .MUTUAL_ANNIHILATION_HAPPENED;
-                        assert(append(*enemy_annihilations, to_vector3(it.desired_position)));
+                        assert(append(*enemy_annihilations, it.desired_position));
                     }
                     remove it;
             }
@@ -964,6 +957,10 @@ level_update :: (using level: *Level, dt: float) {
         for * enemies {
             if it.state == .SPAWNING it.state = .IDLE;
         }
+    }
+
+    if enemy_timer >= Enemy.ANNIHILATION_TIME {
+        enemy_annihilations.count = 0;
     }
     
     update_view_texture(*view_texture, level_size, viewed);

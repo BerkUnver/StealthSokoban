@@ -25,11 +25,15 @@ Game_Context :: struct {
     color_shader: GLuint;
     wireframe_shader: GLuint;
     color_and_bitmap_shader: GLuint;
-    enemy_shader: GLuint;
+    item_shader: GLuint;
+    unviewed_color_item_shader: GLuint;
     
     enemy_mesh: Mesh;
     enemy_annihilation_mesh: Mesh;
     enemy_spawner_mesh: Mesh;
+    player_mesh: Mesh;
+    entrance_mesh: Mesh;
+    exit_mesh: Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -129,8 +133,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(wireframe_shader != 0);
         color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
         assert(color_and_bitmap_shader != 0);
-        enemy_shader = load_shader("shaders/enemy.gl");
-        assert(enemy_shader != 0);
+        item_shader = load_shader("shaders/item.gl");
+        assert(item_shader != 0);
+        unviewed_color_item_shader = load_shader("shaders/item.gl", "#define UNVIEWED_COLOR\n");
+        assert(unviewed_color_item_shader != 0);
        
         //
         // Now that the game_context is initted, we can init the game.
@@ -169,8 +175,12 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         enemy_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
-        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0, 0, 0}, .{1, 1, 1}, *permanent_arena);
+        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
+
         
         mode = .GAME;
         make_level_for_game(*level, *level_arena);
@@ -266,11 +276,26 @@ game_update : Game_Update : (
 
         using level;
 
+        glUseProgram(block_shader);
 
-        draw_vertex_mesh(*player.mesh, translate(world_to_camera, to_vector3(player.position)), .{1, 1, 1, 1});
-        draw_vertex_mesh(*entrance.mesh, translate(world_to_camera, to_vector3(entrance.position)), .{75.0/255.0, 228.0/255.0, 1, 1});
-        draw_vertex_mesh(*exit.mesh, translate(world_to_camera, to_vector3(exit.position)), .{146.0/255.0, 1, 118.0/255.0, 1});
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, block_bitmap);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+
+        set_uniform("bitmap", cast(s32, 0));
+        set_uniform("viewed", cast(s32, 1));
+        set_uniform("viewed_size", level_size);
+
+        for * blocks {
+            projection := translate(world_to_camera, to_vector3(it.position));
+            set_uniform("viewed_position", it.position - level_position);
+            set_uniform("projection", projection);
+            set_uniform("color", it.color);
         
+            glBindVertexArray(it.mesh.vao);
+            glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
+        } 
 
         
         // @TODO
@@ -278,16 +303,18 @@ game_update : Game_Update : (
         // does per-block drawing.
 
         glDisable(GL_CULL_FACE);
-        glUseProgram(enemy_shader);
+
+        glUseProgram(item_shader);
         set_uniform("viewed_position", level_position);
         set_uniform("viewed_size", level_size);
-
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
         set_uniform("viewed", cast(s32, 0));
+        set_uniform("world_to_camera", world_to_camera);
 
         glBindVertexArray(enemy_mesh.vao);
-
+        
+        // @Speed draw instanced 
         for * enemies {
             matrix: Matrix4;
             color: Vector4;
@@ -314,52 +341,61 @@ game_update : Game_Update : (
             }
 
             set_uniform("model_to_world", matrix);
-            set_uniform("projection", world_to_camera * matrix);
             set_uniform("color", color);
 
             glDrawArrays(GL_TRIANGLES, 0, xx enemy_mesh.vertex_positions.count);
         }
+
+        draw_item :: (position: Vector3i, mesh: *Mesh, color: Vector4) {
+            using context.game_context;
+            glBindVertexArray(mesh.vao);
+            model_to_world := make_translation_matrix4(to_vector3(position));
+            set_uniform("model_to_world", model_to_world);
+            set_uniform("color", color);
+            glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+        }
+
+        for * enemy_spawners draw_item(it.position, *enemy_spawner_mesh, .{0.5, 0, 0, 1});
+        for enemy_annihilations draw_item(it, *enemy_annihilation_mesh, .{1, 143.0/255.0, 0, 1});
+
+
+        glUseProgram(unviewed_color_item_shader);
+
+        // @Copypasta from above
+        set_uniform("viewed_position", level_position);
+        set_uniform("viewed_size", level_size);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+        set_uniform("viewed", cast(s32, 0));
+        set_uniform("world_to_camera", world_to_camera);
+
+        draw_unviewed_item :: (position: Vector3i, mesh: *Mesh, color: Vector4, unviewed_color: Vector4) {
+            using context.game_context;
+            glBindVertexArray(mesh.vao);
+            model_to_world := make_translation_matrix4(to_vector3(position));
+            set_uniform("model_to_world", model_to_world);
+            set_uniform("color", color);
+            set_uniform("unviewed_color", unviewed_color);
+            glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+        }
+        
+        ENTRANCE_COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
+        draw_unviewed_item(entrance.position, *entrance_mesh, ENTRANCE_COLOR, ENTRANCE_COLOR / 2);
+        EXIT_COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
+        draw_unviewed_item(exit.position, *exit_mesh, EXIT_COLOR, EXIT_COLOR / 2);
+
         glEnable(GL_CULL_FACE);
 
 
-        glUseProgram(block_shader);
+        glUseProgram(color_shader);
+        set_uniform("projection", translate(world_to_camera, to_vector3(player.position)));
+        set_uniform("color", Vector4.{1, 1, 1, 1});
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, block_bitmap);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
-
-        set_uniform("bitmap", cast(s32, 0));
-        set_uniform("viewed", cast(s32, 1));
-        set_uniform("viewed_size", level_size);
-
-        for * blocks {
-            projection := translate(world_to_camera, to_vector3(it.position));
-            set_uniform("viewed_position", it.position - level_position);
-            set_uniform("projection", projection);
-            set_uniform("color", it.color);
-        
-            glBindVertexArray(it.mesh.vao);
-            glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
-        }
+        glBindVertexArray(player_mesh.vao);
+        glDrawArrays(GL_TRIANGLES, 0, xx player_mesh.vertex_positions.count);
 
 
 
-        for * enemy_spawners {
-            draw_vertex_mesh(*enemy_spawner_mesh, translate(world_to_camera, to_vector3(it.position)), .{0.5, 0, 0, 1});
-        }
-        
-        ENEMY_ANNIHILATION_TIME :: 0.15;
-        if enemy_timer < ENEMY_ANNIHILATION_TIME {
-            for enemy_annihilations {
-                draw_vertex_mesh(*enemy_annihilation_mesh, translate(world_to_camera, it), .{1, 143.0/255.0, 0, 1});
-            }
-        } else {
-            enemy_annihilations.count = 0;
-        }
-
-
-        
         if mode == .EDITOR {
             if editor.selected_exists {
                 t := (cos(editor.selected_timer * TAU) + 1) / 2;
