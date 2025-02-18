@@ -431,13 +431,13 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
         position = entrance.position,
     };
     
-    append(*enemies).* = .{
-        position = .{0, 0, 0},
-    };
+    // append(*enemies).* = .{
+    //     position = .{0, 0, 0},
+    // };
 
-    append(*enemies).* = .{
-        position = .{-1, 0, 0},
-    };
+    // append(*enemies).* = .{
+    //     position = .{-1, 0, 0},
+    // };
 
     append(*enemy_spawners).* = .{
         position = .{2, 0, 0},

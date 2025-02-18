@@ -503,3 +503,9 @@ set_uniform :: (name: *u8, val: $T) {
         glUniformMatrix4fv(loc, 1, GL_TRUE, *val._11);
     } else #assert false;
 }
+
+bind_and_draw :: (mesh: *Mesh) {
+    using context.game_context;
+    glBindVertexArray(mesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+}

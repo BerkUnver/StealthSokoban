@@ -27,6 +27,8 @@ Game_Context :: struct {
     color_and_bitmap_shader: GLuint;
     item_shader: GLuint;
     unviewed_color_item_shader: GLuint;
+    seen_color_item_shader: GLuint;
+    occlusion_shader: GLuint;
     
     enemy_mesh: Mesh;
     enemy_annihilation_mesh: Mesh;
@@ -137,6 +139,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(item_shader != 0);
         unviewed_color_item_shader = load_shader("shaders/item.gl", "#define UNVIEWED_COLOR\n");
         assert(unviewed_color_item_shader != 0);
+        seen_color_item_shader = load_shader("shaders/item.gl", "#define SEEN_COLOR\n");
+        assert(seen_color_item_shader != 0);
+        occlusion_shader = load_shader("shaders/occlusion.gl");
+        assert(occlusion_shader != 0);
        
         //
         // Now that the game_context is initted, we can init the game.
@@ -275,7 +281,15 @@ game_update : Game_Update : (
         }
 
         using level;
-
+        
+        //
+        // Draw blocks.
+        //
+        
+        // We need a special shader for blocks because blocks are grid-aligned.
+        // We would get floating-point precision error if we just tried to 
+        // determine which collision cell each vertex mapped to using just its
+        // position.
         glUseProgram(block_shader);
 
         glActiveTexture(GL_TEXTURE0);
@@ -292,28 +306,28 @@ game_update : Game_Update : (
             set_uniform("viewed_position", it.position - level_position);
             set_uniform("projection", projection);
             set_uniform("color", it.color);
-        
-            glBindVertexArray(it.mesh.vao);
-            glDrawArrays(GL_TRIANGLES, 0, xx it.mesh.vertex_positions.count);
+            bind_and_draw(*it.mesh);
         } 
 
         
-        // @TODO
-        // Figure out how to consolidate this with the other code that
-        // does per-block drawing.
+        //
+        // Draw enemies
+        //
 
         glDisable(GL_CULL_FACE);
 
-        glUseProgram(item_shader);
-        set_uniform("viewed_position", level_position);
-        set_uniform("viewed_size", level_size);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
-        set_uniform("viewed", cast(s32, 0));
-        set_uniform("world_to_camera", world_to_camera);
+        set_uniforms_for_item_shaders :: () #expand {
+            set_uniform("viewed_position", level_position);
+            set_uniform("viewed_size", level_size);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+            set_uniform("viewed", cast(s32, 0));
+            set_uniform("world_to_camera", world_to_camera);
+        }
 
-        glBindVertexArray(enemy_mesh.vao);
-        
+        glUseProgram(item_shader);
+        set_uniforms_for_item_shaders();
+
         // @Speed draw instanced 
         for * enemies {
             matrix: Matrix4;
@@ -343,40 +357,42 @@ game_update : Game_Update : (
             set_uniform("model_to_world", matrix);
             set_uniform("color", color);
 
-            glDrawArrays(GL_TRIANGLES, 0, xx enemy_mesh.vertex_positions.count);
+            bind_and_draw(*enemy_mesh);
         }
 
-        draw_item :: (position: Vector3i, mesh: *Mesh, color: Vector4) {
-            using context.game_context;
-            glBindVertexArray(mesh.vao);
-            model_to_world := make_translation_matrix4(to_vector3(position));
-            set_uniform("model_to_world", model_to_world);
-            set_uniform("color", color);
-            glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+        set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
+        for enemy_annihilations {
+            set_uniform("model_to_world", make_translation_matrix4(to_vector3(it)));
+            bind_and_draw(*enemy_annihilation_mesh);
         }
 
-        for * enemy_spawners draw_item(it.position, *enemy_spawner_mesh, .{0.5, 0, 0, 1});
-        for enemy_annihilations draw_item(it, *enemy_annihilation_mesh, .{1, 143.0/255.0, 0, 1});
+        //
+        // Draw things that only appear when seen
+        //
 
+        glUseProgram(seen_color_item_shader);
+        set_uniforms_for_item_shaders();
+
+        set_uniform("color", Vector4.{0.5, 0, 0, 1});
+        for * enemy_spawners {
+            set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+            bind_and_draw(*enemy_spawner_mesh);
+        }
+
+        //
+        // Draw things that always appear
+        //
 
         glUseProgram(unviewed_color_item_shader);
-
-        // @Copypasta from above
-        set_uniform("viewed_position", level_position);
-        set_uniform("viewed_size", level_size);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
-        set_uniform("viewed", cast(s32, 0));
-        set_uniform("world_to_camera", world_to_camera);
+        set_uniforms_for_item_shaders();
 
         draw_unviewed_item :: (position: Vector3i, mesh: *Mesh, color: Vector4, unviewed_color: Vector4) {
             using context.game_context;
-            glBindVertexArray(mesh.vao);
             model_to_world := make_translation_matrix4(to_vector3(position));
             set_uniform("model_to_world", model_to_world);
             set_uniform("color", color);
             set_uniform("unviewed_color", unviewed_color);
-            glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+            bind_and_draw(mesh);
         }
         
         ENTRANCE_COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
@@ -386,13 +402,43 @@ game_update : Game_Update : (
 
         glEnable(GL_CULL_FACE);
 
+        
+        //
+        // Draw the player
+        //
 
         glUseProgram(color_shader);
         set_uniform("projection", translate(world_to_camera, to_vector3(player.position)));
         set_uniform("color", Vector4.{1, 1, 1, 1});
+        bind_and_draw(*player_mesh);
 
-        glBindVertexArray(player_mesh.vao);
-        glDrawArrays(GL_TRIANGLES, 0, xx player_mesh.vertex_positions.count);
+        
+        //
+        // Draw the occlusion effects
+        //
+
+        // @TODO: Depth sorting. Possibly for when we need a real renderer.
+        glDepthFunc(GL_GREATER);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glUseProgram(occlusion_shader);
+        
+        // Do we want this? Also, it needs to be depth-sorted with the player.
+        // set_uniform("projection", translate(world_to_camera, to_vector3(entrance.position)));
+        // set_uniform("color", Vector4.{ENTRANCE_COLOR.x, ENTRANCE_COLOR.y, ENTRANCE_COLOR.z, 0.5});
+        // bind_and_draw(*entrance_mesh);
+
+        set_uniform("projection", translate(world_to_camera, to_vector3(exit.position)));
+        set_uniform("color", Vector4.{EXIT_COLOR.x, EXIT_COLOR.y, EXIT_COLOR.z, 0.5});
+        bind_and_draw(*exit_mesh);
+
+        set_uniform("projection", translate(world_to_camera, to_vector3(player.position)));
+        set_uniform("color", Vector4.{1, 1, 1, 0.5});
+        bind_and_draw(*player_mesh);
+
+        glDisable(GL_BLEND); 
+        glDepthFunc(GL_LESS);
 
 
 

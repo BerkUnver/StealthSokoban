@@ -21,6 +21,7 @@ OUTIN vec3 fragment_position;
 // @Volatile :ViewState :ShaderInclude @Copypasta from block.gl
 #define VIEW_STATE_SEEN 1u
 #define VIEW_STATE_VISIBLE 2u
+#define SEEN_BRIGHTNESS 0.25
 
 void main() {
 #ifdef VERTEX_SHADER
@@ -43,19 +44,20 @@ void main() {
         position.x;
     
     uint filled = texelFetch(viewed, index).r;
-    if ((filled & VIEW_STATE_VISIBLE) == 0u) {
+    
+    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
+        fragment_color = vec4((float(gl_FrontFacing) * color).rgb, 1.0);
+#ifdef SEEN_COLOR
+    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
+        fragment_color = color;
+        fragment_color.rgb *= SEEN_BRIGHTNESS;
+#endif
+    } else {
 #ifdef UNVIEWED_COLOR
         fragment_color = unviewed_color;
 #else
         discard;
 #endif
-    } else if (gl_FrontFacing) {   
-        // @Speed We could make a mesh bounding box and detect whenever a mesh
-        // is between grid squares. When it is, draw the mesh again with the 
-        // vertex winding order flipped, and shade it all black.
-        fragment_color = color;
-    } else {
-        fragment_color = vec4(0.0, 0.0, 0.0, 1.0);
     }
 #endif
 }

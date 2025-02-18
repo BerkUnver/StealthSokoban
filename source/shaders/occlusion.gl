@@ -1,0 +1,19 @@
+// Mostly @Copypasta from shaders\color.gl
+
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+uniform vec4 color;
+
+void main() {
+#ifdef VERTEX_SHADER
+    gl_Position = projection * vec4(vertex_position, 1.0);
+    gl_Position.z -= 0.0001; // Prevent z-fighting if we draw the regular mesh and the occlusion mesh together. We only want the regular mesh.
+#else
+    fragment_color = color;
+#endif
+}
