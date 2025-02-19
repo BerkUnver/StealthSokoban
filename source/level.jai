@@ -2,15 +2,13 @@ Level :: struct {
 
     selectables: Fixed_Array(32, Selectable);
     
-    blocks: Fixed_Array(32, Block);
     ENEMY_COUNT :: 32;
-    enemies: Fixed_Array(ENEMY_COUNT, Enemy); // @TODO: Get deleting these to work in the editor!
-    enemy_spawners: Fixed_Array(32, Enemy_Spawner);
-
-    player:   Simple_Entity;
-    entrance: Simple_Entity;
-    exit:     Simple_Entity;
+    using entities: Entities;
     
+    player:     *Player;
+    entrance:   *Entrance;
+    exit:       *Exit;
+
     level_position: Vector3i;
     level_size: Vector3i;
     
@@ -90,12 +88,9 @@ is_null :: inline (eid: Eid) -> bool {
 }
 
 
-// Right now, most of our level entities are pretty simple
-// so having this struct, which represents those,
-// is probably fine.
-Simple_Entity :: struct {
-    position: Vector3i;
-}
+Player   :: struct { position: Vector3i; }
+Entrance :: struct { position: Vector3i; }
+Exit     :: struct { position: Vector3i; }
 
 
 Enemy_State :: enum {
@@ -408,7 +403,7 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
-make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
+make_level_base :: (using level: *Level, arena: *Memory_Arena) {
     using context.game_context;
 
     // @Speed maybe we can just set what we need to be reset in case
@@ -419,27 +414,35 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
     T :: true;
     F :: false;
     
-    entrance = .{
+    _Entrance = arena_alloc_array(arena, 1, Entrance);
+    entrance = *_Entrance[0];
+    entrance.* = .{
         position = .{-1, 0, -1},
     };
     
-    exit = .{
+    _Exit = arena_alloc_array(arena, 1, Exit);
+    exit = *_Exit[0];
+    exit.* = .{
         position = .{2, 0, -1},
     };
     
-    player = .{
+    _Player = arena_alloc_array(arena, 1, Player);
+    player = *_Player[0];
+    player.* = .{
         position = entrance.position,
     };
     
-    // append(*enemies).* = .{
-    //     position = .{0, 0, 0},
-    // };
+    _Enemy = arena_alloc_array(arena, 2, Enemy);
+    _Enemy[0] = .{
+        position = .{0, 0, 0},
+    };
 
-    // append(*enemies).* = .{
-    //     position = .{-1, 0, 0},
-    // };
-
-    append(*enemy_spawners).* = .{
+    _Enemy[1] = .{
+        position = .{-1, 0, 0},
+    };
+    
+    _Enemy_Spawner = arena_alloc_array(arena, 1, Enemy_Spawner);
+    _Enemy_Spawner[0] = .{
         position = .{2, 0, 0},
     };
 
@@ -454,8 +457,7 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
                 T, T, T, T, T, T,
                 T, T, T, T, T, T,
                 T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
+                T, T, T, T, T, T, T, T, T, T, T, T,
             ],
             color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
             moveable = false
@@ -483,11 +485,30 @@ make_level_base :: (using level: *Level, level_arena: *Memory_Arena) {
             moveable = true
         }
     ];
-    
-    for * temp_blocks add_temporary_block_to_level(it, level, level_arena);
 
-    level_position, level_size = get_block_extents(to_array(blocks));
+    _Block = arena_alloc_array(arena, temp_blocks.count, Block);
+    for * temp_blocks {
+        make_block_from_temporary_block(it, *_Block[it_index], arena);
+    }
+
+    level_position, level_size = get_block_extents(_Block);
     view_texture = make_view_texture(level_size);
+}
+
+
+make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *Memory_Arena) {
+    filled_allocated := arena_alloc_array(arena, t.filled.count, bool);
+    memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
+
+    generated_mesh := make_block_mesh(t.size, filled_allocated, arena);
+    block.* = .{
+       position = t.position,
+       size = t.size,
+       filled = filled_allocated,
+       color = t.color,
+       moveable = t.moveable,
+       mesh = generated_mesh
+    };
 }
 
 
@@ -499,7 +520,7 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     assert(append(*selectables, .{position=*exit.position,     mesh=*exit_mesh}));
     assert(append(*selectables, .{position=*player.position,   mesh=*player_mesh}));
     
-    register_selectables :: (array: *Fixed_Array($N, $T), mesh: *Mesh) #expand {
+    register_selectables :: (array: [] $T, mesh: *Mesh) #expand {
         for * array {
             s := append(*selectables);
             s.* = .{
@@ -509,10 +530,10 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
         }
     }
     
-    register_selectables(*enemies, *enemy_mesh);
-    register_selectables(*enemy_spawners, *enemy_spawner_mesh);
+    register_selectables(_Enemy, *enemy_mesh);
+    register_selectables(_Enemy_Spawner, *enemy_spawner_mesh);
 
-    for * blocks {
+    for * _Block {
         append(*selectables).* = .{
             position = *it.position,
             mesh = *it.mesh,
@@ -543,39 +564,17 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
     enemy_move_results = arena_alloc_array(level_arena, size_1d, Enemy_Move_Result);
     desired_enemy_moves = arena_alloc_array(level_arena, size_1d, Desired_Enemy_Move);
 
-    for * blocks {
+    for * _Block {
         assert(add_block_to_collision(level, it) == .OK);
     }
     
-    for * enemies {
+    for * _Enemy {
         in_bounds, index := get_3d_index(it.position, level_position, level_size);
         assert(in_bounds);
         eid := collision[index];
         assert(is_null(eid));
         collision[index] = make_eid(it);
     }
-}
-
-
-add_temporary_block_to_level :: (t: *Temporary_Block, using level: *Level, level_arena: *Memory_Arena) -> *Block {
-    filled_allocated := arena_alloc_array(level_arena, t.filled.count, bool);
-    memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
-    
-    index := blocks.count;
-    block := append(*blocks);
-    assert(block != null);
-    
-    generated_mesh := make_block_mesh(t.size, filled_allocated, level_arena);
-    block.* = .{
-       position = t.position,
-       size = t.size,
-       filled = filled_allocated,
-       color = t.color,
-       moveable = t.moveable,
-       mesh = generated_mesh
-    };
-
-    return block;
 }
 
 
@@ -587,7 +586,7 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
 
     free(*view_texture);
 
-    for blocks {
+    for _Block {
         free(*it.mesh);
     }
 
@@ -849,7 +848,7 @@ level_update :: (using level: *Level, dt: float) {
 
         memset(desired_enemy_moves.data, xx Desired_Enemy_Move.EMPTY, byte_count(desired_enemy_moves));
 
-        for * enemies { 
+        for * _Enemy { 
             desired_position := it.position;
             desired_position.x -= 1;
 
@@ -874,7 +873,7 @@ level_update :: (using level: *Level, dt: float) {
             }
         }
 
-        for * enemy_spawners {
+        for * _Enemy_Spawner {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
             assert(in_bounds);
  
@@ -896,7 +895,7 @@ level_update :: (using level: *Level, dt: float) {
         // Remove all the enemies from the collision to make sure that when we reinsert them, all of the old ones
         // have been cleaned up. Otherwise, if we cleared the filled[index] of the old enemy position,
         // a new enemy could already be there!
-        for * enemies {
+        for * _Enemy {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
             assert(in_bounds);
             eid := collision[index];
@@ -904,7 +903,7 @@ level_update :: (using level: *Level, dt: float) {
             collision[index] = .{};
         }
 
-        for * enemies {
+        for * _Enemy {
             in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
             assert(in_bounds);
             if #complete desired_enemy_moves[index] == {
@@ -926,7 +925,7 @@ level_update :: (using level: *Level, dt: float) {
             }
         }
 
-        for * enemy_spawners {
+        for * _Enemy_Spawner {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
             assert(in_bounds); 
             if #complete desired_enemy_moves[index] == {
@@ -934,10 +933,12 @@ level_update :: (using level: *Level, dt: float) {
                     assert(false);
 
                 case .WILL_BE_FILLED;
+                    /*
                     e := append(*enemies);
                     e.* = .{position = it.position, state = .SPAWNING};
                     assert(is_null(collision[index]));
                     collision[index] = make_eid(e);
+                    */
 
                 case .MUTUAL_ANNIHILATION;
                     // @TODO: If two enemy spawners end up on the same square
@@ -948,13 +949,13 @@ level_update :: (using level: *Level, dt: float) {
     }
     
     if enemy_timer >= Enemy.MOVING_TIME {
-        for * enemies {
+        for * _Enemy {
             if it.state == .MOVING it.state = .IDLE;
         }
     }
 
     if enemy_timer >= Enemy.SPAWNING_TIME {
-        for * enemies {
+        for * _Enemy {
             if it.state == .SPAWNING it.state = .IDLE;
         }
     }

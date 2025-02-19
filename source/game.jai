@@ -8,6 +8,7 @@
 #load "math.jai";
 #load "level.jai";
 #load "editor.jai";
+#load "entities.jai";
 
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
@@ -221,7 +222,7 @@ game_update : Game_Update : (
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
         for input.events {
-            if it.key == Key.F_BASE + 1 && it.down {
+            if it.key == .TILDE && it.down {
                 free_level(*level, *level_arena);
                 
                 if #complete mode == {
@@ -301,7 +302,7 @@ game_update : Game_Update : (
         set_uniform("viewed", cast(s32, 1));
         set_uniform("viewed_size", level_size);
 
-        for * blocks {
+        for * _Block {
             projection := translate(world_to_camera, to_vector3(it.position));
             set_uniform("viewed_position", it.position - level_position);
             set_uniform("projection", projection);
@@ -329,7 +330,7 @@ game_update : Game_Update : (
         set_uniforms_for_item_shaders();
 
         // @Speed draw instanced 
-        for * enemies {
+        for * _Enemy {
             matrix: Matrix4;
             color: Vector4;
             if #complete it.state == {
@@ -374,7 +375,7 @@ game_update : Game_Update : (
         set_uniforms_for_item_shaders();
 
         set_uniform("color", Vector4.{0.5, 0, 0, 1});
-        for * enemy_spawners {
+        for * _Enemy_Spawner {
             set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
             bind_and_draw(*enemy_spawner_mesh);
         }

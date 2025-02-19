@@ -139,7 +139,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     return false;
                 }
 
-                data := Data.{blocks = to_array(blocks)};
+                data := Data.{blocks = _Block};
                 collided, t := raycast(mouse_start, mouse_end, visitor, *data);
                 
                 if !collided return;
@@ -188,6 +188,8 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     );
 
                     if !parallel && t > 0 {
+                        // @TODO: Bring this functionality back
+                        /*
                         temp_block := Temporary_Block.{
                             position = .{xx floor(point.x), xx floor(point.y), xx floor(point.z)},
                             size = .{1, 1, 1},
@@ -202,6 +204,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                             position = *block.position,
                             mesh = *block.mesh,
                         };
+                        */
                     }
                 }
                 return;
@@ -280,6 +283,11 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             if event.key == xx #char "3" && event.down {
                 enable_drag(2);
                 return;
+            }
+
+            if .F_BASE < event.key && event.key <= .F12 {
+                index := cast(int, event.key - 1 - .F_BASE);
+                instantiate_entity(level, index, level_arena);
             }
 
         case .CAMERA;
@@ -422,7 +430,7 @@ editor_raycast_to_block :: (using level: *Level, ray_start: Vector3, ray_end: Ve
     }
     
     data := Raycast_Data.{
-        blocks = to_array(blocks)
+        blocks = _Block
     };
 
     raycast(ray_start, ray_end, raycast_visitor, *data);
