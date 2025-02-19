@@ -22,7 +22,7 @@
         _, str = format_print(str, "            _%: [] %;\n", it.name, it.name);
     }
     _, str = format_print(str, "        }\n");
-    _, str = format_print(str, "        components: [%] [] u8;\n", entities.count);
+    _, str = format_print(str, "        components: [%] Array_View_64;\n", entities.count);
     _, str = format_print(str, "    }\n");
     _, str = format_print(str, "}\n");
 
@@ -54,7 +54,6 @@ instantiate_entity :: (using level: *Level, index: int, arena: *Memory_Arena) {
             color = .{1, 1, 1, 1},
         };
         make_block_from_temporary_block(*temp, block, arena);
-        assert(append(*selectables, .{*block.position, *block.mesh}));
     } else {
         memset(e, 0, entity_size);
     }
@@ -75,7 +74,8 @@ as :: (e: *void, eid: Entity_Id, $T: Type) -> *T {
 
 
 get_entity :: (using entities: *Entities, eid: Entity_Id) -> *void {
-    return *components[eid.type][eid.index * TYPES[eid.type].runtime_size];
+    assert(components[eid.type].count > eid.index);
+    return components[eid.type].data + eid.index * TYPES[eid.type].runtime_size;
 }
 
 
@@ -89,29 +89,26 @@ get_entity :: (using entities: *Entities, eid: Entity_Id) -> *void {
 //          -berk, 18 - 2 - 2025
 
 
-entity_position :: (using entities: *Entities, eid: Entity_Id) -> Vector3i {
-    // This is very weird code. Consider making it more sane.
-    e := get_entity(entities, eid);
+entity_position :: (e: *void, eid: Entity_Id) -> *Vector3i {
     #insert -> string {
         buf: [4096] u8;
         str := string.{buf.count, buf.data};
 
         _, str = format_print(str, "if eid.type == {\n");
-        for 0..TYPES.count - 1 {
+        for 0..Entities.TYPES.count - 1 {
             _, str = format_print(str, "    case %;\n", it);
-            _, str = format_print(str, "        return cast(*%, e).position;\n", Entities.TYPES[it].name);
+            _, str = format_print(str, "        return *cast(*%, e).position;\n", Entities.TYPES[it].name);
         }
         _, str = format_print(str, "}\n");
         return .{buf.count - str.count, buf.data};
     }
     assert(false);
-    return .{};
+    return null;
 }
 
 
-entity_mesh :: (using entities: *Entities, eid: Entity_Id) -> *Mesh {
+entity_mesh :: (e: *void, eid: Entity_Id) -> *Mesh {
     using context.game_context;
-    e := get_entity(entities, eid);
 
     block := as(e, eid, Block);
     if block return *block.mesh;
@@ -137,12 +134,13 @@ entity_mesh :: (using entities: *Entities, eid: Entity_Id) -> *Mesh {
 
 
 iterate_entities :: (using entities: *Entities, body: Code, flags: For_Flags) #expand {
+    #assert flags == 0;
     for array, type_index: components {
         size := TYPES[type_index].runtime_size;
         for i: 0..array.count-1 {
-            `it_index := Eid.{type=type_index, index=i};
-            `it := cast(*void, array[i * size]);
-            #insert body;
+            `it_index := Entity_Id.{type=xx type_index, index=xx i};
+            `it := cast(*void, array.data + i * size);
+            #insert(break=break array, remove=#assert false) body;
         }
     }
 }

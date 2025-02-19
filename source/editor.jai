@@ -51,7 +51,7 @@ Editor :: struct {
     }
     
     selected_exists: bool;
-    selected: Selectable;
+    selected: Entity_Id;
     selected_timer: float;
     
     camera_position := Vector3.{0, 8, -4};
@@ -261,10 +261,11 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             
             enable_drag :: (index: u8) #expand {
                 if editor.selected_exists {
+                    e := get_entity(*entities, editor.selected);
                     editor.mode = .DRAG;
                     editor.drag = .{
                         mouse_start = mouse,
-                        selectable_start = editor.selected.position.*,
+                        selectable_start = entity_position(e, editor.selected),
                         index = index
                     };
                 }
@@ -285,9 +286,10 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 return;
             }
 
-            if .F_BASE < event.key && event.key <= .F12 {
+            if (.F_BASE < event.key && event.key <= .F12) && event.down {
                 index := cast(int, event.key - 1 - .F_BASE);
                 instantiate_entity(level, index, level_arena);
+                return;
             }
 
         case .CAMERA;
@@ -358,23 +360,24 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 }
 
 
-get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_position: Vector3, line_direction: Vector3) -> bool, Selectable, intersection: Vector3 { 
+get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_position: Vector3, line_direction: Vector3) -> bool, Entity_Id, intersection: Vector3 { 
     smallest_t := FLOAT32_INFINITY;
     selected_found := false;
-    selected: Selectable;
+    selected: Entity_Id;
     selected_intersection: Vector3;
+    
+    for :iterate_entities e, eid: entities {
+        position := to_vector3(entity_position(e, eid).*);
+        mesh := entity_mesh(e, eid);
 
-    for selectables {
-        position := to_vector3(it.position.*);
-        
-        assert(it.mesh.vertex_positions.count % 3 == 0);
-        tri_count := it.mesh.vertex_positions.count / 3;
+        assert(mesh.vertex_positions.count % 3 == 0);
+        tri_count := mesh.vertex_positions.count / 3;
 
         for i: 0..tri_count-1 {
             start := i * 3;
-            v0 := it.mesh.vertex_positions[start]   + position;
-            v1 := it.mesh.vertex_positions[start+1] + position;
-            v2 := it.mesh.vertex_positions[start+2] + position;
+            v0 := mesh.vertex_positions[start]   + position;
+            v1 := mesh.vertex_positions[start+1] + position;
+            v2 := mesh.vertex_positions[start+2] + position;
 
             normal := cross(v1-v0, v2-v0);
 
@@ -395,7 +398,7 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
             
             smallest_t = t;
             selected_found = true;
-            selected = it;
+            selected = eid;
             selected_intersection = intersection;
         }
     }
@@ -506,7 +509,9 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
             mouse_position := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
             
-            selected_position := to_vector3(editor.selected.position.*);
+            e := get_entity(*entities, editor.selected);
+            e_position := entity_position(e, editor.selected);
+            selected_position := to_vector3(e_position.*);
 
             axis: Vector3;
             axis.component[index] = 1;
@@ -541,11 +546,11 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
             || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
             // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
-                editor.selected.position.component[index] = selectable_start.component[index];
+                e_position.component[index] = selectable_start.component[index];
             } else {
                 movement := intersection.component[index] - initial_intersection.component[index];
                 new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
-                editor.selected.position.component[index] = new_position_component;
+                e_position.component[index] = new_position_component;
             }
     }
     

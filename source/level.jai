@@ -1,7 +1,4 @@
 Level :: struct {
-
-    selectables: Fixed_Array(32, Selectable);
-    
     ENEMY_COUNT :: 32;
     using entities: Entities;
     
@@ -50,12 +47,7 @@ CAMERA_MAX_PITCH :: PI / 3;
 CAMERA_YAW_TICK_COUNT :: 12;
 
 
-Selectable :: struct {
-    position: *Vector3i;
-    mesh: *Mesh;
-}
-
-
+// @TODO Delete soon, this has been replaced by Entity_Id.
 Eid :: struct { // Entity ID
     type: Type;
     ptr: *void;
@@ -516,32 +508,6 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     using context.game_context;
     make_level_base(level, level_arena);
 
-    assert(append(*selectables, .{position=*entrance.position, mesh=*entrance_mesh}));
-    assert(append(*selectables, .{position=*exit.position,     mesh=*exit_mesh}));
-    assert(append(*selectables, .{position=*player.position,   mesh=*player_mesh}));
-    
-    register_selectables :: (array: [] $T, mesh: *Mesh) #expand {
-        for * array {
-            s := append(*selectables);
-            s.* = .{
-                position = *it.position,
-                mesh = mesh,
-            };
-        }
-    }
-    
-    register_selectables(_Enemy, *enemy_mesh);
-    register_selectables(_Enemy_Spawner, *enemy_spawner_mesh);
-
-    for * _Block {
-        append(*selectables).* = .{
-            position = *it.position,
-            mesh = *it.mesh,
-        };
-    }
-
-
-    
     size_1d := level_size.x * level_size.y * level_size.z;
 
     // This is really, really stupid.

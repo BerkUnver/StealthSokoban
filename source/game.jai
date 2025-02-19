@@ -228,6 +228,7 @@ game_update : Game_Update : (
                 if #complete mode == {
                     case .GAME;
                         mode = .EDITOR;
+                        editor = .{};
                         editor.camera_position = .{0, 8, -4};
                         editor.camera_yaw = 0;
                         editor.camera_pitch = -PI / 3;
@@ -447,8 +448,12 @@ game_update : Game_Update : (
             if editor.selected_exists {
                 t := (cos(editor.selected_timer * TAU) + 1) / 2;
                 color := Vector4.{t, t, t, 1};
+                
+                e := get_entity(*entities, editor.selected);
+                mesh := entity_mesh(e, editor.selected);
+                position := to_vector3(entity_position(e, editor.selected).*);
 
-                draw_wireframe_mesh(editor.selected.mesh, translate(world_to_camera, to_vector3(editor.selected.position.*)), color);
+                draw_wireframe_mesh(mesh, translate(world_to_camera, position), color);
             }
 
             if editor.mode == .EXTRUDE {
