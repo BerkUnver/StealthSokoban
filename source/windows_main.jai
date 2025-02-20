@@ -7,8 +7,17 @@
 
 windows: struct {
     stdout: HANDLE;
-    input_events: Fixed_Array(Input.EVENT_COUNT, Input_Event);
+    input_events: [64] Input_Event;
+    input_event_count: s64;
     mouse_buttons_down: enum { LEFT :: 1; RIGHT :: 2; };
+}
+
+append_input_event :: (e: Input_Event) {
+    using windows;
+    if input_event_count < input_events.count {
+        input_events[input_event_count] = e;
+        input_event_count += 1;
+    }
 }
 
 
@@ -40,6 +49,8 @@ main :: () {
                     else if keycode == VK_BACK return true, .BACKSPACE;
                     else if keycode == VK_DELETE return true, .DELETE;
                     else if keycode == VK_OEM_3 return true, .TILDE;
+                    else if keycode == VK_OEM_4 return true, .OPENING_CURLY_BRACE;
+                    else if keycode == VK_OEM_6 return true, .CLOSING_CURLY_BRACE;
 
                     return false, 0;
                 }
@@ -63,49 +74,38 @@ main :: () {
                     case WM_KEYDOWN;
                         if (l_param & REPEAT_FLAG) == 0 {
                             success, key := translate_keycode_to_game_input(w_param);
-                            if success {
-                                event := append(*input_events);
-                                if event event.* = .{key=key, down=true};
-                            }
+                            if success append_input_event(.{key=key, down=true});
                         }
                         return 0;
                     case WM_KEYUP;
                         if (l_param & REPEAT_FLAG) != 0 {
                             success, key := translate_keycode_to_game_input(w_param);
-                            if success {
-                                event := append(*input_events);
-                                if event event.* = .{key=key, down=false};
-                            }
+                            if success append_input_event(.{key=key, down=false});
                         }
                         return 0;
 
                     case WM_LBUTTONDOWN;
                         windows.mouse_buttons_down |= .LEFT;
                         SetCapture(window);
-                        event := append(*input_events);
-                        if event event.* = .{key=.MOUSE_LEFT_BUTTON, down=true};
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=true});
                         return 0;
 
                     case WM_RBUTTONDOWN;
                         windows.mouse_buttons_down |= .RIGHT;
                         SetCapture(window);
-                        event := append(*input_events);
-                        if event event.* = .{key=.MOUSE_RIGHT_BUTTON, down=true};
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=true});
                         return 0;
 
 
                     case WM_LBUTTONUP;
                         windows.mouse_buttons_down &= ~.LEFT;
                         if !windows.mouse_buttons_down ReleaseCapture();
-                        event := append(*input_events);
-                        if event event.* = .{key=.MOUSE_LEFT_BUTTON, down=false};
-                        return 0;
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=false});
                         
                     case WM_RBUTTONUP;
                         windows.mouse_buttons_down &= ~.RIGHT;
                         if !windows.mouse_buttons_down ReleaseCapture();
-                        event := append(*input_events);
-                        if event event.* = .{key=.MOUSE_RIGHT_BUTTON, down=false};
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=false});
                         return 0;
 
                     case WM_CLOSE;
@@ -430,7 +430,7 @@ main :: () {
         mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
 
         input := Input.{
-            events = *windows.input_events,
+            events = .{windows.input_event_count, windows.input_events.data},
             mouse_x = mouse_x,
             mouse_y = mouse_y
         };
@@ -440,7 +440,7 @@ main :: () {
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
         game_update(game_memory, *input, time_elapsed);
-        windows.input_events.count = 0;
+        windows.input_event_count = 0;
 
         SwapBuffers(dc);
     }

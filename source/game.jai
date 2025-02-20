@@ -32,6 +32,7 @@ Game_Context :: struct {
     occlusion_shader: GLuint;
     
     enemy_mesh: Mesh;
+    enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
     enemy_annihilation_mesh: Mesh;
     enemy_spawner_mesh: Mesh;
     player_mesh: Mesh;
@@ -181,7 +182,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-        enemy_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
+        enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, 0.2, -0.3}, .{0.3, 0.8, 0.3}, *permanent_arena);
+        enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0.5, 0.0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0.5, 0.0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
@@ -332,34 +334,44 @@ game_update : Game_Update : (
 
         // @Speed draw instanced 
         for * _Enemy {
-            matrix: Matrix4;
-            color: Vector4;
+            color_weight: float;
+            
+            matrix := Matrix4_Identity;
             if #complete it.state == {
                 case .IDLE;
-                    matrix = make_translation_matrix4(to_vector3(it.position));
-                    color = .{1, 0, 0, 1};
+                    color_weight = 1;
 
                 case.MOVING;
                     weight := enemy_timer / Enemy.MOVING_TIME;
                     weight = weight * weight;
-                    position := lerp(it.moving_from, to_vector3(it.position), weight);
-
-                    matrix = make_translation_matrix4(position);
-                    color = .{1, 0, 0, 1};
+                    position := (to_vector3(it.position) - it.moving_from) * (1 - weight);
+                    matrix = make_translation_matrix4(-position);
+                    color_weight = 1;
 
                 case .SPAWNING;
                     weight := enemy_timer / Enemy.SPAWNING_TIME;
-                    position := to_vector3(it.position) + (1 - weight) * Vector3.{0.5, 0.5, 0.5};
-                    scale := make_scale_matrix4(.{weight, weight, weight});
-
-                    matrix = make_translation_matrix4(position) * scale;
-                    color = .{weight, 0, 0, 1};
+                    matrix = make_scale_matrix4(.{weight, weight, weight});
+                    color_weight = weight;
             }
-
+            
+            rotation: float;
+            if it.facing == {
+                case .X_POSITIVE;
+                case .Z_NEGATIVE; rotation = PI / 2;
+                case .X_NEGATIVE; rotation = PI;
+                case .Z_POSITIVE; rotation = -PI / 2;
+            }
+            
+            matrix = matrix * make_y_rotation_matrix(Matrix4, -rotation);
+            matrix = make_translation_matrix4(to_vector3(it.position) + Vector3.{0.5, 0, 0.5}) * matrix;
+            
             set_uniform("model_to_world", matrix);
-            set_uniform("color", color);
 
+            set_uniform("color", Vector4.{color_weight, 0, 0, 1});
             bind_and_draw(*enemy_mesh);
+
+            set_uniform("color", Vector4.{0.5 * color_weight, 0, 0, 1});
+            bind_and_draw(*enemy_nose_mesh);
         }
 
         set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});

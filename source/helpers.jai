@@ -60,7 +60,7 @@ realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: []
     
     if position == new_position && size == new_size return position, size, data;
 
-    new_data := arena_alloc_array(arena, new_size.x * new_size.y * new_size.z, T);
+    new_data := alloc_view(arena, new_size.x * new_size.y * new_size.z, T);
     
     // @Speed memcpy the x axis instead of calculating it one-by-one.
     offset := position - new_position;
@@ -113,12 +113,12 @@ make_arena :: (memory: *u8, count: s64) -> Memory_Arena {
 }
 
 
-clear_arena :: inline (arena: *Memory_Arena) {
+clear :: inline (arena: *Memory_Arena) {
     arena.current = 0;
 }
 
 
-arena_alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
+alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
     assert(count >= 0);
     ret := arena.data + arena.current;
     arena.current += count;
@@ -126,17 +126,67 @@ arena_alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
     return ret;
 }
 
-arena_alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
-    return arena_alloc(arena, size_of(T), zero_init);
+alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
+    return alloc(arena, size_of(T), zero_init);
 }
 
-arena_alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
+alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
     byte_count := size_of(T) * count; 
-    ret := arena_alloc(arena, byte_count, zero_init);
+    ret := alloc(arena, byte_count, zero_init);
     return .{data=xx ret, count=count};
 }
 
 
 get_mark :: (arena: *Memory_Arena) -> s64 {
     return arena.current;
+}
+
+
+
+
+reserve_array :: (arena: *Memory_Arena, reserve: s64, $T: Type, zero_init := true) -> [..] T {
+    mem := alloc(arena, reserve * size_of(T), zero_init);
+
+    array: [..] T;
+    array.data = mem;
+    array.allocated = reserve;
+    array.allocator.data = arena;
+
+    // I don't love the implicit allocator semantics that Jai wants you to use,
+    // so I am avoiding them for now. However, I will set the allocator data to the
+    // arena so we can assert that we're resizing using the same arena.
+
+    return array;
+}
+
+
+alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [..] T {
+    mem := alloc(arena, count * size_of(T), zero_init);
+
+    array: [..] T;
+    array.count = count;
+    array.data = mem;
+    array.allocated = count;
+    array.allocator.data = arena;
+    
+    return array;
+}
+
+
+append_no_resize :: (a: *[..] $T) -> *T {
+    assert(a.count < a.allocated);
+    item := a.data + a.count;
+    a.count += 1;
+    return item;
+}
+
+
+append_no_resize :: (a: *[..] $T, item: T) {
+    append_no_resize(a).* = item;
+}
+
+
+contains :: (a: *[..] $T, item: T) -> bool {
+    for a.* if it == item return true;
+    return false;
 }

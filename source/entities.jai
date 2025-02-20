@@ -19,7 +19,7 @@
     _, str = format_print(str, "    union {\n");
     _, str = format_print(str, "        struct {\n");
     for entities {
-        _, str = format_print(str, "            _%: [] %;\n", it.name, it.name);
+        _, str = format_print(str, "            _%: [..] %;\n", it.name, it.name);
     }
     _, str = format_print(str, "        }\n");
     _, str = format_print(str, "        components: [%] Array_View_64;\n", entities.count);
@@ -41,7 +41,7 @@ instantiate_entity :: (using level: *Level, index: int, arena: *Memory_Arena) {
     assert(0 <= index && index < Entities.TYPES.count);
 
     // @TODO: Dynamically resizing array (BUT FOR USE IN THE EDITOR ONLY.)
-    new_memory := cast(*u8, arena_alloc(arena, (array.count + 1) * entity_size, zero_init=false));
+    new_memory := cast(*u8, alloc(arena, (array.count + 1) * entity_size, zero_init=false));
     memcpy(new_memory, array.data, array.count * entity_size);
     e := new_memory + array.count * entity_size;
     entities.components[index] = .{array.count + 1, new_memory};

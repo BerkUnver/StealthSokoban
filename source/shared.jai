@@ -34,8 +34,7 @@ Game_Update :: #type (
 
 
 Input :: struct {
-    EVENT_COUNT :: 64;
-    events: *Fixed_Array(EVENT_COUNT, Input_Event); // This is stored by the OS
+    events: [] Input_Event; // Stored by the OS layer
 
     // In the range (-1, 1) for the x and y axis of the window. Maybe this is a mistake?
     mouse_x: float;
@@ -64,90 +63,10 @@ Key :: enum {
     UP_ARROW;
     BACKSPACE;
     DELETE;
+    OPENING_CURLY_BRACE;
+    CLOSING_CURLY_BRACE;
     TILDE;
 }
-
-
-Fixed_Array :: struct (n: s64, $T: Type) {
-    count: s64;
-    data: [n] T = ---;
-}
-
-
-append :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
-    if count == N return false;
-    data[count] = item;
-    count += 1;
-    return true;
-}
-
-
-append :: (using array: *Fixed_Array($N, $T)) -> *T {
-    if count == N return null;
-    ptr := *data[count];
-    count += 1;
-    return ptr;
-}
-
-
-pop :: (using array: *Fixed_Array($N, $T)) -> T {
-    count -= 1;
-    return data[count];
-    // If count is zero and it gets deincremented the data[count] bounds check will fail
-    // So we don't need to do the manual bounds check.
-}
-
-
-append_many :: (using array: *Fixed_Array($N, $T), how_many: s64) -> *T {
-    if count + how_many > N return null;
-    ptr := *data[count];
-    count += how_many;
-    return ptr;
-}
-
-
-contains :: (using array: *Fixed_Array($N, $T), item: T) -> bool {
-    for array {
-        if it == item return true;
-    }
-    return false;
-}
-
-
-to_array :: (a: Fixed_Array($N, $T)) -> [] T {
-    return .{a.count, a.data.data};
-}
-
-
-operator [] :: (using array: Fixed_Array($N, $T), index: s64) -> T {
-    assert(0 <= index && index < array.count);
-    return array.data[index];
-}
-
-
-for_expansion :: (array: *Fixed_Array($N, $T), body: Code, flags: For_Flags) #expand {
-    remove_element :: (array: *Fixed_Array($N, $T)) #expand {
-        array.count -= 1;
-        if it_index != array.count {
-            array.data[it_index] = array.data[array.count];
-        }
-        it_index -= 1;
-    }
-
-    #assert(!(flags & .REVERSE));
-    `it_index := 0;
-    while it_index < array.count {
-        #if flags & .POINTER {
-            `it := *array.data[it_index];
-        } else {
-            `it := array.data[it_index];
-        }
-
-        #insert(remove=remove_element(array)) body;
-        it_index += 1;
-    }
-}
-
 
 
 assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #expand {
@@ -168,6 +87,7 @@ assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #e
 
     if !condition && assert_stack_trace(message, loc) debug_break();
 }
+
 
 format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: string {
     buffer_index := 0;

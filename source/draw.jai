@@ -163,7 +163,7 @@ free :: (mesh: *Mesh) {
 make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
     using context.game_context;
 
-    vertex_positions := arena_alloc_array(arena, 36, Vector3);
+    vertex_positions := alloc_view(arena, 36, Vector3);
     make_cuboid(vertex_positions, b, e);
 
     vao, vbo: GLuint;
@@ -198,7 +198,7 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    vertices := arena_alloc_array(*frame_arena, 100000, Block_Vertex, zero_init=false);
+    vertices := alloc_view(*frame_arena, 100000, Block_Vertex, zero_init=false);
     vertex_count := 0;
 
     for :iterate_vector3i size {
@@ -232,7 +232,7 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
         check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
     }
     
-    vertex_positions := arena_alloc_array(arena, vertex_count, Vector3);
+    vertex_positions := alloc_view(arena, vertex_count, Vector3);
     for 0..vertex_count-1 {
         vertex_positions[it] = vertices[it].position;
     }

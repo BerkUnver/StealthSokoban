@@ -14,7 +14,7 @@ Level :: struct {
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
     
-    enemy_annihilations: Fixed_Array(ENEMY_COUNT / 2, Vector3i);
+    enemy_annihilations: [..] Vector3i;
     #assert ENEMY_COUNT % 2 == 0;
 
     flags: enum {PULLING :: 1;};
@@ -23,6 +23,7 @@ Level :: struct {
     camera_yaw_ticks: s8;
 
     enemy_timer: float;
+    dt_modifier := 1.0;
 
     collision: [] Eid;
     viewed: [] View_State;
@@ -85,11 +86,45 @@ Entrance :: struct { position: Vector3i; }
 Exit     :: struct { position: Vector3i; }
 
 
-Enemy_State :: enum {
+Enemy_State :: enum u8 {
     IDLE;
     MOVING;
     SPAWNING;
 }
+
+
+// I did this so we could have a concrete way to see what gameplay direction something is facing.
+// It might be better to just have a rotation quaternion on the entity. Let's see what happens.
+Facing :: enum u8 {
+    X_POSITIVE; // The default, assumed orientation
+    Z_POSITIVE;
+    X_NEGATIVE;
+    Z_NEGATIVE;
+    COUNT;
+}
+
+
+facing_vector3i :: (f: Facing) -> Vector3i {
+    v := Vector3i.{};
+    if f == {
+        case .X_POSITIVE; v.x += 1;
+        case .Z_POSITIVE; v.z += 1;
+        case .X_NEGATIVE; v.x -= 1;
+        case .Z_NEGATIVE; v.z -= 1;
+    }
+    return v;
+}
+
+
+facing_right :: (f: Facing) -> Facing {
+    return (f - 1 + Facing.COUNT) % Facing.COUNT;
+}
+
+
+facing_left :: (f: Facing) -> Facing {
+    return (f + 1) % Facing.COUNT;
+}
+
 
 Enemy :: struct {
     position: Vector3i;
@@ -100,11 +135,13 @@ Enemy :: struct {
     moving_from: Vector3;
     moving_timer: float; // We could find a way to store one of these for all enemies.
     state: Enemy_State;
+    facing: Facing;
 }
 
 
 Enemy_Spawner :: struct {
     position: Vector3i;
+    facing: Facing;
 }
 
 
@@ -406,36 +443,28 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
     T :: true;
     F :: false;
     
-    _Entrance = arena_alloc_array(arena, 1, Entrance);
+    _Entrance = alloc_array(arena, 1, Entrance);
     entrance = *_Entrance[0];
     entrance.* = .{
         position = .{-1, 0, -1},
     };
     
-    _Exit = arena_alloc_array(arena, 1, Exit);
+    _Exit = alloc_array(arena, 1, Exit);
     exit = *_Exit[0];
     exit.* = .{
         position = .{2, 0, -1},
     };
     
-    _Player = arena_alloc_array(arena, 1, Player);
+    _Player = alloc_array(arena, 1, Player);
     player = *_Player[0];
     player.* = .{
         position = entrance.position,
     };
     
-    _Enemy = arena_alloc_array(arena, 2, Enemy);
-    _Enemy[0] = .{
-        position = .{0, 0, 0},
-    };
-
-    _Enemy[1] = .{
-        position = .{-1, 0, 0},
-    };
-    
-    _Enemy_Spawner = arena_alloc_array(arena, 1, Enemy_Spawner);
+    _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
     _Enemy_Spawner[0] = .{
-        position = .{2, 0, 0},
+        position = .{2, 0, 2},
+        facing = .X_NEGATIVE,
     };
 
     temp_blocks := Temporary_Block.[
@@ -478,18 +507,31 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
         }
     ];
 
-    _Block = arena_alloc_array(arena, temp_blocks.count, Block);
+    _Block = alloc_array(arena, temp_blocks.count, Block);
     for * temp_blocks {
         make_block_from_temporary_block(it, *_Block[it_index], arena);
     }
 
     level_position, level_size = get_block_extents(_Block);
+
+    // The maximum number of enemies in the level is the same as the number of cells in the level.
+    // As such, let's reserve an array that big so we never have to resize while a level is running.
+    _Enemy = reserve_array(arena, level_size.x * level_size.y * level_size.z, Enemy);
+    _Enemy.count = 2;
+    _Enemy[0] = .{
+        position = .{0, 0, 2},
+    };
+
+    _Enemy[1] = .{
+        position = .{-1, 0, 2},
+    };
+
     view_texture = make_view_texture(level_size);
 }
 
 
 make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *Memory_Arena) {
-    filled_allocated := arena_alloc_array(arena, t.filled.count, bool);
+    filled_allocated := alloc_view(arena, t.filled.count, bool);
     memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
 
     generated_mesh := make_block_mesh(t.size, filled_allocated, arena);
@@ -515,7 +557,7 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    all_viewed := arena_alloc_array(*frame_arena, size_1d, View_State, zero_init = false);
+    all_viewed := alloc_view(*frame_arena, size_1d, View_State, zero_init = false);
     memset(all_viewed.data, xx (View_State.VISIBLE | View_State.SEEN), byte_count(all_viewed));
     update_view_texture(*view_texture, level_size, all_viewed);
 }
@@ -525,10 +567,11 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
     make_level_base(level, level_arena);
 
     size_1d := level_size.x * level_size.y * level_size.z;
-    viewed = arena_alloc_array(level_arena, size_1d, View_State);
-    collision = arena_alloc_array(level_arena, size_1d, Eid);
-    enemy_move_results = arena_alloc_array(level_arena, size_1d, Enemy_Move_Result);
-    desired_enemy_moves = arena_alloc_array(level_arena, size_1d, Desired_Enemy_Move);
+    viewed = alloc_view(level_arena, size_1d, View_State);
+    collision = alloc_view(level_arena, size_1d, Eid);
+    enemy_move_results = alloc_view(level_arena, size_1d, Enemy_Move_Result);
+    desired_enemy_moves = alloc_view(level_arena, size_1d, Desired_Enemy_Move);
+    enemy_annihilations = reserve_array(level_arena, size_1d / 2, Vector3i);
 
     for * _Block {
         assert(add_block_to_collision(level, it) == .OK);
@@ -556,7 +599,7 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
         free(*it.mesh);
     }
 
-    clear_arena(level_arena);
+    clear(level_arena);
 }
 
 
@@ -572,6 +615,10 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         camera_yaw_ticks = (camera_yaw_ticks - 1 + CAMERA_YAW_TICK_COUNT) % CAMERA_YAW_TICK_COUNT;
     } else if event.key == #char "J" && event.down {
         camera_yaw_ticks = (camera_yaw_ticks + 1) % CAMERA_YAW_TICK_COUNT;
+    } else if event.key == .OPENING_CURLY_BRACE && event.down {
+        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
+    } else if event.key == .CLOSING_CURLY_BRACE && event.down {
+        if dt_modifier < 16 dt_modifier *= 2;
     } else {
         if !event.down return;
         push_direction: Vector3i;
@@ -620,8 +667,11 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         // @TODO Add pulling blocks next to you, not just in the opposite direction of where
         // you are moving (I'm pretty sure we want this)
 
-        moving_blocks: Fixed_Array(2, *Block);
-        
+        moving_block_data: [2] *Block;
+        moving_blocks: [..] *Block;
+        moving_blocks.allocated = 2;
+        moving_blocks.data = moving_block_data.data;
+
         pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
         if !pushed_in_bounds return;
         pushed_eid := collision[pushed_index];
@@ -629,7 +679,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             pushed_block := as(pushed_eid, Block);
             if pushed_block {
                 if !pushed_block.moveable return;
-                assert(append(*moving_blocks, pushed_block));
+                append_no_resize(*moving_blocks, pushed_block);
             } else {
                 enemy := as(pushed_eid, Enemy);
                 if enemy return;
@@ -646,7 +696,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 if !is_null(pulled_eid) {
                     pulled_block := as(pulled_eid, Block);
                     if pulled_block && pulled_block.moveable && !contains(*moving_blocks, pulled_block) {
-                        assert(append(*moving_blocks, pulled_block));
+                        append_no_resize(*moving_blocks, pulled_block);
                     }
                 }
             }
@@ -690,6 +740,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
 
 level_update :: (using level: *Level, dt: float) {
+    dt *= dt_modifier;
     // The following code is nontrivial so I will write an explanation.
     // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
     // Here's why:
@@ -716,7 +767,7 @@ level_update :: (using level: *Level, dt: float) {
 
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
-    positions := arena_alloc_array(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
     position_count := 1;
     
     player_success, player_index := get_3d_index(player.position, level_position, level_size);
@@ -814,16 +865,23 @@ level_update :: (using level: *Level, dt: float) {
 
         memset(desired_enemy_moves.data, xx Desired_Enemy_Move.EMPTY, byte_count(desired_enemy_moves));
 
-        for * _Enemy { 
-            desired_position := it.position;
-            desired_position.x -= 1;
+        for * _Enemy {  
+            desired_direction := facing_vector3i(it.facing);
 
-            in_bounds, index := get_3d_index(desired_position, level_position, level_size);
+            in_bounds, index := get_3d_index(it.position + desired_direction, level_position, level_size);
             
-            if !in_bounds || as(collision[index], Block) {
-                it.desired_position = it.position;
+            if !in_bounds || as(collision[index], Block) { // The block in front of you is blocked
+                new_facing := facing_right(it.facing);
+                new_desired_direction := facing_vector3i(new_facing);
+                in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size); // Try the right side
+                if !in_bounds || as(collision[index], Block) { // Your right is blocked
+                    it.desired_position = it.position;
+                } else {
+                    it.desired_position = it.position + new_desired_direction;
+                    it.facing = new_facing;
+                }
             } else {
-                it.desired_position = desired_position;
+                it.desired_position = it.position + desired_direction;
             }
 
             in_bounds, index = get_3d_index(it.desired_position, level_position, level_size);
@@ -885,7 +943,7 @@ level_update :: (using level: *Level, dt: float) {
                 case .MUTUAL_ANNIHILATION;
                     if enemy_move_results[index] == .NOTHING {
                         enemy_move_results[index] = .MUTUAL_ANNIHILATION_HAPPENED;
-                        assert(append(*enemy_annihilations, it.desired_position));
+                        append_no_resize(*enemy_annihilations).* = it.desired_position;
                     }
                     remove it;
             }
@@ -899,12 +957,10 @@ level_update :: (using level: *Level, dt: float) {
                     assert(false);
 
                 case .WILL_BE_FILLED;
-                    /*
-                    e := append(*enemies);
-                    e.* = .{position = it.position, state = .SPAWNING};
+                    e := append_no_resize(*_Enemy);
+                    e.* = .{position = it.position, state = .SPAWNING, facing = it.facing};
                     assert(is_null(collision[index]));
                     collision[index] = make_eid(e);
-                    */
 
                 case .MUTUAL_ANNIHILATION;
                     // @TODO: If two enemy spawners end up on the same square
