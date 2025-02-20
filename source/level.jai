@@ -116,13 +116,24 @@ facing_vector3i :: (f: Facing) -> Vector3i {
 }
 
 
-facing_right :: (f: Facing) -> Facing {
+facing_right :: inline (f: Facing) -> Facing {
     return (f - 1 + Facing.COUNT) % Facing.COUNT;
 }
 
 
-facing_left :: (f: Facing) -> Facing {
+facing_left :: inline (f: Facing) -> Facing {
     return (f + 1) % Facing.COUNT;
+}
+
+
+facing_opposite :: inline (f: Facing) -> Facing {
+    return (f + 2) % Facing.COUNT;
+}
+
+
+Favored_Direction :: enum u8 {
+    LEFT;
+    RIGHT;
 }
 
 
@@ -133,16 +144,18 @@ Enemy :: struct {
     SPAWNING_TIME :: 0.2;
     ANNIHILATION_TIME :: 0.15;
     moving_from: Vector3;
-    moving_timer: float; // We could find a way to store one of these for all enemies.
     state: Enemy_State;
+    favored_direction: Favored_Direction;
     facing: Facing;
 }
 
 
 Enemy_Spawner :: struct {
     position: Vector3i;
+    favored_direction: Favored_Direction;
     facing: Facing;
 }
+
 
 
 Block :: struct {
@@ -870,12 +883,49 @@ level_update :: (using level: *Level, dt: float) {
 
             in_bounds, index := get_3d_index(it.position + desired_direction, level_position, level_size);
             
+            // Try the favored side
             if !in_bounds || as(collision[index], Block) { // The block in front of you is blocked
-                new_facing := facing_right(it.facing);
+                new_facing: Facing;
+
+                if #complete it.favored_direction == {
+                    case .LEFT;
+                        new_facing = facing_left(it.facing);
+                    case .RIGHT;    
+                        new_facing = facing_right(it.facing);
+                }
+
                 new_desired_direction := facing_vector3i(new_facing);
-                in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size); // Try the right side
-                if !in_bounds || as(collision[index], Block) { // Your right is blocked
-                    it.desired_position = it.position;
+                in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
+                
+                // Try the disfavored side
+                if !in_bounds || as(collision[index], Block) {
+                    if #complete it.favored_direction == {
+                        case .LEFT;
+                            new_facing = facing_right(it.facing);
+                        case .RIGHT;
+                            new_facing = facing_left(it.facing);
+                    }
+
+                    new_desired_direction = facing_vector3i(new_facing);
+                    in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
+
+                    // Try behind you
+                    if !in_bounds || as(collision[index], Block) {
+                        new_facing = facing_opposite(it.facing);
+                        
+                        new_desired_direction := facing_vector3i(new_facing);
+                        in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
+                        
+                        if !in_bounds || as(collision[index], Block) {
+                            it.desired_position = it.position;
+                        } else {
+                            it.desired_position = it.position + new_desired_direction;
+                            it.facing = new_facing;
+                        }
+                    } else {
+                        it.desired_position = it.position + new_desired_direction;
+                        it.facing = new_facing;
+                    }
                 } else {
                     it.desired_position = it.position + new_desired_direction;
                     it.facing = new_facing;
@@ -900,6 +950,11 @@ level_update :: (using level: *Level, dt: float) {
         for * _Enemy_Spawner {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
             assert(in_bounds);
+            
+            // Flip the favored direction every tick
+            it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
+
+            if as(collision[index], Block) continue;
  
             // @Copypasta from above
             if #complete desired_enemy_moves[index] == {
@@ -954,11 +1009,16 @@ level_update :: (using level: *Level, dt: float) {
             assert(in_bounds); 
             if #complete desired_enemy_moves[index] == {
                 case .EMPTY;
-                    assert(false);
+                    assert(as(collision[index], Block) != null);
 
                 case .WILL_BE_FILLED;
                     e := append_no_resize(*_Enemy);
-                    e.* = .{position = it.position, state = .SPAWNING, facing = it.facing};
+                    e.* = .{
+                        position = it.position,
+                        state = .SPAWNING,
+                        favored_direction = it.favored_direction,
+                        facing = it.facing
+                    };
                     assert(is_null(collision[index]));
                     collision[index] = make_eid(e);
 

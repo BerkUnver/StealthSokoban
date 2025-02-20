@@ -28,7 +28,6 @@ Game_Context :: struct {
     color_and_bitmap_shader: GLuint;
     item_shader: GLuint;
     unviewed_color_item_shader: GLuint;
-    seen_color_item_shader: GLuint;
     occlusion_shader: GLuint;
     
     enemy_mesh: Mesh;
@@ -141,8 +140,6 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(item_shader != 0);
         unviewed_color_item_shader = load_shader("shaders/item.gl", "#define UNVIEWED_COLOR\n");
         assert(unviewed_color_item_shader != 0);
-        seen_color_item_shader = load_shader("shaders/item.gl", "#define SEEN_COLOR\n");
-        assert(seen_color_item_shader != 0);
         occlusion_shader = load_shader("shaders/occlusion.gl");
         assert(occlusion_shader != 0);
        
@@ -367,10 +364,19 @@ game_update : Game_Update : (
             
             set_uniform("model_to_world", matrix);
 
-            set_uniform("color", Vector4.{color_weight, 0, 0, 1});
+            
+            color: Vector4;
+            if #complete it.favored_direction == {
+                case .LEFT;
+                    color = .{0, 68.0 / 255.0, 166.0 / 255.0, 1};
+                case .RIGHT;
+                    color = .{1, 0, 0, 1};
+            };
+
+            set_uniform("color", color_weight * color);
             bind_and_draw(*enemy_mesh);
 
-            set_uniform("color", Vector4.{0.5 * color_weight, 0, 0, 1});
+            set_uniform("color", color_weight * 0.5 * color);
             bind_and_draw(*enemy_nose_mesh);
         }
 
@@ -379,13 +385,6 @@ game_update : Game_Update : (
             set_uniform("model_to_world", make_translation_matrix4(to_vector3(it)));
             bind_and_draw(*enemy_annihilation_mesh);
         }
-
-        //
-        // Draw things that only appear when seen
-        //
-
-        glUseProgram(seen_color_item_shader);
-        set_uniforms_for_item_shaders();
 
         set_uniform("color", Vector4.{0.5, 0, 0, 1});
         for * _Enemy_Spawner {

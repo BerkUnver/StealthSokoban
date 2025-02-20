@@ -47,11 +47,9 @@ void main() {
     
     if ((filled & VIEW_STATE_VISIBLE) != 0u) {
         fragment_color = vec4((float(gl_FrontFacing) * color).rgb, 1.0);
-#ifdef SEEN_COLOR
     } else if ((filled & VIEW_STATE_SEEN) != 0u) {
         fragment_color = color;
         fragment_color.rgb *= SEEN_BRIGHTNESS;
-#endif
     } else {
 #ifdef UNVIEWED_COLOR
         fragment_color = unviewed_color;
