@@ -1,10 +1,7 @@
 Level :: struct {
     ENEMY_COUNT :: 32;
-    using entities: Entities;
     
-    player:     *Player;
-    entrance:   *Entrance;
-    exit:       *Exit;
+    using types: Entity_Types;
 
     level_position: Vector3i;
     level_size: Vector3i;
@@ -16,6 +13,13 @@ Level :: struct {
     
     enemy_annihilations: [..] Vector3i;
     #assert ENEMY_COUNT % 2 == 0;
+
+    // @TODO: This should be a hash table... probably.
+    entities: [..] *Entity;
+
+    player:     *Player;
+    entrance:   *Entrance;
+    exit:       *Exit;
 
     flags: enum {PULLING :: 1;};
     
@@ -55,7 +59,6 @@ Eid :: struct { // Entity ID
 }
 
 
-
 make_eid :: inline (ptr: *$T) -> Eid {
     return .{T, ptr};
 }
@@ -81,9 +84,30 @@ is_null :: inline (eid: Eid) -> bool {
 }
 
 
-Player   :: struct { position: Vector3i; }
-Entrance :: struct { position: Vector3i; }
-Exit     :: struct { position: Vector3i; }
+Entity :: struct {
+    type: Type;
+    eid: Entity_Id;
+    position: Vector3i; // As soon as there's an entity without this member,
+    // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
+}
+
+
+Player :: struct {
+    using #as e: Entity;
+    e.type = Player;
+}
+
+
+Entrance :: struct { 
+    using #as e: Entity;
+    e.type = Entrance;
+}
+
+
+Exit :: struct {
+    using #as e: Entity;
+    e.type = Exit;
+}
 
 
 Enemy_State :: enum u8 {
@@ -138,7 +162,9 @@ Favored_Direction :: enum u8 {
 
 
 Enemy :: struct {
-    position: Vector3i;
+    using #as e: Entity;
+    e.type = Enemy;
+
     desired_position: Vector3i; // Only used when we are updating all the enemies.
     MOVING_TIME :: 0.1;
     SPAWNING_TIME :: 0.2;
@@ -151,7 +177,9 @@ Enemy :: struct {
 
 
 Enemy_Spawner :: struct {
-    position: Vector3i;
+    using #as e: Entity;
+    e.type = Enemy_Spawner;
+
     favored_direction: Favored_Direction;
     facing: Facing;
 }
@@ -159,7 +187,9 @@ Enemy_Spawner :: struct {
 
 
 Block :: struct {
-    position: Vector3i;
+    using #as e: Entity;
+    e.type = Block;
+
     size: Vector3i;
     filled: [] bool;
     color: Vector4;
@@ -455,27 +485,29 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
 
     T :: true;
     F :: false;
+
+    entities = alloc_array(arena, 1000, *Entity); // @TODO: Figure out how many entities are in the level instead of just picking a number.
     
     _Entrance = alloc_array(arena, 1, Entrance);
-    entrance = *_Entrance[0];
+    entrance = make_entity(level, Entrance);
     entrance.* = .{
         position = .{-1, 0, -1},
     };
     
     _Exit = alloc_array(arena, 1, Exit);
-    exit = *_Exit[0];
+    exit = make_entity(level, Exit);
     exit.* = .{
         position = .{2, 0, -1},
     };
     
     _Player = alloc_array(arena, 1, Player);
-    player = *_Player[0];
+    player = make_entity(level, Player);
     player.* = .{
         position = entrance.position,
     };
     
     _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
-    _Enemy_Spawner[0] = .{
+    make_entity(level, Enemy_Spawner).* = .{
         position = .{2, 0, 2},
         facing = .X_NEGATIVE,
     };
@@ -522,7 +554,8 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
 
     _Block = alloc_array(arena, temp_blocks.count, Block);
     for * temp_blocks {
-        make_block_from_temporary_block(it, *_Block[it_index], arena);
+        block := make_entity(level, Block);
+        make_block_from_temporary_block(it, block, arena);
     }
 
     level_position, level_size = get_block_extents(_Block);
@@ -530,12 +563,11 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
     // The maximum number of enemies in the level is the same as the number of cells in the level.
     // As such, let's reserve an array that big so we never have to resize while a level is running.
     _Enemy = reserve_array(arena, level_size.x * level_size.y * level_size.z, Enemy);
-    _Enemy.count = 2;
-    _Enemy[0] = .{
+    make_entity(level, Enemy).* = .{
         position = .{0, 0, 2},
     };
 
-    _Enemy[1] = .{
+    make_entity(level, Enemy).* = .{
         position = .{-1, 0, 2},
     };
 

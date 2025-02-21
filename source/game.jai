@@ -460,9 +460,9 @@ game_update : Game_Update : (
                 t := (cos(editor.selected_timer * TAU) + 1) / 2;
                 color := Vector4.{t, t, t, 1};
                 
-                e := get_entity(*entities, editor.selected);
-                mesh := entity_mesh(e, editor.selected);
-                position := to_vector3(entity_position(e, editor.selected).*);
+                e := get_entity(*level, editor.selected);
+                mesh := entity_mesh(e);
+                position := to_vector3(e.position);
 
                 draw_wireframe_mesh(mesh, translate(world_to_camera, position), color);
             }

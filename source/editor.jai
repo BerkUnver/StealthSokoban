@@ -229,43 +229,17 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
-                // @TODO: Figure out an ACTUALLY GOOD WAY TO DELETE ENTITIES
-                // that doesn't risk leaving dangling entity references.
-
-                // The best way to do it might just to be to suck it up and do the 
-                // Thekla thing.
-
-                
-                /*
-                if is_null(editor.selected) return;
-                block := as(editor.selected, Block);
-                if !block return;
-
-                for * blocks {
-                    if it == block {
-                        remove it;
-                        break;
-                    }
-                }
-
-                for selectables {
-                    if eq(it, editor.selected) {
-                        remove it;
-                        break;
-                    }
-                }
-                */
-
+                delete_entity(level, editor.selected);
                 editor.selected_exists = false;
             }
             
             enable_drag :: (index: u8) #expand {
                 if editor.selected_exists {
-                    e := get_entity(*entities, editor.selected);
+                    e := get_entity(level, editor.selected);
                     editor.mode = .DRAG;
                     editor.drag = .{
                         mouse_start = mouse,
-                        selectable_start = entity_position(e, editor.selected),
+                        selectable_start = e.position,
                         index = index
                     };
                 }
@@ -286,9 +260,18 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 return;
             }
 
-            if (.F_BASE < event.key && event.key <= .F12) && event.down {
+            if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + Entity_Types.TYPES.count) && event.down {
                 index := cast(int, event.key - 1 - .F_BASE);
-                instantiate_entity(level, index, level_arena);
+                e := make_entity(level, index, level_arena);
+                block := as(e, Block);
+                if block {
+                    t := Temporary_Block.{
+                        size = .{1, 1, 1},
+                        filled = .[true],
+                        color = .{1, 1, 1, 1}
+                    };
+                    make_block_from_temporary_block(*t, block, level_arena);
+                }
                 return;
             }
 
@@ -366,9 +349,9 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
     selected: Entity_Id;
     selected_intersection: Vector3;
     
-    for :iterate_entities e, eid: entities {
-        position := to_vector3(entity_position(e, eid).*);
-        mesh := entity_mesh(e, eid);
+    for :iterate_entities e: level {
+        position := to_vector3(e.position);
+        mesh := entity_mesh(e);
 
         assert(mesh.vertex_positions.count % 3 == 0);
         tri_count := mesh.vertex_positions.count / 3;
@@ -398,7 +381,7 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
             
             smallest_t = t;
             selected_found = true;
-            selected = eid;
+            selected = xx it_index;
             selected_intersection = intersection;
         }
     }
@@ -509,9 +492,8 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
             mouse_position := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
             
-            e := get_entity(*entities, editor.selected);
-            e_position := entity_position(e, editor.selected);
-            selected_position := to_vector3(e_position.*);
+            e := get_entity(level, editor.selected);
+            selected_position := to_vector3(e.position);
 
             axis: Vector3;
             axis.component[index] = 1;
@@ -546,11 +528,11 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             || intersection_t <= 0 // Prevent the selection from going behind the camera when the intersection point is behind the camera
             || abs(intersection.component[index] - initial_intersection.component[index]) > 1000 {
             // Prevent the selection from flying to infinity when the camera is almost parallel and close to the axis
-                e_position.component[index] = selectable_start.component[index];
+                e.position.component[index] = selectable_start.component[index];
             } else {
                 movement := intersection.component[index] - initial_intersection.component[index];
                 new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
-                e_position.component[index] = new_position_component;
+                e.position.component[index] = new_position_component;
             }
     }
     

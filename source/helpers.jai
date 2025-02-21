@@ -164,7 +164,7 @@ alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -
     mem := alloc(arena, count * size_of(T), zero_init);
 
     array: [..] T;
-    array.count = count;
+    array.count = 0;
     array.data = mem;
     array.allocated = count;
     array.allocator.data = arena;
@@ -189,4 +189,24 @@ append_no_resize :: (a: *[..] $T, item: T) {
 contains :: (a: *[..] $T, item: T) -> bool {
     for a.* if it == item return true;
     return false;
+}
+
+
+append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
+    if a.count == a.allocated {
+        a.allocated *= 2;
+        new_memory := alloc(arena, a.allocated * size_of(T), zero_init=false);
+        memcpy(new_memory, a.data, a.count * size_of(T));
+        a.data = new_memory;
+    }
+
+    item := a.data + a.count;
+    a.count += 1;
+
+    return item;
+}
+
+
+append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
+    append(a, arena).* = item;
 }
