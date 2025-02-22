@@ -409,9 +409,9 @@ game_update : Game_Update : (
         }
         
         ENTRANCE_COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
-        draw_unviewed_item(entrance.position, *entrance_mesh, ENTRANCE_COLOR, ENTRANCE_COLOR / 2);
+        for * _Entrance draw_unviewed_item(it.position, *entrance_mesh, ENTRANCE_COLOR, ENTRANCE_COLOR / 2);
         EXIT_COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
-        draw_unviewed_item(exit.position, *exit_mesh, EXIT_COLOR, EXIT_COLOR / 2);
+        for * _Exit draw_unviewed_item(it.position, *exit_mesh, EXIT_COLOR, EXIT_COLOR / 2);
 
         glEnable(GL_CULL_FACE);
 
@@ -421,9 +421,13 @@ game_update : Game_Update : (
         //
 
         glUseProgram(color_shader);
-        set_uniform("projection", translate(world_to_camera, to_vector3(player.position)));
         set_uniform("color", Vector4.{1, 1, 1, 1});
-        bind_and_draw(*player_mesh);
+        for * _Player {
+            set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+            bind_and_draw(*player_mesh);
+        }
+        
+
 
         
         //
@@ -441,14 +445,19 @@ game_update : Game_Update : (
         // set_uniform("projection", translate(world_to_camera, to_vector3(entrance.position)));
         // set_uniform("color", Vector4.{ENTRANCE_COLOR.x, ENTRANCE_COLOR.y, ENTRANCE_COLOR.z, 0.5});
         // bind_and_draw(*entrance_mesh);
-
-        set_uniform("projection", translate(world_to_camera, to_vector3(exit.position)));
+        
         set_uniform("color", Vector4.{EXIT_COLOR.x, EXIT_COLOR.y, EXIT_COLOR.z, 0.5});
-        bind_and_draw(*exit_mesh);
+        for * _Exit {
+            set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+            bind_and_draw(*exit_mesh);
+        }
 
-        set_uniform("projection", translate(world_to_camera, to_vector3(player.position)));
+
         set_uniform("color", Vector4.{1, 1, 1, 0.5});
-        bind_and_draw(*player_mesh);
+        for * _Player {
+            set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+            bind_and_draw(*player_mesh);
+        }
 
         glDisable(GL_BLEND); 
         glDepthFunc(GL_LESS);

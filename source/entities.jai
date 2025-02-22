@@ -103,7 +103,7 @@ delete_entity :: (using level: *Level, eid: Entity_Id) {
     }
     assert(type_index >= 0);
 
-    array := types.components[type_index];
+    array := *types.components[type_index];
     
     offset := cast(*u8, e) - cast(*u8, array.data);
     index := offset / entity_size;

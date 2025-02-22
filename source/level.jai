@@ -17,10 +17,6 @@ Level :: struct {
     // @TODO: This should be a hash table... probably.
     entities: [..] *Entity;
 
-    player:     *Player;
-    entrance:   *Entrance;
-    exit:       *Exit;
-
     flags: enum {PULLING :: 1;};
     
     camera_pitch_ticks: s8 = 0;
@@ -459,6 +455,7 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     camera_offset := Vector3.{0, 0, 12};
     offset_matrix := make_translation_matrix4(camera_offset);
     
+    player := *_Player[0];
     position_matrix := make_translation_matrix4(-to_vector3(player.position) - Vector3.{0.5, 0.5, 0.5});
 
     pitch := lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
@@ -489,21 +486,18 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
     entities = alloc_array(arena, 1000, *Entity); // @TODO: Figure out how many entities are in the level instead of just picking a number.
     
     _Entrance = alloc_array(arena, 1, Entrance);
-    entrance = make_entity(level, Entrance);
-    entrance.* = .{
+    make_entity(level, Entrance).* = .{
         position = .{-1, 0, -1},
     };
     
     _Exit = alloc_array(arena, 1, Exit);
-    exit = make_entity(level, Exit);
-    exit.* = .{
+    make_entity(level, Exit).* = .{
         position = .{2, 0, -1},
     };
     
     _Player = alloc_array(arena, 1, Player);
-    player = make_entity(level, Player);
-    player.* = .{
-        position = entrance.position,
+    make_entity(level, Player).* = .{
+        position = _Entrance[0].position,
     };
     
     _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
@@ -687,6 +681,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             case; return;
 
         }
+
+        player := *_Player[0];
         
         new_player_position := player.position + push_direction;
 
@@ -775,9 +771,12 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
         if !move_failed {
             player.position = new_player_position;
-            if player.position == exit.position {
-                free_level(level, level_arena);
-                make_level_for_game(level, level_arena);
+            for * _Exit {
+                if player.position == it.position {
+                    free_level(level, level_arena);
+                    make_level_for_game(level, level_arena);
+                    break;
+                }
             }
         }
     }
@@ -815,6 +814,8 @@ level_update :: (using level: *Level, dt: float) {
     positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
     position_count := 1;
     
+    player := *_Player[0];
+
     player_success, player_index := get_3d_index(player.position, level_position, level_size);
     assert(player_success);
     positions[0] = .{player_index, player.position};
