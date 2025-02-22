@@ -79,23 +79,6 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         
         os_procs = data.os_procs;
 
-        {
-            result :: () #expand {
-                if err.ok print("Ok, %\n", i);
-                else print("Error, %\n", err.message);
-            }
-
-            err, i := deserialize("0", int);
-            result();
-            err, i = deserialize("1000", int);
-            result();
-            err, i = deserialize("-1000", int);
-            result();
-
-            err, i = deserialize("-1000 200", int);
-            result();
-        }
-
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
             assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
@@ -233,6 +216,11 @@ game_update : Game_Update : (
         // get cleared at the end of the frame.
         // Therefore, we check to make sure everyone has popped their stuff
         // off of the stack.
+
+        // @TODO: This isn't a very good check because someone higher up the call
+        // stack could just call "restore_mark" and set the current to 0 even if
+        // someone lower in the call stack could have done it.
+        // This causes us to use more memory than we should.
         
         // glClear up here so it doesn't happen after anyone does any debug drawing
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

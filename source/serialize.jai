@@ -30,35 +30,108 @@ serialize :: (val: $T) {
 }
 
 
-Deserialize_Error :: struct {
+Deserialization_Error :: struct {
     ok: bool;
+
+    // These are only used if ok is false.
     message: string;
+    loc: Deserialization_Location;
 }
 
 
-deserialize :: (data: string, $T: Type) -> Deserialize_Error, T {
+OK             :: Deserialization_Error.{ok=true};
+UNEXPECTED_EOF :: Deserialization_Error.{false, "Unexpected end of file.", .{}};
+
+
+Deserialization_Location :: struct {
+    start: s64;
+    count: s64;
+}
+
+
+deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserialization_Error {
     lexer := Lexer.{str = data};
-    TYPE :: type_info(T);
+    INFO :: type_info(T);
 
-    OK :: Deserialize_Error.{ok=true};
+    #if INFO.type == .INTEGER {
+        i: int;
+        err := deserialize_next(*lexer, INFO, *i, arena);
+        if !err.ok return err;
+        token := get_token(*lexer);
+        if token.type != .EOF return .{false, "Expected no more tokens after the integer token.", token.loc};
+        val.* = xx i;
+        return OK;
 
-    #if TYPE.type == .INTEGER {
-        err, token := get_token(*lexer);
-        if err.type == {
-            case .OK;
-                if token.type != .INT return .{false, "Expected an integer token when deserializing to an integer type."}, 0;
-                next_err, next_token := get_token(*lexer);
-                if next_err.type != .EOF return .{false, "Unexpected token after the integer token."}, 0;
-                return OK, xx token.int_value;
-                // @TODO: We should do our own bounds checking and have an appropriate failure
-                // message, jai native bounds check failur just crashes the program.
-            case .EOF;
-                return .{false, "We need a token in order to deserialize something."}, 0;
-            case .ERROR;
-                return .{false, err.message}, 0;
+    } else #if INFO.type == .ARRAY {
+        token := get_token(*lexer);
+        if token.type == .EOF return UNEXPECTED_EOF;
+        if token.type == .ERROR return .{false, token.error, token.loc};
+        if token.type != .INT return .{false, "Expected the first token of an array declaration to be an integer length.", token.loc};
+
+        count := token.int_value;
+        if #complete INFO.array_type == {
+            case .FIXED;
+                assert(false); // @Incomplete
+            case .VIEW;
+                if arena == null return .{false, "This array expected to dynamically allocate memory.", token.loc};
+                mark := get_mark(arena);
+                memory := alloc(arena, count * INFO.element_type.runtime_size, zero_init=false);
+                for 0..count-1 {
+                    err := deserialize_next(*lexer, INFO.element_type, memory + it * INFO.element_type.runtime_size, arena);
+                    if !err.ok {
+                        restore_mark(arena, mark);
+                        return err;
+                    }
+                }
+                val.* = .{count, memory};
+                return OK;
+            case .RESIZABLE;
+                assert(false); // @Incomplete
+                return .{};
         }
+        assert(false);
+        return .{};
     } else #assert false;
-    return .{false, "This is a programmer error, this error message should never show up."}, 0;
+}
+
+
+deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory_Arena) -> Deserialization_Error {
+    if info.type == {
+        case .INTEGER; 
+            int_info := cast(*Type_Info_Integer, info);
+            token := get_token(lexer);
+            if token.type == .EOF return UNEXPECTED_EOF;
+            if token.type == .ERROR return .{false, token.error, token.loc};
+            if token.type != .INT {
+                return .{false, "Expected an integer token when deserializing to an integer type.", token.loc};
+            }
+
+            value := token.int_value;
+            
+            // @Incomplete: We should do our own bounds checking and have an appropriate failure
+            // message, jai native bounds check failure just crashes the program.
+            if int_info.runtime_size == {
+                case 1;
+                    if int_info.signed cast(*s8, ptr).* = xx value;
+                    else               cast(*u8, ptr).* = xx value;
+                case 2;
+                    if int_info.signed cast(*s16, ptr).* = xx value;
+                    else               cast(*u16, ptr).* = xx value;
+                case 4;
+                    if int_info.signed cast(*s32, ptr).* = xx value;
+                    else               cast(*u32, ptr).* = xx value;
+                case 8;
+                    if int_info.signed cast(*s64, ptr).* = xx value;
+                    else               cast(*u64, ptr).* = xx value;
+                case; assert(false);
+            }
+
+            return OK;
+        case; assert(false);
+    }
+
+    assert(false);
+    return .{};
 }
 
 
@@ -66,13 +139,17 @@ deserialize :: (data: string, $T: Type) -> Deserialize_Error, T {
 
 Token_Type :: enum {
     INT;
+    ERROR;
+    EOF;
 }
 
 
 Token :: struct {
     type: Token_Type;
+    loc: Deserialization_Location; // Valid as long as this isn't an EOF
     union {
         int_value: s64;
+        error: string;
     }
 }
 
@@ -83,57 +160,50 @@ Lexer :: struct {
 }
 
 
-Token_Error :: struct {
-    type: enum { OK; EOF; ERROR; };
-    message: string; // Be careful here. Because of DLL hot-reloading, static strings cannot persist past the frame boundary.
-}
+get_token :: (using lexer: *Lexer) -> Token {
+    EOF :: Token.{type=.EOF};
 
+    err :: inline (error: string, loc: Deserialization_Location) -> Token {
+        return .{type=.ERROR, error=error, loc=loc};
+    }
 
-get_token :: (using lexer: *Lexer) -> Token_Error, Token {
-    OK :: Token_Error.{};
-    EOF :: Token_Error.{type=.EOF};
-
-    if index >= str.count return EOF, .{};
+    if index >= str.count return EOF;
     
     while str[index] == #char " " || str[index] == #char "\n" || str[index] == #char "\r" || str[index] == #char "\t" {
         index += 1;
-        if index == str.count return EOF, .{};
+        if index == str.count return EOF;
     }
     
     if str[index] == #char "-" {
+        minus_index := index;
         index += 1;
-        err, token := get_token(lexer);
-        if err.type == {
-            case .OK;
-                if #complete token.type == {
-                    case .INT;
-                        return OK, .{type = .INT, int_value = -token.int_value};
-                    case;
-                        return .{.ERROR, "Expected a number after a minus sign."}, .{};
-                }
-            case .EOF;
-                return .{.ERROR, "Unexpected EOF after a minus sign."}, .{};
-            case .ERROR;
-                return err, .{};
+        token := get_token(lexer);
+        if token.type == {
+            case .EOF; return err("Expected a number after the minus sign", .{minus_index, 1});
+            case .ERROR; return token;
+            case .INT; return .{type=.INT, int_value = -token.int_value, loc = .{token.loc.start - 1, token.loc.count + 1}};
+            case; return err("Expected a number after a minus sign.", token.loc);
         }
     }
 
     if #char "0" <= str[index] && str[index] <= #char "9" {
+        start_index := index;
         value: s64 = str[index] - #char "0";
         index += 1;
         while true {
-            if index >= str.count return OK, .{type = .INT, int_value = value};
+            if index >= str.count return .{type = .INT, int_value = value, loc = .{start_index, str.count - start_index}};
             if #char "0" <= str[index] && str[index] <= #char "9" {
                 value *= 10;
                 value += str[index] - #char "0";
                 index += 1;
             } else if str[index] == #char " " {
-                return OK, .{type = .INT, int_value = value};
+                return .{type=.INT, int_value=value, loc=.{start_index, index - start_index}};
             } else {
-                return .{.ERROR, "Encountered an unexpected character in a number."}, .{};
+                return err("Encountered an unexpected character in a number.", .{index, 1});
             }
         }
     }
 
-    return .{.ERROR, "Not implemented yet."}, .{};
+    assert(false);
+    return .{};
 }
