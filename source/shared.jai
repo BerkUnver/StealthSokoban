@@ -14,12 +14,17 @@ LEVEL_ARENA_SIZE     :: 1 << 24;
 PERMANENT_ARENA_SIZE :: 1 << 22;
 FRAME_ARENA_SIZE     :: 1 << 20;
 
-Game_Init_Data :: struct {
-    game_memory: *void;
-    gl_extension_loader: (*u8) -> *void #c_call;
+OS_Procedures :: struct {
     os_print: (string);
     read_file: (string, [] u8) -> bool, int;
     write_file: (string, string) -> bool;
+    set_console_text_color: (Console_Text_Color);
+}
+
+Game_Init_Data :: struct {
+    game_memory: *void;
+    gl_extension_loader: (*u8) -> *void #c_call;
+    os_procs: OS_Procedures;
     level_arena_memory: *void;
     frame_arena_memory: *void;
     permanent_arena_memory: *void;
@@ -98,6 +103,13 @@ make_string_builder :: (backing_store: [] u8) -> String_Builder {
 String_Builder :: struct {
     buf: [] u8;
     index: int;
+}
+
+
+Console_Text_Color :: enum {
+    WHITE;
+    RED;
+    GREEN;
 }
 
 

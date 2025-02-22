@@ -10,13 +10,14 @@
 #load "editor.jai";
 #load "entities.jai";
 #load "serialize.jai";
+#load "test.jai";
 
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
-    os_print: (string);
-    read_file: (string, [] u8) -> bool, int;
-    write_file: (string, string) -> bool;
+    
+    using os_procs: OS_Procedures;
+
     imm_state: Imm_State;
 
     frame_arena: Memory_Arena;
@@ -75,10 +76,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
         permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
-
-        os_print = data.os_print;
-        read_file = data.read_file;
-        write_file = data.write_file;
+        
+        os_procs = data.os_procs;
 
         {
             result :: () #expand {
@@ -256,13 +255,21 @@ game_update : Game_Update : (
                         mode = .GAME;
                         make_level_for_game(*level, *level_arena);
                 }
-            } else {
-                if #complete mode == {
-                    case .GAME;
-                        level_handle_input(*level, *level_arena, it);
-                    case .EDITOR;
-                        editor_handle_input(*level, *level_arena, *editor, mouse, it);
-                }
+                continue;
+            }
+
+
+            if it.key == #char "T" && it.down {
+                test();
+                continue;
+            }
+
+
+            if #complete mode == {
+                case .GAME;
+                    level_handle_input(*level, *level_arena, it);
+                case .EDITOR;
+                    editor_handle_input(*level, *level_arena, *editor, mouse, it);
             }
         }
         

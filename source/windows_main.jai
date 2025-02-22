@@ -369,9 +369,12 @@ main :: () {
     data := Game_Init_Data.{
         game_memory            = game_memory,
         gl_extension_loader    = wglGetProcAddress,
-        os_print               = os_print,
-        read_file              = read_file,
-        write_file             = write_file,
+        os_procs = .{
+            os_print               = os_print,
+            read_file              = read_file,
+            write_file             = write_file,
+            set_console_text_color = set_console_text_color,
+        },
         level_arena_memory     = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
         permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
@@ -520,4 +523,13 @@ write_file :: (name: string, str: string) -> bool {
     if bytes_written < str.count return false;
 
     return true;
+}
+
+
+set_console_text_color :: (color: Console_Text_Color) {
+    if #complete color == {
+        case .WHITE; SetConsoleTextAttribute(windows.stdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+        case .RED;   SetConsoleTextAttribute(windows.stdout, FOREGROUND_RED);
+        case .GREEN; SetConsoleTextAttribute(windows.stdout, FOREGROUND_GREEN);
+    }
 }

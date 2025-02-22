@@ -49,7 +49,9 @@ deserialize :: (data: string, $T: Type) -> Deserialize_Error, T {
                 if token.type != .INT return .{false, "Expected an integer token when deserializing to an integer type."}, 0;
                 next_err, next_token := get_token(*lexer);
                 if next_err.type != .EOF return .{false, "Unexpected token after the integer token."}, 0;
-                return OK, token.int_value;
+                return OK, xx token.int_value;
+                // @TODO: We should do our own bounds checking and have an appropriate failure
+                // message, jai native bounds check failur just crashes the program.
             case .EOF;
                 return .{false, "We need a token in order to deserialize something."}, 0;
             case .ERROR;
