@@ -19,6 +19,7 @@ Game_Init_Data :: struct {
     gl_extension_loader: (*u8) -> *void #c_call;
     os_print: (string);
     read_file: (string, [] u8) -> bool, int;
+    write_file: (string, string) -> bool;
     level_arena_memory: *void;
     frame_arena_memory: *void;
     permanent_arena_memory: *void;
@@ -89,8 +90,18 @@ assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #e
 }
 
 
-format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: string {
-    buffer_index := 0;
+make_string_builder :: (backing_store: [] u8) -> String_Builder {
+    return .{backing_store, 0};
+}
+
+
+String_Builder :: struct {
+    buf: [] u8;
+    index: int;
+}
+
+
+print :: (using sb: *String_Builder, s: string, args: ..Any) {
     arg_index := 0;
     
     expand_to_s64 :: (value: *void, info: *Type_Info) -> s64 {
@@ -110,7 +121,7 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
         return 0;
     }
 
-    print_string :: (buffer: string, index: int, str: string) -> new_index: int {
+    print_string :: (buffer: [] u8, index: int, str: string) -> new_index: int {
         assert(index + str.count < buffer.count);
         memcpy(buffer.data + index, str.data, str.count);
         return index + str.count;
@@ -123,7 +134,7 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
             
             if arg.type == type_info(string) {
                 arg_str := cast(*string, arg.value_pointer).*;
-                buffer_index = print_string(buffer, buffer_index, arg_str);
+                index = print_string(buf, index, arg_str);
             } else if arg.type.type == .INTEGER {
                 negative: bool;
                 arg_u64: u64;
@@ -141,14 +152,14 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
                 }
 
                 if arg_u64 == 0 {
-                    assert(buffer_index < buffer.count);
-                    buffer[buffer_index] = #char "0";
-                    buffer_index += 1;
+                    assert(index < buf.count);
+                    buf[index] = #char "0";
+                    index += 1;
                 } else {
                     if negative {
-                        assert(buffer_index < buffer.count);
-                        buffer[buffer_index] = #char "-";
-                        buffer_index += 1;
+                        assert(index < buf.count);
+                        buf[index] = #char "-";
+                        index += 1;
                     }
                     
                     divisor: u64 = 1;
@@ -159,20 +170,20 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
                         digit_count += 1;
                     }
                     
-                    assert(buffer_index + digit_count <= buffer.count);
+                    assert(index + digit_count <= buf.count);
 
                     remainder := arg_u64;
                     while divisor {
-                        buffer[buffer_index] = cast(u8, #char "0" + remainder / divisor);
+                        buf[index] = cast(u8, #char "0" + remainder / divisor);
                         remainder = remainder % divisor;
                         divisor /= 10;
-                        buffer_index += 1;
+                        index += 1;
                     }
                 }
             } else if arg.type == type_info(bool) {
                 arg_bool := cast(*bool, arg.value_pointer).*;
                 str := ifx arg_bool "true" else "false";
-                buffer_index = print_string(buffer, buffer_index, str);
+                index = print_string(buf, index, str);
             } else if arg.type.type == .ENUM {
                 info := cast(*Type_Info_Enum, arg.type);
                 // @TODO: Figure out how u64 enums work (info.values type is [] s64)
@@ -181,7 +192,7 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
                 for info.values {
                     if it == arg_s64 {
                         str := info.names[it_index];
-                        buffer_index = print_string(buffer, buffer_index, str);
+                        index = print_string(buf, index, str);
                         found = true;
                         break;
                     }
@@ -190,11 +201,14 @@ format_print :: (buffer: string, s: string, args: ..Any) -> string, remaining: s
             }
             arg_index += 1;
         } else {
-            assert(buffer_index < buffer.count);
-            buffer[buffer_index] = s[it];
-            buffer_index += 1;
+            assert(index < buf.count);
+            buf[index] = s[it];
+            index += 1;
         }
     }
     assert(arg_index == args.count);
-    return .{buffer_index, buffer.data}, .{buffer.count - buffer_index, buffer.data + buffer_index};
+}
+
+get_string :: (using sb: *String_Builder) -> string {
+    return .{index, buf.data};
 }

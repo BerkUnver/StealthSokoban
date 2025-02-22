@@ -80,10 +80,11 @@ restore_mark :: (arena: *Memory_Arena, marker: s64) {
 
 
 print :: (s: string, args: ..Any) {
+    using context.game_context;
     buf: [4096] u8;
-    buf_str := string.{buf.count, buf.data};
-    buf_str = format_print(buf_str, s, ..args);
-    context.game_context.os_print(buf_str);
+    sb := make_string_builder(buf);
+    print(*sb, s, ..args);
+    os_print(get_string(*sb));
 }
 
 

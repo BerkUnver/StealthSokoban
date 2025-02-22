@@ -19,6 +19,7 @@
         copy_commonly_propagated_fields(options, *o);
 
         o.output_executable_name = "stealth_sokoban";
+        o.output_path = "../assets";
         set_build_options(o, w);
         compiler_begin_intercept(w);
         add_build_file("windows_main.jai", w);
@@ -37,6 +38,7 @@
 
         o.output_type = .DYNAMIC_LIBRARY;
         o.output_executable_name = "stealth_sokoban_game_fresh";
+        o.output_path = "../assets";
         set_build_options(o, w);
         compiler_begin_intercept(w);
         add_build_file("game.jai", w);

@@ -17,23 +17,21 @@
     }
 
     buf: [4096] u8;
-    str := string.{buf.count, buf.data};
+    sb := make_string_builder(buf);
     
-    _, str = format_print(str, "Entity_Types :: struct {\n");
-    _, str = format_print(str, "    TYPES :: %\n", TYPES);
-    _, str = format_print(str, "    union {\n");
-    _, str = format_print(str, "        struct {\n");
+    print(*sb, "Entity_Types :: struct {\n");
+    print(*sb, "    TYPES :: %\n", TYPES);
+    print(*sb, "    union {\n");
+    print(*sb, "        struct {\n");
     for entities {
-        _, str = format_print(str, "            _%: [..] %;\n", it.name, it.name);
+        print(*sb, "            _%: [..] %;\n", it.name, it.name);
     }
-    _, str = format_print(str, "        }\n");
-    _, str = format_print(str, "        components: [%] Resizable_Array;\n", entities.count);
-    _, str = format_print(str, "    }\n");
-    _, str = format_print(str, "}\n");
-
-    count := buf.count - str.count;
-
-    return .{count, buf.data};
+    print(*sb, "        }\n");
+    print(*sb, "        components: [%] Resizable_Array;\n", entities.count);
+    print(*sb, "    }\n");
+    print(*sb, "}\n");
+    
+    return get_string(*sb);
 }
 
 

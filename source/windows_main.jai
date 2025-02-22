@@ -323,15 +323,26 @@ main :: () {
 
         index := 0;
         last_path_index := -1;
+        second_to_last_path_index := -1;
         while exe_path[index] != #char "\0" {
-            if exe_path[index] == #char "\\" last_path_index = index;
+            if exe_path[index] == #char "\\" {
+                second_to_last_path_index = last_path_index;
+                last_path_index = index;
+            
+            }
             index += 1;
         }
-        exe_path[last_path_index] = #char "\0";
-        assert(SetCurrentDirectoryA(exe_path.data) != 0);
-    }
 
-    
+        assert(last_path_index >= 0 && second_to_last_path_index >= 0);
+        game_path := string.{second_to_last_path_index + 1, exe_path.data};
+
+        assets_path_buf: [MAX_PATH] u8;
+        sb := make_string_builder(assets_path_buf);
+        print(*sb, "%assets\0", game_path);
+        assert(SetCurrentDirectoryA(get_string(*sb).data) != 0);
+    }
+   
+
     //
     // Initialize the game state
     //
@@ -360,6 +371,7 @@ main :: () {
         gl_extension_loader    = wglGetProcAddress,
         os_print               = os_print,
         read_file              = read_file,
+        write_file             = write_file,
         level_arena_memory     = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
         permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
@@ -449,9 +461,9 @@ main :: () {
 
 print :: (s: string, args: ..Any) {
     buf: [4096] u8;
-    buf_str := string.{buf.count, buf.data};
-    buf_str = format_print(buf_str, s, ..args);
-    os_print(buf_str);
+    sb := make_string_builder(buf);
+    print(*sb, s, ..args);
+    os_print(get_string(*sb));
 }
 
 
@@ -462,14 +474,21 @@ os_print :: (s: string) {
 }
 
 
-// @TODO: Switch to using the Jai allocator-passing method so we can pass an allocator to this without it knowing about memory arenas?
-read_file :: (name: string, buf: [] u8) -> bool, int {
+jai_string_to_path :: (str: string) -> [MAX_PATH] u8 {
     // @TODO: Maybe we can detect when name is a static string (it is zero-terminated) and skip translating it?
 
     path: [MAX_PATH] u8;
-    assert(name.count <= MAX_PATH - 1);
-    memcpy(path.data, name.data, name.count);
-    path[name.count] = 0;
+    assert(str.count <= MAX_PATH - 1);
+    memcpy(path.data, str.data, str.count);
+    path[str.count] = 0;
+    return path;
+}
+
+
+// @TODO: Switch to using the Jai allocator-passing method so we can pass an allocator to this without it knowing about memory arenas?
+read_file :: (name: string, buf: [] u8) -> bool, int {
+    
+    path := jai_string_to_path(name);
 
     handle := CreateFileA(path.data, FILE_GENERIC_READ);
     if handle == INVALID_HANDLE_VALUE return false, -1;
@@ -486,4 +505,19 @@ read_file :: (name: string, buf: [] u8) -> bool, int {
     assert(read_size == size);
 
     return true, size;
+}
+
+
+write_file :: (name: string, str: string) -> bool {
+    path := jai_string_to_path(name);
+
+    handle := CreateFileA(path.data, FILE_GENERIC_WRITE, creation = CREATE_ALWAYS);
+    if handle == INVALID_HANDLE_VALUE return false;
+    defer CloseHandle(handle);
+    
+    bytes_written: u32;
+    WriteFile(handle, str.data, xx str.count, *bytes_written, null);
+    if bytes_written < str.count return false;
+
+    return true;
 }

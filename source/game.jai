@@ -9,12 +9,14 @@
 #load "level.jai";
 #load "editor.jai";
 #load "entities.jai";
+#load "serialize.jai";
 
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
     os_print: (string);
     read_file: (string, [] u8) -> bool, int;
+    write_file: (string, string) -> bool;
     imm_state: Imm_State;
 
     frame_arena: Memory_Arena;
@@ -76,7 +78,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         os_print = data.os_print;
         read_file = data.read_file;
-
+        write_file = data.write_file;
+        
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
             assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
@@ -472,7 +475,7 @@ game_update : Game_Update : (
                 e := get_entity(*level, editor.selected);
                 mesh := entity_mesh(e);
                 position := to_vector3(e.position);
-
+                
                 draw_wireframe_mesh(mesh, translate(world_to_camera, position), color);
             }
 
