@@ -79,7 +79,24 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         os_print = data.os_print;
         read_file = data.read_file;
         write_file = data.write_file;
-        
+
+        {
+            result :: () #expand {
+                if err.ok print("Ok, %\n", i);
+                else print("Error, %\n", err.message);
+            }
+
+            err, i := deserialize("0", int);
+            result();
+            err, i = deserialize("1000", int);
+            result();
+            err, i = deserialize("-1000", int);
+            result();
+
+            err, i = deserialize("-1000 200", int);
+            result();
+        }
+
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
             assert((it.flags & .PROCEDURE_WITH_VOID_POINTER_TYPE_INFO) != 0);
@@ -520,7 +537,7 @@ game_update : Game_Update : (
             }
 
             raycast_visitor :: (position: Vector3, using data: Raycast_Data) -> bool {
-                success, index := get_3d_index(to_vector3i(position), col.position, col.size);
+                success, index := get_3d_index(to_vector3i(position), col.position, col}, .{};
                 if !success return false;
                 
                 color: Vector4 = ---;

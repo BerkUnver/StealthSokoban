@@ -101,6 +101,13 @@ String_Builder :: struct {
 }
 
 
+print_string :: (using sb: *String_Builder, str: string) {
+    assert(index + str.count < buf.count);
+    memcpy(buf.data + index, str.data, str.count);
+    index += str.count;
+}
+
+
 print :: (using sb: *String_Builder, s: string, args: ..Any) {
     arg_index := 0;
     
@@ -121,12 +128,6 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
         return 0;
     }
 
-    print_string :: (buffer: [] u8, index: int, str: string) -> new_index: int {
-        assert(index + str.count < buffer.count);
-        memcpy(buffer.data + index, str.data, str.count);
-        return index + str.count;
-    }
-
     for 0..s.count-1 {
         if s[it] == #char "%" {
             assert(arg_index < args.count);
@@ -134,7 +135,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
             
             if arg.type == type_info(string) {
                 arg_str := cast(*string, arg.value_pointer).*;
-                index = print_string(buf, index, arg_str);
+                print_string(sb, arg_str);
             } else if arg.type.type == .INTEGER {
                 negative: bool;
                 arg_u64: u64;
@@ -183,7 +184,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
             } else if arg.type == type_info(bool) {
                 arg_bool := cast(*bool, arg.value_pointer).*;
                 str := ifx arg_bool "true" else "false";
-                index = print_string(buf, index, str);
+                print_string(sb, str);
             } else if arg.type.type == .ENUM {
                 info := cast(*Type_Info_Enum, arg.type);
                 // @TODO: Figure out how u64 enums work (info.values type is [] s64)
@@ -192,12 +193,35 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                 for info.values {
                     if it == arg_s64 {
                         str := info.names[it_index];
-                        index = print_string(buf, index, str);
+                        print_string(sb, str);
                         found = true;
                         break;
                     }
                 }
                 assert(found); // @TODO: Print "(Type_Name) value" or something like that.
+            } else if arg.type.type == .ARRAY {
+                info := cast(*Type_Info_Array, arg.type);
+
+                print_array :: (sb: *String_Builder, count: s64, data: *void, type: *Type_Info) {
+                    print(sb, "[ ");
+                    for 0..count-1 {
+                        element_ptr := data + type.runtime_size * it;
+                        member_args := Any.[ dynamic_any(type, element_ptr) ];
+                        print(sb, "% ", ..member_args);
+                    }
+                    print(sb, "]");
+                }
+
+                if info.array_type == {
+                    case .FIXED; assert(false); // @TODO
+                    case .VIEW;
+                        view := cast(*Array_View_64, arg.value_pointer);
+                        print_array(sb, view.count, view.data, info.element_type);
+
+                    case .RESIZABLE;
+                        array := cast(*Resizable_Array, arg.value_pointer);
+                        print_array(sb, array.count, array.data, info.element_type);
+                }
             }
             arg_index += 1;
         } else {
@@ -211,4 +235,10 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
 
 get_string :: (using sb: *String_Builder) -> string {
     return .{index, buf.data};
+}
+
+
+dynamic_any :: inline (type: *Type_Info, value_pointer: *void) -> Any {
+    any := Any_Struct.{type = type, value_pointer = value_pointer};
+    return cast(*Any, *any).*;
 }
