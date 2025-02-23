@@ -211,3 +211,9 @@ append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
 append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
     append(a, arena).* = item;
 }
+
+
+init_from_info :: (info: *Type_Info_Struct, ptr: *void) {
+    if info.initializer info.initializer(ptr);
+    else memset(ptr, 0, info.runtime_size);
+}

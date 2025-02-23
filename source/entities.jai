@@ -60,10 +60,7 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
     if arena append(*entities, e, arena);
     else append_no_resize(*entities, e);
     
-
-
-    if type.initializer type.initializer(e);
-    else memset(e, 0, type.runtime_size);
+    init_from_info(type, e);
 
     return e;
 }

@@ -33,6 +33,10 @@ expect :: (err: Deserialization_Error, loc := #caller_location) {
 test :: () {
     using context.game_context;
     
+    //
+    // Deserialization
+    //
+    
     i: int;
     
     err := deserialize("0", *i);
@@ -120,9 +124,81 @@ END
 a -100
 c 2040
 END
-        
         err := deserialize(input, *result);
         expect(err);
         expect(memcmp(*result, *expected, size_of(Struct)) == 0);
+    }
+
+
+    //
+    // Serialization
+    //
+    
+    buf: [4096] u8 = ---;
+
+    {
+        input := 1;
+        str := serialize(buf, *input);
+        expect(str == "1\n");
+    }
+    
+    {
+        Struct :: struct { a: s64; b: u32; }
+        input := Struct.{10, 20};
+        expected := #string
+END
+a 10
+b 20
+END
+        str := serialize(buf, *input);
+        expect(str == expected);
+    }
+
+    {
+        Struct :: struct { a: u8 = 32; b: u64; }
+        input := Struct.{b=100};
+        expected := #string
+END
+b 100
+END
+        str := serialize(buf, *input);
+        expect(str == expected);
+    }
+
+    {
+        Member :: struct { a: u8; b: s32; }
+        Struct :: struct { a: u8; b: Member; c: s64; }
+        input := Struct.{
+            a=10,
+            b=.{32, -400},
+        };
+        expected := #string
+END
+a 10
+b {
+	a 32
+	b -400
+}
+END
+        str := serialize(buf, *input);
+        expect(str == expected);
+    }
+
+    {
+        Member :: struct { a := 1; b: u16; }
+        Struct :: struct { a: Member; b: Member; c: s32; }
+        input := Struct.{
+            b = .{b = 3},
+            c = -44
+        };
+        expected := #string
+END
+b {
+	b 3
+}
+c -44
+END
+        str := serialize(buf, *input);
+        expect(str == expected);
     }
 }

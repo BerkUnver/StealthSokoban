@@ -1,32 +1,60 @@
-serialize :: (val: $T) {
+serialize :: (buf: [] u8, val: *$T) -> string {
     using context.game_context;
     
-    buf: [4096] u8 = ---;
     sb := make_string_builder(buf);
-    
-    TYPE :: type_info(T);
 
-    #if TYPE.type == .INTEGER || TYPE.type == .ARRAY {
-        print(*sb, "%", val);
+    INFO :: type_info(T);
 
-    } else #if TYPE.type == .ENUM {
-       args := Any.[ dynamic_any(TYPE.internal_type, *val) ];
-       print(*sb, "%", ..args);
+    #if INFO.type == .STRUCT {
+        default_buffer: [1024] u8 = ---;
+        default := default_buffer.data;
+        assert(INFO.runtime_size <= default_buffer.count);
 
-    // Should we make the user pass a pointer to val instead of val if it's a struct?
-    } else #if TYPE.type == .STRUCT {
-        print(*sb, "{\n");
-        for * type.members {  
-            if it.flags & .CONSTANT != 0 continue;
-            value_pointer := cast(*u8, *val) + it.offset_in_bytes;
-            args := Any.[ dynamic_any(it.type, value_pointer) ];
-            print(*sb, "\t%\n", ..args);
-        }
-        print(*sb, "}\n");
+        init_from_info(INFO, default);
+
+        serialize_struct(*sb, INFO, val, default, 0); 
+    } else {
+        serialize_primitive(*sb, INFO, val);
     }
 
-    str := get_string(*sb);
-    write_file("test_serialize.txt", str);
+   return get_string(*sb);
+}
+
+
+serialize_struct :: (sb: *String_Builder, info: *Type_Info_Struct, val: *void, default: *void, indent: int) {
+    for * info.members {
+        if it.flags & .CONSTANT continue;
+
+        member_val := val + it.offset_in_bytes;
+        member_default := default + it.offset_in_bytes;
+
+        if memcmp(member_val, member_default, it.type.runtime_size) == 0 {
+            continue; // The member has its default value. Don't serialize it.
+        }
+
+        for 0..indent-1 print_string(sb, "\t");
+        print(sb, "% ", it.name);
+        
+        if it.type.type == .STRUCT {
+            print_string(sb, "{\n");
+            serialize_struct(sb, xx it.type, member_val, member_default, indent + 1);
+            for 0..indent-1 print_string(sb, "\t");
+            print_string(sb, "}\n");
+        } else {
+            serialize_primitive(sb, it.type, member_val);
+        }
+    }
+}
+
+
+serialize_primitive :: (sb: *String_Builder, info: *Type_Info, val: *void) {
+    if info.type == .ENUM {
+        args := Any.[ dynamic_any(cast(*Type_Info_Enum, info).internal_type, *val) ];
+        print(sb, "%\n", ..args);
+    } else {
+        args := Any.[ dynamic_any(info, val) ];
+        print(sb, "%\n", ..args);
+    }
 }
 
 
