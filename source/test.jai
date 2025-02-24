@@ -11,6 +11,16 @@ expect :: (b: bool, loc := #caller_location) {
     }
 }
 
+
+expect :: (expected: string, result: string, loc := #caller_location) {
+    success := expected == result;
+    expect(success, loc);
+    if !success {
+        print("Expected string:\n\n%\n\nReceived string:\n\n%\n", expected, result);
+    }
+}
+
+
 expect :: (err: Deserialization_Error, loc := #caller_location) {
     using context.game_context;
     if err.ok {
@@ -57,7 +67,7 @@ test :: () {
 
         expected := int.[1, 2, 3];
         view: [] int;
-        err := deserialize("3 1 2 3", *view, *frame_arena);
+        err := deserialize("3[1 2 3]", *view, *frame_arena);
         expect(err);
         expect(view.count == expected.count);
         expect(memcmp(view.data, expected.data, size_of(type_of(expected))) == 0);
@@ -75,6 +85,7 @@ test :: () {
 END
 a -7051
 b 33
+;
 END
         err := deserialize(input, *result);
         expect(err);
@@ -99,11 +110,12 @@ END
         input := #string
 END
 a 2000
-b {
+b
     a -53
     b 47
-}
+    ;
 c -3
+;
 END
         err := deserialize(input, *result);
         expect(err);
@@ -123,6 +135,7 @@ END
 END
 a -100
 c 2040
+;
 END
         err := deserialize(input, *result);
         expect(err);
@@ -139,7 +152,7 @@ END
     {
         input := 1;
         str := serialize(buf, *input);
-        expect(str == "1\n");
+        expect("1", str);
     }
     
     {
@@ -149,9 +162,11 @@ END
 END
 a 10
 b 20
+;
 END
+        expected.count -= 1; // @Hack for the extra newline at the end.
         str := serialize(buf, *input);
-        expect(str == expected);
+        expect(expected, str);
     }
 
     {
@@ -160,9 +175,11 @@ END
         expected := #string
 END
 b 100
+;
 END
+        expected.count -= 1;
         str := serialize(buf, *input);
-        expect(str == expected);
+        expect(expected, str);
     }
 
     {
@@ -175,13 +192,15 @@ END
         expected := #string
 END
 a 10
-b {
+b
 	a 32
 	b -400
-}
+	;
+;
 END
+        expected.count -= 1;
         str := serialize(buf, *input);
-        expect(str == expected);
+        expect(expected, str);
     }
 
     {
@@ -193,12 +212,56 @@ END
         };
         expected := #string
 END
-b {
+b
 	b 3
-}
+	;
 c -44
-END
+;
+END 
+        expected.count -= 1;
         str := serialize(buf, *input);
-        expect(str == expected);
+        expect(expected, str);
+    }
+
+
+    {
+        input_backing := int.[1, 2, 3, 4];
+        input: [] int = input_backing;
+        expected := "4[ 1 2 3 4 ]";
+        str := serialize(buf, *input);
+        expect(expected, str);
+    }
+
+    {
+        input_backing := int.[0, 0, 0];
+        input: [] int = input_backing;
+        expected := "3[ 0 0 0 ]";
+        str := serialize(buf, *input);
+        expect(expected, str);
+    }
+
+    {
+        Struct :: struct { a: int; b: u32; }
+        input_backing := Struct.[
+            .{1, 2},
+            .{0, 0},
+            .{-10, 300},
+        ];
+        input: [] Struct = input_backing;
+        expected := #string
+END
+3[
+	a 1
+	b 2
+	;
+	;
+	a -10
+	b 300
+	;
+]
+END
+        expected.count -= 1;
+        str := serialize(buf, *input);
+        expect(expected, str);
     }
 }

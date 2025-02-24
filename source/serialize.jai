@@ -4,56 +4,94 @@ serialize :: (buf: [] u8, val: *$T) -> string {
     sb := make_string_builder(buf);
 
     INFO :: type_info(T);
-
+    
+    default: *void;
     #if INFO.type == .STRUCT {
         default_buffer: [1024] u8 = ---;
-        default := default_buffer.data;
         assert(INFO.runtime_size <= default_buffer.count);
-
+        default = default_buffer.data;
         init_from_info(INFO, default);
 
-        serialize_struct(*sb, INFO, val, default, 0); 
-    } else {
-        serialize_primitive(*sb, INFO, val);
     }
+    serialize_next(*sb, INFO, val, default, 0); 
 
    return get_string(*sb);
 }
 
 
-serialize_struct :: (sb: *String_Builder, info: *Type_Info_Struct, val: *void, default: *void, indent: int) {
-    for * info.members {
-        if it.flags & .CONSTANT continue;
+serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_default: *void, indent: int) {
+    if info.type == {
+        case .ENUM;
+            args := Any.[ dynamic_any(cast(*Type_Info_Enum, info).internal_type, *val) ];
+            print(sb, "%", ..args);
 
-        member_val := val + it.offset_in_bytes;
-        member_default := default + it.offset_in_bytes;
+        case .ARRAY;
+            array_info := cast(*Type_Info_Array, info);
 
-        if memcmp(member_val, member_default, it.type.runtime_size) == 0 {
-            continue; // The member has its default value. Don't serialize it.
-        }
+            count: s64;
+            data: *void;
 
-        for 0..indent-1 print_string(sb, "\t");
-        print(sb, "% ", it.name);
-        
-        if it.type.type == .STRUCT {
-            print_string(sb, "{\n");
-            serialize_struct(sb, xx it.type, member_val, member_default, indent + 1);
+            if array_info.array_type == {
+                case .FIXED; assert(false);
+                case .VIEW;
+                    view := cast(*Array_View_64, val);
+                    count = view.count;
+                    data = view.data;
+                case .RESIZABLE;
+                    array := cast(*Resizable_Array, val);
+                    count = array.count;
+                    data = array.data;
+            };
+
+            separator := ifx array_info.element_type.type == .STRUCT then "\n" else " ";
+            print(sb, "%[%", count, separator);
+
+            size := array_info.element_type.runtime_size;
+            
+            default: *void;
+            if array_info.element_type.type == .STRUCT {
+                struct_info := cast(*Type_Info_Struct, array_info.element_type);
+
+                default_buffer: [1024] u8;
+                default = default_buffer.data;
+                assert(struct_info.runtime_size <= default_buffer.count);
+
+                init_from_info(struct_info, default);
+            }
+
+            for 0..count-1 {
+                serialize_next(sb, array_info.element_type, data + it * size, default, indent + 1);
+                print_string(sb, separator);
+            }
+
+            print_string(sb, "]");
+        case .STRUCT;
+            struct_info := cast(*Type_Info_Struct, info);
+            for * struct_info.members {
+                if it.flags & .CONSTANT continue;
+
+                member_val := val + it.offset_in_bytes;
+                member_default := struct_default + it.offset_in_bytes;
+
+                if memcmp(member_val, member_default, it.type.runtime_size) == 0 {
+                    continue; // The member has its default value. Don't serialize it.
+                }
+
+                for 0..indent-1 print_string(sb, "\t");
+
+                print_string(sb, it.name);
+                print_string(sb, ifx it.type.type == .STRUCT "\n" else " ");
+
+                
+                serialize_next(sb, xx it.type, member_val, member_default, indent + 1);
+                print_string(sb, "\n");
+            }
+
             for 0..indent-1 print_string(sb, "\t");
-            print_string(sb, "}\n");
-        } else {
-            serialize_primitive(sb, it.type, member_val);
-        }
-    }
-}
-
-
-serialize_primitive :: (sb: *String_Builder, info: *Type_Info, val: *void) {
-    if info.type == .ENUM {
-        args := Any.[ dynamic_any(cast(*Type_Info_Enum, info).internal_type, *val) ];
-        print(sb, "%\n", ..args);
-    } else {
-        args := Any.[ dynamic_any(info, val) ];
-        print(sb, "%\n", ..args);
+            print_string(sb, ";");
+        case;
+            args := Any.[ dynamic_any(info, val) ];
+            print(sb, "%", ..args);
     }
 }
 
@@ -86,50 +124,23 @@ return_if_invalid :: (token: Token) #expand {
 deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserialization_Error {
     lexer := Lexer.{str = data};
     INFO :: type_info(T);
+    
+    mark: s64;
+    if arena != null mark = get_mark(arena);
 
-    #if INFO.type == .INTEGER {
-        i: int;
-        err := deserialize_next(*lexer, INFO, *i, arena);
-        if !err.ok return err;
-        token := get_token(*lexer);
-        if token.type == .ERROR return.{false, token.error, token.loc};
-        if token.type != .EOF return .{false, "Expected no more tokens after the integer token.", token.loc};
-        val.* = xx i;
-        return OK;
+    err_return :: (e: Deserialization_Error) #expand {
+        if arena restore_mark(arena, mark);
+        `return e;
+    }
 
-    } else #if INFO.type == .ARRAY {
-        token := get_token(*lexer);
-        return_if_invalid(token);
-        if token.type != .INT return .{false, "Expected the first token of an array declaration to be an integer length.", token.loc};
+    err := deserialize_next(*lexer, type_info(T), val, arena);
+    if !err.ok err_return(err);
 
-        count := token.int_value;
-        if #complete INFO.array_type == {
-            case .FIXED;
-                assert(false); // @Incomplete
-            case .VIEW;
-                if arena == null return .{false, "This array expected to dynamically allocate memory.", token.loc};
-                mark := get_mark(arena);
-                memory := alloc(arena, count * INFO.element_type.runtime_size, zero_init=false);
-                for 0..count-1 {
-                    err := deserialize_next(*lexer, INFO.element_type, memory + it * INFO.element_type.runtime_size, arena);
-                    if !err.ok {
-                        restore_mark(arena, mark);
-                        return err;
-                    }
-                }
-                val.* = .{count, memory};
-                return OK;
-            case .RESIZABLE;
-                assert(false); // @Incomplete
-                return .{};
-        }
+    token := get_token(*lexer);
+    if token.type == .ERROR err_return(.{false, token.error, token.loc});
+    if token.type != .EOF   err_return(.{false, "Expected no more tokens after the end of what we just deserialized.", token.loc});
 
-        assert(false);
-        return .{};
-    } else #if INFO.type == .STRUCT {
-        // @Incomplete
-        return deserialize_next(*lexer, INFO, val, arena);
-    } else #assert false;
+    return OK;
 }
 
 
@@ -170,17 +181,22 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
             struct_info := cast(*Type_Info_Struct, info);
             member_index := 0;
             while true {
-                // I don't know if this introduces bugs.
-                // There could be extra members after this that are wrong.
-                // Struct member checking code will check for a curly brace, so that's fine.
-                // Global code will check for the EOF, so that's fine.
-                // As far as I can tell, it works. It just feels weird.
-                if member_index >= struct_info.members.count return OK;
+                if member_index >= struct_info.members.count {
+                    token := get_token(lexer);
+                    return_if_invalid(token);
+                    if token.type != #char ";" {
+                        return .{false, "Expected a semicolon after all the members of a struct.", token.loc};
+                    }
+                    return OK;
+                }
 
+                // @Incomplete Handle #place members
                 if struct_info.members[member_index].flags & .CONSTANT != 0 continue;
 
                 token := get_token(lexer);
                 return_if_invalid(token);
+                if token.type == #char ";" return OK;
+
                 if token.type != .IDENTIFIER return .{false, "Expected an identifier before a member of a struct.", token.loc};
 
                 while token.identifier != struct_info.members[member_index].name { // @Speed This might be what kills this routine
@@ -190,25 +206,43 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
 
                 member := *struct_info.members[member_index];
 
-                if member.type.type == .STRUCT {
-                    token := get_token(lexer);
-                    return_if_invalid(token);
-                    if token.type != #char "{" return .{false, "Expected a '{' at the beginning of a nested struct member.", token.loc};
-                }
-
-                // @Incomplete Handle #place members
-                if member.flags & .CONSTANT != 0 continue;
                 err := deserialize_next(lexer, member.type, ptr + member.offset_in_bytes, arena);
                 if !err.ok return err;
 
-                if member.type.type == .STRUCT {
-                    token := get_token(lexer);
-                    return_if_invalid(token);
-                    if token.type != #char "}" return .{false, "Expected a '}' at the end of a nested struct member.", token.loc};
-                }
-
                 member_index += 1;
             }
+        case .ARRAY;
+            token := get_token(lexer);
+            return_if_invalid(token);
+            if token.type != .INT return .{false, "Expected the first token of an array declaration to be an integer length.", token.loc};
+
+            count := token.int_value;
+            array_info := cast(*Type_Info_Array, info);
+
+            token = get_token(lexer);
+            return_if_invalid(token);
+            if token.type != #char "[" return .{false, "Expected a '[' at the start of an array declaration.", token.loc};
+
+            if #complete array_info.array_type == {
+                case .FIXED;
+                    assert(false); // @Incomplete
+                case .VIEW;
+                    if arena == null return .{false, "This array expected to dynamically allocate memory.", token.loc};
+                    memory := alloc(arena, count * array_info.element_type.runtime_size, zero_init=false);
+                    for 0..count-1 {
+                        item := memory + it * array_info.element_type.runtime_size;
+                        err := deserialize_next(lexer, array_info.element_type, item, arena);
+                        if !err.ok return err;
+                    }
+                    cast(*Array_View_64, ptr).* = .{count, memory};
+                case .RESIZABLE;
+                    assert(false); // @Incomplete
+                    return .{};
+            }
+
+            token = get_token(lexer);
+            return_if_invalid(token);
+            if token.type != #char "]" return .{false, "Expected a ']' at the end of an array.", token.loc};
             return OK;
         case; assert(false);
     }
@@ -222,8 +256,9 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
 
 Token_Type :: enum {
     ERROR :: 0;
-    // Open curly brace
-    // Close curly brace
+    // ';'
+    // '['
+    // ']'
     EOF :: 256;
     INT;
     IDENTIFIER;
@@ -261,7 +296,7 @@ get_token :: (using lexer: *Lexer) -> Token {
         if index == str.count return EOF;
     }
 
-    if str[index] == #char "{" || str[index] == #char "}" {
+    if str[index] == #char ";" || str[index] == #char "[" || str[index] == #char "]" {
         token := Token.{type=xx str[index], loc=.{index, 1}};
         index += 1;
         return token;
@@ -324,7 +359,6 @@ get_token :: (using lexer: *Lexer) -> Token {
             }
         }
     }
-
-    assert(false);
-    return .{};
+    
+    return err("Illegal character.", .{index, 1});
 }
