@@ -192,6 +192,11 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         
         mode = .GAME;
         make_level_for_game(*level, *level_arena);
+        
+        buf: [100000] u8 = ---;
+        str := serialize(buf, *level);
+        write_file("test.level", str);
+        
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }

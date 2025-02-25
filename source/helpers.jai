@@ -192,6 +192,11 @@ contains :: (a: *[..] $T, item: T) -> bool {
     return false;
 }
 
+contains :: (a: [] $T, item: T) -> bool {
+    for a if it == item return true;
+    return false;
+}
+
 
 append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
     if a.count == a.allocated {

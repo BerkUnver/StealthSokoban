@@ -1,3 +1,7 @@
+// @TODO: :SpecialSerialization Do we want to serialize commonly-used structs
+// (Vector2, Vector3, Vector4, Vector3i to some more convenient form?
+// Like "(% % % %)" where each % is a member of Vector4?
+
 serialize :: (buf: [] u8, val: *$T) -> string {
     using context.game_context;
     
@@ -17,7 +21,6 @@ serialize :: (buf: [] u8, val: *$T) -> string {
 
    return get_string(*sb);
 }
-
 
 serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_default: *void, indent: int) {
     if info.type == {
@@ -67,8 +70,13 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
             print_string(sb, "]");
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);
+            greatest_offset := -1;
             for * struct_info.members {
                 if it.flags & .CONSTANT continue;
+                if it.offset_in_bytes <= greatest_offset continue;
+                if contains(it.notes, "Ignore") continue; // @Speed
+                
+                greatest_offset = it.offset_in_bytes;
 
                 member_val := val + it.offset_in_bytes;
                 member_default := struct_default + it.offset_in_bytes;
@@ -177,31 +185,53 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
 
             return OK;
 
+        case .FLOAT;
+            token := get_token(lexer);
+            return_if_invalid(token);
+
+            value: float64;
+            if token.type == .INT {
+                value = xx token.int_value;
+            } else if token.type == .FLOAT {
+                value = token.float_value;
+            } else {
+                return .{false, "Expected a numeric token for a numeric type.", token.loc};
+            }
+
+            if info.runtime_size == 4 {
+                cast(*float32, ptr).* = xx value;
+            } else {
+                cast(*float64, ptr).* = value;
+            }
+
+            return OK;
+
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);
             member_index := 0;
+            greatest_offset := -1;
+
             while true {
-                if member_index >= struct_info.members.count {
-                    token := get_token(lexer);
-                    return_if_invalid(token);
-                    if token.type != #char ";" {
-                        return .{false, "Expected a semicolon after all the members of a struct.", token.loc};
-                    }
-                    return OK;
-                }
-
-                // @Incomplete Handle #place members
-                if struct_info.members[member_index].flags & .CONSTANT != 0 continue;
-
                 token := get_token(lexer);
                 return_if_invalid(token);
                 if token.type == #char ";" return OK;
+
+                if member_index >= struct_info.members.count {
+                    return .{false, "Expected a semicolon after all the members of a struct.", token.loc};
+                }
 
                 if token.type != .IDENTIFIER return .{false, "Expected an identifier before a member of a struct.", token.loc};
 
                 while token.identifier != struct_info.members[member_index].name { // @Speed This might be what kills this routine
                     member_index += 1;
                     if member_index >= struct_info.members.count return .{false, "This member name isn't in the rest of the struct.", token.loc};
+                    member := struct_info.members[member_index];
+                    if member.flags & .CONSTANT != 0 continue;
+                    if member.offset_in_bytes <= greatest_offset continue; // This is how we detect #place members.
+                    if contains(member.notes, "Ignore") continue;
+                    // Maybe a better idea would be to have :SpecialSerialization code for stuff that uses #place
+                    // (Vector3, etc) and just assert that this is never true in normal structs.
+                    greatest_offset = member.offset_in_bytes;
                 }
 
                 member := *struct_info.members[member_index];
@@ -271,6 +301,7 @@ Token_Type :: enum {
     // ']'
     EOF :: 256;
     INT;
+    FLOAT;
     IDENTIFIER;
 }
 
@@ -280,6 +311,7 @@ Token :: struct {
     loc: Deserialization_Location; // Valid as long as this isn't an EOF
     union {
         int_value: s64;
+        float_value: float64;
         error: string;
         identifier: string;
     }
@@ -364,6 +396,28 @@ get_token :: (using lexer: *Lexer) -> Token {
                 value *= 10;
                 value += str[index] - #char "0";
                 index += 1;
+            } else if str[index] == #char "." {
+                index += 1;
+                fractional_value: float64 = 0;
+                current_place := 0.1;
+                while true {
+                    if index >= str.count {
+                        return .{
+                            type = .FLOAT,
+                            float_value = cast(float64, value) + fractional_value,
+                            loc = .{start_index, str.count - start_index},
+                        };
+                    }
+                    if #char "0" <= str[index] && str[index] <= #char "9" {
+                        index += 1;
+                        fractional_value += current_place * cast(float64, str[index] - #char "9");
+                    } else {
+                        return .{
+                            type = .FLOAT,
+                            float_value = cast(float64, value) + fractional_value,
+                            loc = .{start_index, index - start_index}};
+                    }
+                }
             } else {
                 return .{type=.INT, int_value=value, loc=.{start_index, index - start_index}};
             }

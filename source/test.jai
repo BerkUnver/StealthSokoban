@@ -155,6 +155,27 @@ END
         expect(memcmp(output.data, int.[1,2,3].data, 3 * size_of(int)) == 0);
     }
 
+    {
+        Struct :: struct {
+            a: int;
+            #place a;
+            b: int;
+            c: int;
+        }
+        
+        expected := Struct.{a = 10, c = -20};
+        input := #string
+END
+a 10
+c -20
+;
+END
+        result: Struct;
+        err := deserialize(input, *result);
+        expect(err);
+        expect(memcmp(*result, *expected, size_of(Struct)) == 0);
+    }
+
 
     //
     // Serialization
@@ -282,6 +303,44 @@ END
     {
         input := 0.0625;
         expect("0.0625", serialize(buf, *input));
+    }
+
+    {
+        // The #place member should be skipped
+        Struct :: struct {
+            a := 1;
+            #place a;
+            b: int;
+            c: int;
+        }
+
+        input := Struct.{a = 2, c = 3};
+        expected := #string
+END
+a 2
+c 3
+;
+END
+        expected.count -= 1;
+        str := serialize(buf, *input);
+        expect(expected, str);
+    }
+
+    {   
+        // The default vector has a lot of #place.
+        // This will be a good test.
+
+        input := Vector3.{1.5, 4.5, 2};
+        expected := #string 
+END
+x 1.5
+y 4.5
+z 2
+;
+END
+        expected.count -= 1;
+        str := serialize(buf, *input);
+        expect(expected, str);
     }
 
     //

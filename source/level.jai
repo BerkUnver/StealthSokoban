@@ -3,32 +3,32 @@ Level :: struct {
     
     using types: Entity_Types;
 
-    level_position: Vector3i;
-    level_size: Vector3i;
+    level_position: Vector3i; @Ignore
+    level_size: Vector3i; @Ignore
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
     
-    enemy_annihilations: [..] Vector3i;
+    enemy_annihilations: [..] Vector3i; @Ignore
     #assert ENEMY_COUNT % 2 == 0;
 
     // @TODO: This should be a hash table... probably.
-    entities: [..] *Entity;
+    entities: [..] *Entity; @Ignore
 
-    flags: enum {PULLING :: 1;};
+    flags: enum {PULLING :: 1;}; @Ignore
     
-    camera_pitch_ticks: s8 = 0;
-    camera_yaw_ticks: s8;
+    camera_pitch_ticks: s8 = 0; @Ignore
+    camera_yaw_ticks: s8; @Ignore
 
-    enemy_timer: float;
-    dt_modifier := 1.0;
+    enemy_timer: float; @Ignore
+    dt_modifier := 1.0; @Ignore
 
-    collision: [] Eid;
-    viewed: [] View_State;
-    desired_enemy_moves: [] Desired_Enemy_Move;
-    enemy_move_results: [] Enemy_Move_Result;
+    collision: [] Eid; @Ignore
+    viewed: [] View_State; @Ignore
+    desired_enemy_moves: [] Desired_Enemy_Move; @Ignore
+    enemy_move_results: [] Enemy_Move_Result; @Ignore
 
     // These are stored SOA because we don't want to touch these at the same time.
     // @TODO 3d arrays are stored x-major, then z, then y.
@@ -37,7 +37,7 @@ Level :: struct {
     // development period, but may make less sense later.
     // Consider coming back to this.
 
-    view_texture: View_Texture;
+    view_texture: View_Texture; @Ignore
 }
 
 
