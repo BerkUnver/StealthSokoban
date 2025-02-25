@@ -125,20 +125,9 @@ max :: (a: Vector3i, b: Vector3i) -> Vector3i {
     return .{max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)};
 }
 
-
-min :: (a: $T, b: T) -> T {
-    return ifx a < b then a else b;
-}
-
-
 min_max :: (a: $T, b: T) -> min: T, max: T {
     if a < b return a, b;
     return b, a;
-}
-
-
-max :: (a: $T, b: T) -> T {
-    return ifx a > b then a else b;
 }
 
 clamp :: (value: $T, minimum: T, maximum: T) -> T {

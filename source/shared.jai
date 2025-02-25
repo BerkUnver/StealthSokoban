@@ -145,95 +145,187 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
             assert(arg_index < args.count);
             arg := args[arg_index];
             
-            if arg.type == type_info(string) {
-                arg_str := cast(*string, arg.value_pointer).*;
-                print_string(sb, arg_str);
-            } else if arg.type.type == .INTEGER {
-                negative: bool;
-                arg_u64: u64;
+            if arg.type.type == {
+                case .STRING;
+                    arg_str := cast(*string, arg.value_pointer).*;
+                    print_string(sb, arg_str);
+                case .INTEGER;
+                    negative: bool;
+                    arg_u64: u64;
 
-                if arg.type == type_info(u64) {
-                    arg_u64 = cast(*u64, arg.value_pointer).*;
-                } else {
-                    arg_s64 := expand_to_s64(arg.value_pointer, arg.type);
-                    if arg_s64 < 0 {
-                        negative = true;
-                        arg_u64 = xx -arg_s64;
+                    if arg.type == type_info(u64) {
+                        arg_u64 = cast(*u64, arg.value_pointer).*;
                     } else {
-                        arg_u64 = xx arg_s64;
+                        arg_s64 := expand_to_s64(arg.value_pointer, arg.type);
+                        if arg_s64 < 0 {
+                            negative = true;
+                            arg_u64 = xx -arg_s64;
+                        } else {
+                            arg_u64 = xx arg_s64;
+                        }
                     }
-                }
 
-                if arg_u64 == 0 {
-                    assert(index < buf.count);
-                    buf[index] = #char "0";
-                    index += 1;
-                } else {
-                    if negative {
+                    if arg_u64 == 0 {
                         assert(index < buf.count);
-                        buf[index] = #char "-";
+                        buf[index] = #char "0";
                         index += 1;
+                    } else {
+                        if negative {
+                            assert(index < buf.count);
+                            buf[index] = #char "-";
+                            index += 1;
+                        }
+                        
+                        divisor: u64 = 1;
+                        digit_count := 1;
+                        while true {
+                            if arg_u64 / divisor < 10 break;
+                            divisor *= 10;
+                            digit_count += 1;
+                        }
+                        
+                        assert(index + digit_count <= buf.count);
+
+                        remainder := arg_u64;
+                        while divisor {
+                            buf[index] = cast(u8, #char "0" + remainder / divisor);
+                            remainder = remainder % divisor;
+                            divisor /= 10;
+                            index += 1;
+                        }
+                    }
+                case .FLOAT;
+                    arg_float: float64;
+                    if arg.type.runtime_size == 4 {
+                        arg_float = xx cast(*float32, arg.value_pointer).*;
+                    } else {
+                        arg_float = cast(*float64, arg.value_pointer).*;
+                    }
+
+                    i := cast(*u64, *arg_float).*;
+
+                    sign := i >> 63;
+                    exponent := cast(s64, (i >> 52) & 0b11111111111) - 1023;
+                    mantissa := i & 0b1111111111111111111111111111111111111111111111111111;
+
+                    // Max value of u64 is 18_446_744_073_709_551_616.
+                    DECIMAL : u64 : 10_000_000_000_000_000_000;
+                    
+                    print_fractional_part :: (sb: *String_Builder, fractional_part: u64) {
+                        if fractional_part == 0 return;
+                        print_string(sb, ".");
+
+                        divisor := DECIMAL;
+                        while divisor / 10 > fractional_part {
+                            divisor /= 10;
+                            print_string(sb, "0");
+                        }
+
+                        while fractional_part / 10 * 10 == fractional_part {
+                            fractional_part /= 10;
+                        }
+
+                        print(sb, "%", fractional_part);
                     }
                     
-                    divisor: u64 = 1;
-                    digit_count := 1;
-                    while true {
-                        if arg_u64 / divisor < 10 break;
-                        divisor *= 10;
-                        digit_count += 1;
-                    }
-                    
-                    assert(index + digit_count <= buf.count);
+                    // @Incomplete I'm sure there are edge cases where this breaks. We need to find them.
+                    // Implementing your own printf sounds like the most hackerman thing EVER.
+                    // I should not have done this.
 
-                    remainder := arg_u64;
-                    while divisor {
-                        buf[index] = cast(u8, #char "0" + remainder / divisor);
-                        remainder = remainder % divisor;
-                        divisor /= 10;
-                        index += 1;
-                    }
-                }
-            } else if arg.type == type_info(bool) {
-                arg_bool := cast(*bool, arg.value_pointer).*;
-                str := ifx arg_bool "true" else "false";
-                print_string(sb, str);
-            } else if arg.type.type == .ENUM {
-                info := cast(*Type_Info_Enum, arg.type);
-                // @TODO: Figure out how u64 enums work (info.values type is [] s64)
-                arg_s64 := expand_to_s64(arg.value_pointer, info.internal_type);
-                found := false;
-                for info.values {
-                    if it == arg_s64 {
-                        str := info.names[it_index];
-                        print_string(sb, str);
-                        found = true;
-                        break;
-                    }
-                }
-                assert(found); // @TODO: Print "(Type_Name) value" or something like that.
-            } else if arg.type.type == .ARRAY {
-                info := cast(*Type_Info_Array, arg.type);
+                    if exponent >= 64 {
+                        // @Incomplete: Handle printing giant floats correctly.
+                        // @Incomplete: Handle printing infinity correctly.
+                        // @Incomplete: Handle printing nan correctly.
+                        print(sb, "%", cast(u64, 1 << 63));
+                    } else if exponent <= -64 {
+                        // @Incomplete: Handle printing tiny floats correctly
+                        // @Incomplete: Handle printing denormalized numbers correctly
+                        if sign print_string(sb, "-0");
+                        else    print_string(sb, "0");
+                    } else if exponent >= 0 {
+                        int_part := cast(u64, 1 << exponent);
+                        
+                        mantissa_last_int_bit_index := 52 - exponent;
+                        for 0..mantissa_last_int_bit_index {
+                            if mantissa & cast(u64, (1 << 51) >> it) {
+                                int_part += cast(u64, 1 << (exponent - 1 - it));
+                            }
+                        }
+                        
+                        if sign print_string(sb, "-");
+                        print(sb, "%", int_part);
+                        
+                        
+                        fractional_part: u64 = 0;
+                        
+                        // @Cleanup maybe there is a way to factor this with code for printing out
+                        // floats with no integer part.
+                        floating_point_length := 52 - exponent - 1;
+                        for 0..floating_point_length {
+                            if mantissa & cast(u64, (1 << floating_point_length) >> it) {
+                                fractional_part += DECIMAL >> cast(u64, (it + 1));
+                            }
+                        }
 
-                print_array :: (sb: *String_Builder, count: s64, data: *void, type: *Type_Info) {
-                    print(sb, "[ ");
-                    for 0..count-1 {
-                        element_ptr := data + type.runtime_size * it;
-                        member_args := Any.[ dynamic_any(type, element_ptr) ];
-                        print(sb, "% ", ..member_args);
+                        print_fractional_part(sb, fractional_part);
+
+                    } else {
+                        if sign print_string(sb, "-0");
+                        else    print_string(sb, "0");
+
+                        fractional_part := DECIMAL >> cast(u64, -exponent);
+                        
+                        for 0..51 {
+                            if mantissa & cast(u64, (1 << 51) >> it) {
+                                fractional_part += DECIMAL >> cast(u64, -exponent + (it + 1));
+                            }
+                        }
+
+                        print_fractional_part(sb, fractional_part);
                     }
-                    print(sb, "]");
-                }
 
-                if info.array_type == {
-                    case .FIXED; assert(false); // @TODO
-                    case .VIEW;
-                        view := cast(*Array_View_64, arg.value_pointer);
-                        print_array(sb, view.count, view.data, info.element_type);
+                case .BOOL;
+                    arg_bool := cast(*bool, arg.value_pointer).*;
+                    str := ifx arg_bool "true" else "false";
+                    print_string(sb, str);
+                case .ENUM;
+                    info := cast(*Type_Info_Enum, arg.type);
+                    // @TODO: Figure out how u64 enums work (info.values type is [] s64)
+                    arg_s64 := expand_to_s64(arg.value_pointer, info.internal_type);
+                    found := false;
+                    for info.values {
+                        if it == arg_s64 {
+                            str := info.names[it_index];
+                            print_string(sb, str);
+                            found = true;
+                            break;
+                        }
+                    }
+                    assert(found); // @TODO: Print "(Type_Name) value" or something like that.
+                case .ARRAY;
+                    info := cast(*Type_Info_Array, arg.type);
 
-                    case .RESIZABLE;
-                        array := cast(*Resizable_Array, arg.value_pointer);
-                        print_array(sb, array.count, array.data, info.element_type);
-                }
+                    print_array :: (sb: *String_Builder, count: s64, data: *void, type: *Type_Info) {
+                        print(sb, "[ ");
+                        for 0..count-1 {
+                            element_ptr := data + type.runtime_size * it;
+                            member_args := Any.[ dynamic_any(type, element_ptr) ];
+                            print(sb, "% ", ..member_args);
+                        }
+                        print(sb, "]");
+                    }
+
+                    if info.array_type == {
+                        case .FIXED; assert(false); // @TODO
+                        case .VIEW;
+                            view := cast(*Array_View_64, arg.value_pointer);
+                            print_array(sb, view.count, view.data, info.element_type);
+
+                        case .RESIZABLE;
+                            array := cast(*Resizable_Array, arg.value_pointer);
+                            print_array(sb, array.count, array.data, info.element_type);
+                    }
+                case; assert(false);
             }
             arg_index += 1;
         } else {
@@ -254,3 +346,14 @@ dynamic_any :: inline (type: *Type_Info, value_pointer: *void) -> Any {
     any := Any_Struct.{type = type, value_pointer = value_pointer};
     return cast(*Any, *any).*;
 }
+
+
+min :: (a: $T, b: T) -> T {
+    return ifx a < b then a else b;
+}
+
+
+max :: (a: $T, b: T) -> T {
+    return ifx a > b then a else b;
+}
+

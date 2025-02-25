@@ -264,4 +264,59 @@ END
         str := serialize(buf, *input);
         expect(expected, str);
     }
+
+    //
+    // String_Builder
+    //
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", 0.0);
+        expect(get_string(*sb) == "0");
+    }
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", -0.0);
+        expect(get_string(*sb) == "-0");
+    }
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", 37.0);
+        expect("37", get_string(*sb));
+    }
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", 4.5);
+        expect("4.5", get_string(*sb));
+    }
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", -2.0625);
+        expect("-2.0625", get_string(*sb));
+    }
+
+    {
+        sb := make_string_builder(buf);
+        // Upon casting to float64, this will become 2 ^ 60 because there are
+        // only 52 bits of precision in the mantissa, and the 1 can't fit there.
+        print(*sb, "%", cast(float64, 1 << 60 + 1));
+        expect("1152921504606846976", get_string(*sb)); // This is 2 ^ 60
+    }
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", 0.0625);
+        expect("0.0625", get_string(*sb));
+    }
+
+
+    {
+        sb := make_string_builder(buf);
+        print(*sb, "%", 0.125 + 0.0625);
+        expect("0.1875", get_string(*sb));
+    }
 }
