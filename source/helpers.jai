@@ -195,7 +195,8 @@ contains :: (a: *[..] $T, item: T) -> bool {
 
 append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
     if a.count == a.allocated {
-        a.allocated *= 2;
+        if a.count == 0 a.allocated = 8;
+        else a.allocated *= 2;
         new_memory := alloc(arena, a.allocated * size_of(T), zero_init=false);
         memcpy(new_memory, a.data, a.count * size_of(T));
         a.data = new_memory;

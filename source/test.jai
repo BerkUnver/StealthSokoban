@@ -142,6 +142,19 @@ END
         expect(memcmp(*result, *expected, size_of(Struct)) == 0);
     }
 
+    {
+        mark := get_mark(*frame_arena);
+        defer restore_mark(*frame_arena, mark);
+
+        output: [..] int;
+        err := deserialize("3[1 2 3]", *output, *frame_arena);
+        expect(err);
+        expect(output.count == 3);
+        expect(output.allocated == 3);
+        expect(output.allocator.data == *frame_arena);
+        expect(memcmp(output.data, int.[1,2,3].data, 3 * size_of(int)) == 0);
+    }
+
 
     //
     // Serialization
@@ -263,6 +276,12 @@ END
         expected.count -= 1;
         str := serialize(buf, *input);
         expect(expected, str);
+    }
+
+
+    {
+        input := 0.0625;
+        expect("0.0625", serialize(buf, *input));
     }
 
     //

@@ -222,22 +222,32 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
             token = get_token(lexer);
             return_if_invalid(token);
             if token.type != #char "[" return .{false, "Expected a '[' at the start of an array declaration.", token.loc};
+            
+            populate_memory :: () -> *void #expand {
+                if arena == null `return .{false, "This array expected to dynamically allocate memory.", token.loc};
+                memory := alloc(arena, count * array_info.element_type.runtime_size, zero_init=false);
+                for 0..count-1 {
+                    item := memory + it * array_info.element_type.runtime_size;
+                    err := deserialize_next(lexer, array_info.element_type, item, arena);
+                    if !err.ok `return err;
+                }
+                return memory;
+            }
 
             if #complete array_info.array_type == {
                 case .FIXED;
                     assert(false); // @Incomplete
                 case .VIEW;
-                    if arena == null return .{false, "This array expected to dynamically allocate memory.", token.loc};
-                    memory := alloc(arena, count * array_info.element_type.runtime_size, zero_init=false);
-                    for 0..count-1 {
-                        item := memory + it * array_info.element_type.runtime_size;
-                        err := deserialize_next(lexer, array_info.element_type, item, arena);
-                        if !err.ok return err;
-                    }
+                    memory := populate_memory();
                     cast(*Array_View_64, ptr).* = .{count, memory};
                 case .RESIZABLE;
-                    assert(false); // @Incomplete
-                    return .{};
+                    memory := populate_memory();
+                    cast(*Resizable_Array, ptr).* = .{
+                        count=count,
+                        data=memory,
+                        allocated=count,
+                        allocator.data=arena
+                    };
             }
 
             token = get_token(lexer);
