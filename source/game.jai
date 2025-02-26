@@ -46,7 +46,7 @@ Game_Context :: struct {
 
 Game_Memory :: struct {
     game_context: Game_Context;
-    using game: Game;
+    game: Game;
 }
 
 Game :: struct { 
@@ -64,6 +64,8 @@ Game_Mode :: enum {
 }
 
 #assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
+
+LEVEL_NAME :: "test.level";
 
 #program_export "game_init"
 game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
@@ -148,7 +150,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         //
         // Now that the game_context is initted, we can init the game.
         //
-
+        
+        using game_memory;
         using game_memory.game;
         level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
         
@@ -189,16 +192,11 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
 
-        mode = .GAME;
-
-        deserialize_level_for_game("test.level", *level, *level_arena);
-        serialize_level("test.level", *level);
-
+        set_mode(*game, .GAME);
         
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
 }
-
 
 #program_export "game_update"
 game_update : Game_Update : (
@@ -209,8 +207,10 @@ game_update : Game_Update : (
     push_context {
         game_memory := cast(*Game_Memory, game_memory_);
         context.game_context = *game_memory.game_context;
-        using game_memory.game_context;
+
+        using game_memory;
         using game_memory.game;
+        using game_memory.game_context;
 
         defer assert(frame_arena.current == 0);
         // I'm trying to enforce people who use the stack arena to use it
@@ -229,22 +229,19 @@ game_update : Game_Update : (
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
+        // @Temporary Just a quick way to switch what level we're on using DLL hot-reloading
+        if LEVEL_NAME != level.name {
+            free_level(*level, *level_arena);
+            set_mode(*game, mode);
+        }
+        
         for input.events {
             if it.key == .TILDE && it.down {
                 free_level(*level, *level_arena);
                 
                 if #complete mode == {
-                    case .GAME;
-                        mode = .EDITOR;
-                        editor = .{};
-                        editor.camera_position = .{0, 8, -4};
-                        editor.camera_yaw = 0;
-                        editor.camera_pitch = -PI / 3;
-                        
-                        deserialize_level_for_editor("test.level", *level, *level_arena);
-                    case .EDITOR;
-                        mode = .GAME;
-                        deserialize_level_for_game("test.level", *level, *level_arena);
+                    case .GAME;    set_mode(*game, .EDITOR);
+                    case .EDITOR; set_mode(*game, .GAME);
                 }
                 continue;
             }
@@ -578,6 +575,31 @@ FRUSTUM :: #run -> Matrix4 {
      
     return make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
 }
+
+
+set_mode :: (using game: *Game, new_mode: Game_Mode) {
+    mode = new_mode;
+    if #complete new_mode == {
+        case .GAME;
+            assert(load_level_part_1_deserialize(LEVEL_NAME, *level, *level_arena));
+            // Not every serialized level is a valid game level.
+            // (Player entity could be missing, Entrance entity could be missing, etc.)
+            load_level_part_2_init_unserialized_fields(LEVEL_NAME, *level, *level_arena);
+            load_level_part_3_for_game(*level, *level_arena);
+        case .EDITOR;
+            if !load_level_part_1_deserialize(LEVEL_NAME, *level, *level_arena) {
+                load_level_part_1_example(*level, *level_arena);
+            } 
+            load_level_part_2_init_unserialized_fields(LEVEL_NAME, *level, *level_arena);
+            load_level_part_3_for_editor(*level, *level_arena);
+            editor = .{};
+            editor.camera_position = .{0, 8, -4};
+            editor.camera_yaw = 0;
+            editor.camera_pitch = -PI / 3;
+
+    }
+}
+
 
 gl_debug_callback :: (
     source: GLenum,

@@ -58,7 +58,20 @@ types
 		moveable 1
 		;
 	]
-	_Enemy 0[
+	_Enemy 2[
+		e
+			position
+				z 2
+				;
+			;
+		;
+		e
+			position
+				x -1
+				z 2
+				;
+			;
+		;
 	]
 	_Enemy_Spawner 1[
 		e

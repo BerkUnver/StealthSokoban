@@ -232,6 +232,13 @@ append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
 }
 
 
+copy_string :: (arena: *Memory_Arena, str: string) -> string {
+    mem := alloc(arena, str.count, zero_init=false);
+    memcpy(mem, str.data, str.count);
+    return .{str.count, mem};
+}
+
+
 init_from_info :: (info: *Type_Info_Struct, ptr: *void) {
     if info.initializer info.initializer(ptr);
     else memset(ptr, 0, info.runtime_size);

@@ -1,10 +1,10 @@
-MAX_LEVEL_FILE_SIZE :: 100000;
 
 Level :: struct {
     ENEMY_COUNT :: 32;
     
     using types: Entity_Types;
-
+    
+    name: string; @Ignore
     level_position: Vector3i; @Ignore
     level_size: Vector3i; @Ignore
     
@@ -474,7 +474,28 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
-make_level_base :: (using level: *Level, arena: *Memory_Arena) {
+make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *Memory_Arena) {
+    filled_allocated := alloc_view(arena, t.filled.count, bool);
+    memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
+
+    generated_mesh := make_block_mesh(t.size, filled_allocated, arena);
+    block.* = .{
+       position = t.position,
+       size = t.size,
+       filled = filled_allocated,
+       color = t.color,
+       moveable = t.moveable,
+       mesh = generated_mesh
+    };
+}
+
+
+load_level_part_1_new :: (using level: *Level, arena: *Memory_Arena) {
+    level.* = .{};
+}
+
+
+load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
     using context.game_context;
 
     // @Speed maybe we can just set what we need to be reset in case
@@ -551,9 +572,7 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
         make_block_from_temporary_block(it, *_Block[it_index], arena);
     }
 
-    // The maximum number of enemies in the level is the same as the number of cells in the level.
-    // As such, let's reserve an array that big so we never have to resize while a level is running.
-    _Enemy = alloc_array(arena, level_size.x * level_size.y * level_size.z, Enemy);
+    _Enemy = alloc_array(arena, 2, Enemy);
     assert(_Enemy.count >= 2);
     _Enemy[0] = .{
         position = .{0, 0, 2},
@@ -565,38 +584,35 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
 }
 
 
-make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *Memory_Arena) {
-    filled_allocated := alloc_view(arena, t.filled.count, bool);
-    memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
+load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool {
+    using context.game_context;
+    
+    buf: [100000] u8 = ---;
+    success, level_text := read_file(level_name, buf);
+    if !success return false;
 
-    generated_mesh := make_block_mesh(t.size, filled_allocated, arena);
-    block.* = .{
-       position = t.position,
-       size = t.size,
-       filled = filled_allocated,
-       color = t.color,
-       moveable = t.moveable,
-       mesh = generated_mesh
-    };
+    mark := get_mark(arena);
+    err := deserialize(level_text, level, arena);
+    if !err.ok {
+        print("Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
+        restore_mark(arena, mark);
+        return false;
+    }
+
+    return true;
 }
 
 
-serialize_level :: (name: string, using level: *Level) {
+serialize_level :: (using level: *Level) {
     using context.game_context;
     buf: [100000] u8 = ---;
     str := serialize(buf, level);
-    assert(write_file(name, str));
+    assert(write_file(level.name, str));
 }
 
 
-deserialize_level_base :: (name: string, using level: *Level, arena: *Memory_Arena) {
-    using context.game_context;
-    // @TODO: More elegant failure cases for when a level fails to load.
-    buf: [100000] u8 = ---;
-    success, level_text := read_file(name, buf);
-    assert(success);
-    err := deserialize(level_text, level, arena);
-    assert(err.ok);
+load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
+    name = copy_string(arena, level_name);
     
     // Count up all the entities so we can allocate an array big enough
     // to hold pointers to all of them for the Entity_Id system
@@ -638,9 +654,8 @@ deserialize_level_base :: (name: string, using level: *Level, arena: *Memory_Are
 }
 
 
-deserialize_level_for_editor :: (name: string, using level: *Level, arena: *Memory_Arena) {
+load_level_part_3_for_editor :: (using level: *Level, arena: *Memory_Arena) {
     using context.game_context;
-    deserialize_level_base(name, level, arena);
 
     size_1d := level_size.x * level_size.y * level_size.z;
 
@@ -655,10 +670,22 @@ deserialize_level_for_editor :: (name: string, using level: *Level, arena: *Memo
 }
 
 
-deserialize_level_for_game :: (name: string, using level: *Level, arena: *Memory_Arena) {
-    deserialize_level_base(name, level, arena);
+load_level_part_3_for_game :: (using level: *Level, arena: *Memory_Arena) {
 
     size_1d := level_size.x * level_size.y * level_size.z;
+
+    // @Hack @Speed @Memory
+    // This is a dumb workaround.
+    // Right now, the serialization system will allocate as many elements as was serialized for an array.
+    // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
+    // dynamically allocate memory while the a level is running, and we can easily know how much memory the
+    // game will ever use (in release mode, do whatever you want in the editor. As such, we resize them 
+    // here.
+    alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
+    for * _Enemy {
+        entities[it.eid] = it;
+    }
+
     viewed = alloc_view(arena, size_1d, View_State);
     collision = alloc_view(arena, size_1d, Eid);
     enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
@@ -676,16 +703,6 @@ deserialize_level_for_game :: (name: string, using level: *Level, arena: *Memory
         assert(is_null(eid));
         collision[index] = make_eid(it);
     }
-
-    
-    // @Hack @Speed @Memory
-    // This is a dumb workaround.
-    // Right now, the serialization system will allocate as many elements as was serialized for an array.
-    // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
-    // dynamically allocate memory while the a level is running, and we can easily know how much memory the
-    // game will ever use (in release mode, do whatever you want in the editor. As such, we resize them 
-    // here.
-    alloc_extra_array_capacity(arena, *_Enemy, level_size.x * level_size.y * level_size.z, zero_init=false);
 }
 
 
@@ -837,7 +854,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             for * _Exit {
                 if player.position == it.position {
                     free_level(level, level_arena);
-                    deserialize_level_for_game("test.level", level, level_arena);
+                    assert(load_level_part_1_deserialize(LEVEL_NAME, level, level_arena));
+                    load_level_part_2_init_unserialized_fields(LEVEL_NAME, level, level_arena);
+                    load_level_part_3_for_game(level, level_arena);
                     break;
                 }
             }
