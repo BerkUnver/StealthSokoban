@@ -162,15 +162,28 @@ reserve_array :: (arena: *Memory_Arena, reserve: s64, $T: Type, zero_init := tru
 
 
 alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [..] T {
-    mem := alloc(arena, count * size_of(T), zero_init);
+    allocated := count;
+    if 0 < allocated && allocated < 8 allocated = 8;
+    mem := alloc(arena, allocated * size_of(T), zero_init);
 
     array: [..] T;
-    array.count = 0;
+    array.count = count;
     array.data = mem;
-    array.allocated = count;
+    array.allocated = allocated;
     array.allocator.data = arena;
     
     return array;
+}
+
+
+alloc_extra_array_capacity :: (arena: *Memory_Arena, array: *[..] $T, new_capacity: s64, zero_init := true) {
+    if new_capacity < array.allocated return;
+    mem := alloc(arena, new_capacity * size_of(T), zero_init=false);
+    memcpy(mem, array.data, size_of(T) * array.count);
+    if zero_init memset(mem + size_of(T) * array.count, 0, size_of(T) * (new_capacity - array.count));
+
+    array.data = mem;
+    array.allocated = new_capacity;
 }
 
 

@@ -1,3 +1,5 @@
+MAX_LEVEL_FILE_SIZE :: 100000;
+
 Level :: struct {
     ENEMY_COUNT :: 32;
     
@@ -81,8 +83,8 @@ is_null :: inline (eid: Eid) -> bool {
 
 
 Entity :: struct {
-    type: Type;
-    eid: Entity_Id;
+    type: Type; @Ignore
+    eid: Entity_Id; @Ignore
     position: Vector3i; // As soon as there's an entity without this member,
     // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
 }
@@ -190,7 +192,7 @@ Block :: struct {
     filled: [] bool;
     color: Vector4;
     moveable: bool;
-    mesh: Mesh;
+    mesh: Mesh; @Ignore
     // @TODO Make a bit array data structure for better cache coherency
 }
 
@@ -483,25 +485,23 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
     T :: true;
     F :: false;
 
-    entities = alloc_array(arena, 1000, *Entity); // @TODO: Figure out how many entities are in the level instead of just picking a number.
-    
     _Entrance = alloc_array(arena, 1, Entrance);
-    make_entity(level, Entrance).* = .{
+    _Entrance[0] = .{
         position = .{-1, 0, -1},
     };
     
     _Exit = alloc_array(arena, 1, Exit);
-    make_entity(level, Exit).* = .{
+    _Exit[0] = .{
         position = .{2, 0, -1},
     };
     
     _Player = alloc_array(arena, 1, Player);
-    make_entity(level, Player).* = .{
+    _Player[0] = .{
         position = _Entrance[0].position,
     };
     
     _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
-    make_entity(level, Enemy_Spawner).* = .{
+    _Enemy_Spawner[0] = .{
         position = .{2, 0, 2},
         facing = .X_NEGATIVE,
     };
@@ -548,24 +548,20 @@ make_level_base :: (using level: *Level, arena: *Memory_Arena) {
 
     _Block = alloc_array(arena, temp_blocks.count, Block);
     for * temp_blocks {
-        block := make_entity(level, Block);
-        make_block_from_temporary_block(it, block, arena);
+        make_block_from_temporary_block(it, *_Block[it_index], arena);
     }
-
-    level_position, level_size = get_block_extents(_Block);
 
     // The maximum number of enemies in the level is the same as the number of cells in the level.
     // As such, let's reserve an array that big so we never have to resize while a level is running.
-    _Enemy = reserve_array(arena, level_size.x * level_size.y * level_size.z, Enemy);
-    make_entity(level, Enemy).* = .{
+    _Enemy = alloc_array(arena, level_size.x * level_size.y * level_size.z, Enemy);
+    assert(_Enemy.count >= 2);
+    _Enemy[0] = .{
         position = .{0, 0, 2},
     };
-
-    make_entity(level, Enemy).* = .{
+    _Enemy[1] = .{
         position = .{-1, 0, 2},
     };
 
-    view_texture = make_view_texture(level_size);
 }
 
 
@@ -585,9 +581,66 @@ make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *
 }
 
 
-make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
+serialize_level :: (name: string, using level: *Level) {
     using context.game_context;
-    make_level_base(level, level_arena);
+    buf: [100000] u8 = ---;
+    str := serialize(buf, level);
+    assert(write_file(name, str));
+}
+
+
+deserialize_level_base :: (name: string, using level: *Level, arena: *Memory_Arena) {
+    using context.game_context;
+    // @TODO: More elegant failure cases for when a level fails to load.
+    buf: [100000] u8 = ---;
+    success, level_text := read_file(name, buf);
+    assert(success);
+    err := deserialize(level_text, level, arena);
+    assert(err.ok);
+    
+    // Count up all the entities so we can allocate an array big enough
+    // to hold pointers to all of them for the Entity_Id system
+    count := 0;
+    #insert -> string {
+        buf: [1024] u8;
+        sb := make_string_builder(buf);
+        for Entity_Types.TYPES {
+            print(*sb, "count += _%.count;\n", it.name);
+        }
+        return get_string(*sb);
+    }
+    entities = alloc_array(arena, count, *Entity);
+    
+    // Give each entity an Entity_Id
+    index := 0;
+    #insert -> string {
+        buf: [1024] u8;
+        sb := make_string_builder(buf);
+        for Entity_Types.TYPES {
+            print(*sb, "for * _% {\n", it.name);
+            print(*sb, "    entities[index] = it;\n");
+            print(*sb, "    it.eid = xx index;\n");
+            print(*sb, "    it.type = %;\n", it.name);
+            print(*sb, "    index += 1;\n");
+            print(*sb, "}\n");
+        }
+        return get_string(*sb);
+    }
+    
+    for * _Block {
+        it.mesh = make_block_mesh(it.size, it.filled, arena);
+    }
+
+    level_position, level_size = get_block_extents(_Block);
+    // @TODO: Make sure none of the other entities are outside of the level
+
+    view_texture = make_view_texture(level_size);
+}
+
+
+deserialize_level_for_editor :: (name: string, using level: *Level, arena: *Memory_Arena) {
+    using context.game_context;
+    deserialize_level_base(name, level, arena);
 
     size_1d := level_size.x * level_size.y * level_size.z;
 
@@ -602,15 +655,15 @@ make_level_for_editor :: (using level: *Level, level_arena: *Memory_Arena) {
 }
 
 
-make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
-    make_level_base(level, level_arena);
+deserialize_level_for_game :: (name: string, using level: *Level, arena: *Memory_Arena) {
+    deserialize_level_base(name, level, arena);
 
     size_1d := level_size.x * level_size.y * level_size.z;
-    viewed = alloc_view(level_arena, size_1d, View_State);
-    collision = alloc_view(level_arena, size_1d, Eid);
-    enemy_move_results = alloc_view(level_arena, size_1d, Enemy_Move_Result);
-    desired_enemy_moves = alloc_view(level_arena, size_1d, Desired_Enemy_Move);
-    enemy_annihilations = reserve_array(level_arena, size_1d / 2, Vector3i);
+    viewed = alloc_view(arena, size_1d, View_State);
+    collision = alloc_view(arena, size_1d, Eid);
+    enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
+    desired_enemy_moves = alloc_view(arena, size_1d, Desired_Enemy_Move);
+    enemy_annihilations = reserve_array(arena, size_1d / 2, Vector3i);
 
     for * _Block {
         assert(add_block_to_collision(level, it) == .OK);
@@ -623,6 +676,16 @@ make_level_for_game :: (using level: *Level, level_arena: *Memory_Arena) {
         assert(is_null(eid));
         collision[index] = make_eid(it);
     }
+
+    
+    // @Hack @Speed @Memory
+    // This is a dumb workaround.
+    // Right now, the serialization system will allocate as many elements as was serialized for an array.
+    // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
+    // dynamically allocate memory while the a level is running, and we can easily know how much memory the
+    // game will ever use (in release mode, do whatever you want in the editor. As such, we resize them 
+    // here.
+    alloc_extra_array_capacity(arena, *_Enemy, level_size.x * level_size.y * level_size.z, zero_init=false);
 }
 
 
@@ -774,7 +837,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             for * _Exit {
                 if player.position == it.position {
                     free_level(level, level_arena);
-                    make_level_for_game(level, level_arena);
+                    deserialize_level_for_game("test.level", level, level_arena);
                     break;
                 }
             }

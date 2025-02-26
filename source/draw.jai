@@ -376,13 +376,13 @@ load_shader :: (file_name: string, prefix := "") -> GLuint {
     defer restore_mark(*frame_arena, mark);
 
     buf: [10000] u8 = ---;
-    success, count := read_file(file_name, buf);
+    success, str := read_file(file_name, buf);
     if !success {
         print("Failed to load the file for shader \"%\"\n", file_name);
         return 0;
     }
 
-    return load_shader(file_name, .{count, buf.data}, prefix);
+    return load_shader(file_name, str, prefix);
 }
 
 

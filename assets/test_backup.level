@@ -1,0 +1,114 @@
+types
+	_Block 3[
+		e
+			position
+				x -3
+				y -1
+				z -2
+				;
+			;
+		size
+			x 6
+			y 1
+			z 8
+			;
+		filled 48[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
+		color
+			x 0.639215707778930664
+			y 0.690196096897125244
+			z 0.7176470756530761718
+			w 1
+			;
+		;
+		e
+			position
+				x -3
+				z -2
+				;
+			;
+		size
+			x 6
+			y 1
+			z 2
+			;
+		filled 12[ 0 0 0 0 1 1 1 1 0 1 1 0 ]
+		color
+			x 0.8000000119209289549
+			y 0.8078431487083435056
+			z 0.8117647171020507812
+			w 1
+			;
+		;
+		e
+			position
+				x -1
+				z 4
+				;
+			;
+		size
+			x 1
+			y 3
+			z 1
+			;
+		filled 3[ 1 1 1 ]
+		color
+			z 1
+			w 1
+			;
+		moveable 1
+		;
+	]
+	_Enemy 2[
+		e
+			position
+				z 2
+				;
+			;
+		;
+		e
+			position
+				x -1
+				z 2
+				;
+			;
+		;
+	]
+	_Enemy_Spawner 1[
+		e
+			position
+				x 2
+				z 2
+				;
+			;
+		facing 2
+		;
+	]
+	_Player 1[
+		e
+			position
+				x -1
+				z -1
+				;
+			;
+		;
+	]
+	_Entrance 1[
+		e
+			position
+				x -1
+				z -1
+				;
+			;
+		;
+	]
+	_Exit 1[
+		e
+			position
+				x 2
+				z -1
+				;
+			;
+		;
+	]
+	;
+;

@@ -2,6 +2,8 @@
 // (Vector2, Vector3, Vector4, Vector3i to some more convenient form?
 // Like "(% % % %)" where each % is a member of Vector4?
 
+// @TODO: Elegantly fail when the buffer is too small.
+
 serialize :: (buf: [] u8, val: *$T) -> string {
     using context.game_context;
     
@@ -15,17 +17,27 @@ serialize :: (buf: [] u8, val: *$T) -> string {
         assert(INFO.runtime_size <= default_buffer.count);
         default = default_buffer.data;
         init_from_info(INFO, default);
-
     }
     serialize_next(*sb, INFO, val, default, 0); 
 
-   return get_string(*sb);
+    return get_string(*sb);
 }
 
 serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_default: *void, indent: int) {
     if info.type == {
+        case .FLOAT; #through;
+        case .INTEGER;
+            args := Any.[ dynamic_any(info, val) ];
+            print(sb, "%", ..args);
+
+        case .BOOL;
+            if cast(*bool, val).* {
+                print_string(sb, "1");
+            } else {
+                print_string(sb, "0");
+            }
         case .ENUM;
-            args := Any.[ dynamic_any(cast(*Type_Info_Enum, info).internal_type, *val) ];
+            args := Any.[ dynamic_any(cast(*Type_Info_Enum, info).internal_type, val) ];
             print(sb, "%", ..args);
 
         case .ARRAY;
@@ -46,13 +58,14 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
                     data = array.data;
             };
 
-            separator := ifx array_info.element_type.type == .STRUCT then "\n" else " ";
-            print(sb, "%[%", count, separator);
 
             size := array_info.element_type.runtime_size;
             
+            separator: string;
             default: *void;
+
             if array_info.element_type.type == .STRUCT {
+                separator = "\n";
                 struct_info := cast(*Type_Info_Struct, array_info.element_type);
 
                 default_buffer: [1024] u8;
@@ -60,22 +73,32 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
                 assert(struct_info.runtime_size <= default_buffer.count);
 
                 init_from_info(struct_info, default);
+            } else {
+                separator = " ";
             }
+
+            print(sb, "%[%", count, separator);
 
             for 0..count-1 {
                 serialize_next(sb, array_info.element_type, data + it * size, default, indent + 1);
                 print_string(sb, separator);
             }
 
+            if array_info.element_type.type == .STRUCT {
+                for 0..indent-1 print_string(sb, "\t");
+            }
+
             print_string(sb, "]");
+
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);
+
+            if struct_info.textual_flags & .UNION assert(false);
+            // Don't allow serializing unions for now.
+
             greatest_offset := -1;
             for * struct_info.members {
-                if it.flags & .CONSTANT continue;
-                if it.offset_in_bytes <= greatest_offset continue;
-                if contains(it.notes, "Ignore") continue; // @Speed
-                
+                if !can_serialize_member(it, greatest_offset) continue;
                 greatest_offset = it.offset_in_bytes;
 
                 member_val := val + it.offset_in_bytes;
@@ -88,18 +111,26 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
                 for 0..indent-1 print_string(sb, "\t");
 
                 print_string(sb, it.name);
-                print_string(sb, ifx it.type.type == .STRUCT "\n" else " ");
 
-                
-                serialize_next(sb, xx it.type, member_val, member_default, indent + 1);
+                separator: string;
+                new_indent: int;
+                if it.type.type == .STRUCT {
+                    separator = "\n";
+                    new_indent = indent + 1;
+                } else {
+                    separator = " ";
+                    new_indent = indent;
+                }
+
+                print_string(sb, separator); 
+                serialize_next(sb, it.type, member_val, member_default, new_indent);
                 print_string(sb, "\n");
             }
 
             for 0..indent-1 print_string(sb, "\t");
             print_string(sb, ";");
         case;
-            args := Any.[ dynamic_any(info, val) ];
-            print(sb, "%", ..args);
+            assert(false);
     }
 }
 
@@ -128,6 +159,14 @@ return_if_invalid :: (token: Token) #expand {
     if token.type == .EOF   `return UNEXPECTED_EOF;
 }
 
+can_serialize_member :: (member: *Type_Info_Struct_Member, greatest_offset_before_this_member: int) -> bool {
+    if member.flags & .CONSTANT != 0 return false;
+    if member.offset_in_bytes <= greatest_offset_before_this_member return false; // This is how we detect #place members.
+    // Maybe a better idea would be to have :SpecialSerialization code for stuff that uses #place
+    // (Vector3, etc) and just assert that this is never true in normal structs.
+    if contains(member.notes, "Ignore") return false;
+    return true;
+}
 
 deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserialization_Error {
     lexer := Lexer.{str = data};
@@ -153,7 +192,55 @@ deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserial
 
 
 deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory_Arena) -> Deserialization_Error {
+    assign_int :: (info: *Type_Info_Integer, ptr: *void, value: s64) {
+        // @Incomplete: We should do our own bounds checking and have an appropriate failure
+        // message, jai native bounds check failure just crashes the program.
+        if info.runtime_size == {
+            case 1;
+                if info.signed cast(*s8, ptr).* = xx value;
+                else           cast(*u8, ptr).* = xx value;
+            case 2;
+                if info.signed cast(*s16, ptr).* = xx value;
+                else           cast(*u16, ptr).* = xx value;
+            case 4;
+                if info.signed cast(*s32, ptr).* = xx value;
+                else           cast(*u32, ptr).* = xx value;
+            case 8;
+                if info.signed cast(*s64, ptr).* = xx value;
+                else           cast(*u64, ptr).* = xx value;
+            case; assert(false);
+        }
+    }
+
     if info.type == {
+        case .BOOL;
+            token := get_token(lexer);
+            return_if_invalid(token);
+            
+            if token.type != .INT {
+                return .{false, "Expected an integer token for the value of a bool", token.loc};
+            }
+
+            if token.int_value != 0 && token.int_value != 1 {
+                return .{false, "Expected the value of a boolean to be zero or one.", token.loc};
+            }
+
+            cast(*bool, ptr).* = xx token.int_value;
+            return OK;
+        
+        case .ENUM;
+            enum_info := cast(*Type_Info_Enum, info);
+            token := get_token(lexer);
+            return_if_invalid(token);
+
+            if token.type != .INT {
+                return .{false, "Expected an integer token when deserializing to an enum type.", token.loc};
+            }
+
+            assign_int(enum_info.internal_type, ptr, token.int_value);
+
+            return OK;
+
         case .INTEGER; 
             int_info := cast(*Type_Info_Integer, info);
             token := get_token(lexer);
@@ -163,25 +250,7 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
                 return .{false, "Expected an integer token when deserializing to an integer type.", token.loc};
             }
 
-            value := token.int_value;
-            
-            // @Incomplete: We should do our own bounds checking and have an appropriate failure
-            // message, jai native bounds check failure just crashes the program.
-            if int_info.runtime_size == {
-                case 1;
-                    if int_info.signed cast(*s8, ptr).* = xx value;
-                    else               cast(*u8, ptr).* = xx value;
-                case 2;
-                    if int_info.signed cast(*s16, ptr).* = xx value;
-                    else               cast(*u16, ptr).* = xx value;
-                case 4;
-                    if int_info.signed cast(*s32, ptr).* = xx value;
-                    else               cast(*u32, ptr).* = xx value;
-                case 8;
-                    if int_info.signed cast(*s64, ptr).* = xx value;
-                    else               cast(*u64, ptr).* = xx value;
-                case; assert(false);
-            }
+            assign_int(int_info, ptr, token.int_value);
 
             return OK;
 
@@ -208,6 +277,13 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
 
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);
+            if struct_info.textual_flags & .UNION assert(false);
+            // Don't allow serializing unions for now.
+
+            init_from_info(struct_info, ptr);
+            // Make sure the default values for everything we didn't explicitly serialized
+            // are properly set.
+
             member_index := 0;
             greatest_offset := -1;
 
@@ -221,21 +297,21 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
                 }
 
                 if token.type != .IDENTIFIER return .{false, "Expected an identifier before a member of a struct.", token.loc};
+                
+                while true {
+                    member := *struct_info.members[member_index];
+                    if can_serialize_member(member, greatest_offset) {
+                        greatest_offset = member.offset_in_bytes;
+                        if member.name == token.identifier break;
+                    }
 
-                while token.identifier != struct_info.members[member_index].name { // @Speed This might be what kills this routine
                     member_index += 1;
-                    if member_index >= struct_info.members.count return .{false, "This member name isn't in the rest of the struct.", token.loc};
-                    member := struct_info.members[member_index];
-                    if member.flags & .CONSTANT != 0 continue;
-                    if member.offset_in_bytes <= greatest_offset continue; // This is how we detect #place members.
-                    if contains(member.notes, "Ignore") continue;
-                    // Maybe a better idea would be to have :SpecialSerialization code for stuff that uses #place
-                    // (Vector3, etc) and just assert that this is never true in normal structs.
-                    greatest_offset = member.offset_in_bytes;
+                    if member_index >= struct_info.members.count {
+                        return .{false, "This member name isn't in the rest of the struct.", token.loc};
+                    }
                 }
 
                 member := *struct_info.members[member_index];
-
                 err := deserialize_next(lexer, member.type, ptr + member.offset_in_bytes, arena);
                 if !err.ok return err;
 
@@ -379,10 +455,24 @@ get_token :: (using lexer: *Lexer) -> Token {
         index += 1;
         token := get_token(lexer);
         if token.type == {
-            case .EOF; return err("Expected a number after the minus sign", .{minus_index, 1});
-            case .ERROR; return token;
-            case .INT; return .{type=.INT, int_value = -token.int_value, loc = .{token.loc.start - 1, token.loc.count + 1}};
-            case; return err("Expected a number after a minus sign.", token.loc);
+            case .EOF;
+                return err("Expected a number after the minus sign", .{minus_index, 1});
+            case .ERROR;
+                return token;
+            case .INT; 
+                return .{
+                    type=.INT, 
+                    int_value = -token.int_value, 
+                    loc = .{token.loc.start - 1, token.loc.count + 1}
+                };
+            case .FLOAT;
+                return .{
+                    type=.FLOAT,
+                    float_value = -token.float_value,
+                    loc = .{token.loc.start - 1, token.loc.count + 1}
+                };
+            case;
+                return err("Expected a number after a minus sign.", token.loc);
         }
     }
 
@@ -408,15 +498,17 @@ get_token :: (using lexer: *Lexer) -> Token {
                             loc = .{start_index, str.count - start_index},
                         };
                     }
-                    if #char "0" <= str[index] && str[index] <= #char "9" {
-                        index += 1;
-                        fractional_value += current_place * cast(float64, str[index] - #char "9");
-                    } else {
+
+                    if str[index] < #char "0" || #char "9" < str[index] {
                         return .{
                             type = .FLOAT,
                             float_value = cast(float64, value) + fractional_value,
                             loc = .{start_index, index - start_index}};
                     }
+
+                    fractional_value += current_place * cast(float64, str[index] - #char "0");
+                    index += 1;
+                    current_place /= 10;
                 }
             } else {
                 return .{type=.INT, int_value=value, loc=.{start_index, index - start_index}};

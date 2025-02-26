@@ -489,12 +489,12 @@ jai_string_to_path :: (str: string) -> [MAX_PATH] u8 {
 
 
 // @TODO: Switch to using the Jai allocator-passing method so we can pass an allocator to this without it knowing about memory arenas?
-read_file :: (name: string, buf: [] u8) -> bool, int {
+read_file :: (name: string, buf: [] u8) -> bool, string {
     
     path := jai_string_to_path(name);
 
     handle := CreateFileA(path.data, FILE_GENERIC_READ);
-    if handle == INVALID_HANDLE_VALUE return false, -1;
+    if handle == INVALID_HANDLE_VALUE return false, .{};
     defer CloseHandle(handle);
 
     size_l: LARGE_INTEGER;
@@ -507,7 +507,7 @@ read_file :: (name: string, buf: [] u8) -> bool, int {
     ReadFile(handle, buf.data, size, *read_size);
     assert(read_size == size);
 
-    return true, size;
+    return true, .{size, buf.data};
 }
 
 

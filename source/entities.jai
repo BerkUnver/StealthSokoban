@@ -21,14 +21,11 @@
     
     print(*sb, "Entity_Types :: struct {\n");
     print(*sb, "    TYPES :: %\n", TYPES);
-    print(*sb, "    union {\n");
-    print(*sb, "        struct {\n");
     for entities {
-        print(*sb, "            _%: [..] %;\n", it.name, it.name);
+        print(*sb, "    _%: [..] %;\n", it.name, it.name);
     }
-    print(*sb, "        }\n");
-    print(*sb, "        components: [%] Resizable_Array;\n", entities.count);
-    print(*sb, "    }\n");
+    print(*sb, "    #place _%;\n", entities[0].name);
+    print(*sb, "    components: [%] Resizable_Array;\n", entities.count);
     print(*sb, "}\n");
     
     return get_string(*sb);

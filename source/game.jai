@@ -189,15 +189,12 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
 
-        
         mode = .GAME;
-        make_level_for_game(*level, *level_arena);
-        
-        buf: [100000] u8 = ---;
-        str := serialize(buf, *level);
-        write_file("test.level", str);
-        
 
+        deserialize_level_for_game("test.level", *level, *level_arena);
+        serialize_level("test.level", *level);
+
+        
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
 }
@@ -243,10 +240,11 @@ game_update : Game_Update : (
                         editor.camera_position = .{0, 8, -4};
                         editor.camera_yaw = 0;
                         editor.camera_pitch = -PI / 3;
-                        make_level_for_editor(*level, *level_arena);
+                        
+                        deserialize_level_for_editor("test.level", *level, *level_arena);
                     case .EDITOR;
                         mode = .GAME;
-                        make_level_for_game(*level, *level_arena);
+                        deserialize_level_for_game("test.level", *level, *level_arena);
                 }
                 continue;
             }
