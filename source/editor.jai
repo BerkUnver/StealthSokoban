@@ -37,10 +37,7 @@ Editor :: struct {
             start_position: Vector3i;
             start_intersection: Vector3;
             end_intersection: Vector3;
-
-            // Index of the axis in the component part of the Vector3i
-            axis_0: u8;
-            axis_1: u8;
+            plane_normal: Vector3i;
         }
 
         drag: struct {
@@ -131,6 +128,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     blocks: [] Block;
                     selected: *Block;
                     selected_position: Vector3i;
+                    previous_position: Vector3i;
                 }
 
                 visitor :: (position: Vector3i, using data: *Data) -> bool {
@@ -142,23 +140,25 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                             return true;
                         }
                     }
+                    previous_position = position;
                     return false;
                 }
-
                 data := Data.{blocks = _Block};
                 collided, t := raycast(mouse_start, mouse_end, visitor, *data);
-                
                 if !collided return;
+                
+                start_position: Vector3i;
+                if event.modifiers & .SHIFT start_position = data.selected_position;
+                else                        start_position = data.previous_position;
 
                 intersection := mouse_start + mouse_direction * t;
                 editor.mode = .EXTRUDE;
                 editor.extrude = .{
                     selected_block = data.selected,
-                    start_position = data.selected_position,
+                    start_position = start_position,
                     start_intersection = intersection,
                     end_intersection = intersection,
-                    axis_0 = 2,
-                    axis_1 = 0,
+                    plane_normal = .{0, 1, 0},
                 };
 
                 return;
@@ -312,11 +312,13 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
         case .EXTRUDE;
             using editor.extrude;
             if event.key == #char " " && event.down {
-                new_axis_0 := axis_1;
-                new_axis_1 := (axis_1 + 1) % 3;
-                axis_0 = new_axis_0;
-                axis_1 = new_axis_1;
-
+                for plane_normal.component {
+                    if it == 1 {
+                        plane_normal.component[it_index] = 0;
+                        plane_normal.component[(it_index + 1) % plane_normal.component.count] = 1;
+                        break;
+                    }
+                }
             } else if event.key == #char "Z" && !event.down {
                 
                 position, size := get_editor_extrude_size(editor);
@@ -471,18 +473,11 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             camera_to_world := inverse(world_to_camera);
             mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0}) - editor.camera_position;
 
-            v0: Vector3;
-            v0.component[axis_0] = 1;
-            v1: Vector3;
-            v1.component[axis_1] = 1;
-
-            normal := cross(v0, v1);
-
             parallel, intersection := get_intersection_between_line_and_plane(
                 line_point = editor.camera_position,
                 line_direction = mouse_direction,
                 plane_point = start_intersection,
-                plane_normal = normal
+                plane_normal = to_vector3(plane_normal)
             );
 
             if parallel {
@@ -552,17 +547,27 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
 get_editor_extrude_size :: (editor: *Editor) -> position: Vector3i, size: Vector3i {
     assert(editor.mode == .EXTRUDE);
     using editor.extrude;
+
     start := start_position;
     end := to_vector3i(floor(end_intersection));
-    
+
     MAX_SIZE :: 40;
-    if end.x > start.x end.x = min(start.x + MAX_SIZE, end.x);
+
+    // We cancel out the axis we aren't extruding on.
+    // This prevents weird floating-point errors when the plane we're extruding on
+    // lines up with the axis and the value of one of the members of end_intersection
+    // is either slighty above or below that axis.
+
+    if plane_normal.x != 0 end.x = start.x;
+    else if end.x > start.x end.x = min(start.x + MAX_SIZE, end.x);
     else end.x = max(start.x - MAX_SIZE, end.x);
 
-    if end.y > start.y end.y = min(start.y + MAX_SIZE, end.y);
+    if plane_normal.y != 0 end.y = start.y;
+    else if end.y > start.y end.y = min(start.y + MAX_SIZE, end.y);
     else end.y = max(start.y - MAX_SIZE, end.y);
 
-    if end.z > start.z end.z = min(start.z + MAX_SIZE, end.z);
+    if plane_normal.z != 0 end.z = start.z;
+    else if end.z > start.z end.z = min(start.z + MAX_SIZE, end.z);
     else end.z = max(start.z - MAX_SIZE, end.z);
     
     min_x, max_x := min_max(start.x, end.x);
@@ -570,15 +575,7 @@ get_editor_extrude_size :: (editor: *Editor) -> position: Vector3i, size: Vector
     min_z, max_z := min_max(start.z, end.z);
     
     position := Vector3i.{min_x, min_y, min_z};
-
     size := Vector3i.{max_x - min_x + 1, max_y - min_y + 1, max_z - min_z + 1};
-
-    for * size.component {
-        if it_index != axis_0 && it_index != axis_1 {
-            it.* = 1;
-            break;
-        }
-    }
 
     return position, size;
 }

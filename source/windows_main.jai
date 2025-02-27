@@ -12,9 +12,7 @@ windows: struct {
 
     // Maybe this stuff should be handled from the game instead of in the platform layer?
     mouse_buttons_down: enum_flags { LEFT; RIGHT; };
-    shift_down: bool;
-    ctrl_down: bool;
-    alt_down: bool;
+    modifiers: Modifiers;
 }
 
 append_input_event :: (e: Input_Event) #no_context {
@@ -41,9 +39,7 @@ main :: () {
             push_context .{} {
         
                 translate_keycode_to_game_input :: (down: bool, keycode: WPARAM) #no_context {
-                    modifiers: Modifiers;
-                    if windows.shift_down modifiers |= .SHIFT;
-                    if windows.ctrl_down  modifiers |= .CTRL;
+                    modifiers := windows.modifiers;
 
                     key: Key;
 
@@ -74,10 +70,12 @@ main :: () {
                     
                     // @TODO: Properly handle left and right alts, shifts, and ctrls.
                     } else if keycode == VK_SHIFT {
-                        windows.shift_down = down;
+                        if down windows.modifiers |= .SHIFT;
+                        else    windows.modifiers &= ~.SHIFT;
                         key = .SHIFT;
                     } else if keycode == VK_CONTROL {
-                        windows.ctrl_down = down;
+                        if down windows.modifiers |= .CTRL;
+                        else    windows.modifiers &= ~.CTRL;
                         key = .CTRL;
                     } else return;
                     // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
@@ -128,12 +126,12 @@ main :: () {
                     case WM_LBUTTONUP;
                         windows.mouse_buttons_down &= ~.LEFT;
                         if !windows.mouse_buttons_down ReleaseCapture();
-                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=false});
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, modifiers=windows.modifiers, down=false});
                         
                     case WM_RBUTTONUP;
                         windows.mouse_buttons_down &= ~.RIGHT;
                         if !windows.mouse_buttons_down ReleaseCapture();
-                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=false});
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, modifiers=windows.modifiers, down=false});
                         return 0;
 
                     case WM_CLOSE;
