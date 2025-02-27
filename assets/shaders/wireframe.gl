@@ -4,8 +4,6 @@ layout(location=0) in vec3 vertex_position;
 layout(location=0) out vec4 fragment_color;
 #endif
 
-OUTIN vec2 uv;
-
 uniform mat4 projection;
 uniform vec4 color;
 

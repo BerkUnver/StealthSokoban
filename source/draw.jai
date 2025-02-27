@@ -34,7 +34,7 @@ Cube_Vertex :: enum {
 // @Volatile Make sure this matches the layout locations in shaders. Possibly we can make a
 // corresponding enum / macros for shaders once shader including is working.
 
-//          -berk, 2 - 9 -2025
+//          -berk, 2025 - 2 - 9
 Layout_Location :: enum {
     POSITION;
     UV;

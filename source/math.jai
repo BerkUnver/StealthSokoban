@@ -5,7 +5,7 @@
 // All of the commented-out stuff is stuff I implemented before I decided to just use
 // the Jai standard library.
 
-//          -berk, 25 - 1 - 2025
+//          -berk, 2025 - 1 - 25
 
 Vector3i :: struct {
     x, y, z: s32;

@@ -4,7 +4,7 @@ Level :: struct {
     
     using types: Entity_Types;
     
-    name: string; @Ignore
+    name: string; @Ignore // The file name
     level_position: Vector3i; @Ignore
     level_size: Vector3i; @Ignore
     
@@ -93,18 +93,24 @@ Entity :: struct {
 Player :: struct {
     using #as e: Entity;
     e.type = Player;
+
+    COLOR :: Vector4.{1, 1, 1, 1};
 }
 
 
 Entrance :: struct { 
     using #as e: Entity;
     e.type = Entrance;
+
+    COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
 }
 
 
 Exit :: struct {
     using #as e: Entity;
     e.type = Exit;
+
+    COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
 }
 
 
@@ -180,6 +186,8 @@ Enemy_Spawner :: struct {
 
     favored_direction: Favored_Direction;
     facing: Facing;
+
+    COLOR :: Vector4.{0.5, 0, 0, 1};
 }
 
 
@@ -654,22 +662,6 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 }
 
 
-load_level_part_3_for_editor :: (using level: *Level, arena: *Memory_Arena) {
-    using context.game_context;
-
-    size_1d := level_size.x * level_size.y * level_size.z;
-
-    // This is really, really stupid.
-    // I would use glClearBufferSubData but it was added in OpenGL 4.3.
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-
-    all_viewed := alloc_view(*frame_arena, size_1d, View_State, zero_init = false);
-    memset(all_viewed.data, xx (View_State.VISIBLE | View_State.SEEN), byte_count(all_viewed));
-    update_view_texture(*view_texture, level_size, all_viewed);
-}
-
-
 load_level_part_3_for_game :: (using level: *Level, arena: *Memory_Arena) {
 
     size_1d := level_size.x * level_size.y * level_size.z;
@@ -719,6 +711,50 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
     }
 
     clear(level_arena);
+}
+
+
+get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, color: Vector4 {
+    color_weight: float;
+    matrix := Matrix4_Identity;
+    if #complete enemy.state == {
+        case .IDLE;
+            color_weight = 1;
+
+        case.MOVING;
+            weight := level.enemy_timer / Enemy.MOVING_TIME;
+            weight = weight * weight;
+            position := (to_vector3(enemy.position) - enemy.moving_from) * (1 - weight);
+            matrix = make_translation_matrix4(-position);
+            color_weight = 1;
+
+        case .SPAWNING;
+            weight := level.enemy_timer / Enemy.SPAWNING_TIME;
+            matrix = make_scale_matrix4(.{weight, weight, weight});
+            color_weight = weight;
+    }
+    
+    rotation: float;
+    if enemy.facing == {
+        case .X_POSITIVE;
+        case .Z_NEGATIVE; rotation = PI / 2;
+        case .X_NEGATIVE; rotation = PI;
+        case .Z_POSITIVE; rotation = -PI / 2;
+    }
+    
+    matrix = matrix * make_y_rotation_matrix(Matrix4, -rotation);
+    matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0, 0.5}) * matrix;
+
+
+    color: Vector4;
+    if #complete enemy.favored_direction == {
+        case .LEFT;
+            color = .{0, 68.0 / 255.0, 166.0 / 255.0, 1};
+        case .RIGHT;
+            color = .{1, 0, 0, 1};
+    };
+
+    return matrix, color;
 }
 
 
@@ -783,7 +819,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         // Possibly consider investigating an alternate strategy that does not touch the core
         // game state until we _know_ we can make a move, then do the update.
 
-        //          -berk, 22 - 1 - 2025.
+        //          -berk, 2025 - 1 - 22
 
         // @TODO Add pulling blocks next to you, not just in the opposite direction of where
         // you are moving (I'm pretty sure we want this)
@@ -854,8 +890,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             for * _Exit {
                 if player.position == it.position {
                     free_level(level, level_arena);
-                    assert(load_level_part_1_deserialize(LEVEL_NAME, level, level_arena));
-                    load_level_part_2_init_unserialized_fields(LEVEL_NAME, level, level_arena);
+                    assert(load_level_part_1_deserialize(LEVELS[0], level, level_arena));
+                    load_level_part_2_init_unserialized_fields(LEVELS[0], level, level_arena);
                     load_level_part_3_for_game(level, level_arena);
                     break;
                 }
@@ -882,7 +918,7 @@ level_update :: (using level: *Level, dt: float) {
     // For this initial development period this is fine, but we will soon have levels bigger than that.
     // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
 
-    //      -berk, 2 - 3 - 2025
+    //      -berk, 2025 - 2 - 3
 
 
     for :iterate_vector3i level_size {

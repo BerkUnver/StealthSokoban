@@ -9,7 +9,12 @@ windows: struct {
     stdout: HANDLE;
     input_events: [64] Input_Event;
     input_event_count: s64;
-    mouse_buttons_down: enum { LEFT :: 1; RIGHT :: 2; };
+
+    // Maybe this stuff should be handled from the game instead of in the platform layer?
+    mouse_buttons_down: enum_flags { LEFT; RIGHT; };
+    shift_down: bool;
+    ctrl_down: bool;
+    alt_down: bool;
 }
 
 append_input_event :: (e: Input_Event) {
@@ -34,25 +39,43 @@ main :: () {
         style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC,
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
             push_context .{} {
-
-                translate_keycode_to_game_input :: (keycode: WPARAM) -> bool, Key #no_context {
+        
+                translate_keycode_to_game_input :: (down: bool, keycode: WPARAM) -> bool, Input_Event #no_context {
                     if #char "A" <= keycode && keycode <= #char "Z"
                     || #char "0" <= keycode && keycode <= #char "9"
                     || #char " " == keycode {
-                        return true, xx keycode;
+                        return true, .{xx keycode, down};
                     } else if 0x6f < keycode && keycode <= 0x7B {
-                        return true, xx (xx Key.F_BASE + keycode - 0x6f);
-                    } else if keycode == VK_LEFT return true, .LEFT_ARROW;
-                    else if keycode == VK_UP return true, .UP_ARROW;
-                    else if keycode == VK_RIGHT return true, .RIGHT_ARROW;
-                    else if keycode == VK_DOWN return true, .DOWN_ARROW;
-                    else if keycode == VK_BACK return true, .BACKSPACE;
-                    else if keycode == VK_DELETE return true, .DELETE;
-                    else if keycode == VK_OEM_3 return true, .TILDE;
-                    else if keycode == VK_OEM_4 return true, .OPENING_CURLY_BRACE;
-                    else if keycode == VK_OEM_6 return true, .CLOSING_CURLY_BRACE;
-
-                    return false, 0;
+                        return true, .{xx (xx Key.F_BASE + keycode - 0x6f), down};
+                    } else if keycode == VK_LEFT {
+                        return true, .{.LEFT_ARROW, down};
+                    } else if keycode == VK_UP {
+                        return true, .{.UP_ARROW, down};
+                    } else if keycode == VK_RIGHT {
+                        return true, .{.RIGHT_ARROW, down};
+                    } else if keycode == VK_DOWN {
+                        return true, .{.DOWN_ARROW, down};
+                    } else if keycode == VK_BACK {
+                        return true, .{.BACKSPACE, down};
+                    } else if keycode == VK_DELETE {
+                        return true, .{.DELETE, down};
+                    } else if keycode == VK_OEM_3 {
+                        return true, .{.TILDE, down};
+                    } else if keycode == VK_OEM_4 {
+                        return true, .{.OPENING_CURLY_BRACE, down};
+                    } else if keycode == VK_OEM_6 {
+                        return true, .{.CLOSING_CURLY_BRACE, down};
+                    
+                    // @TODO: Properly handle left and right alts, shifts, and ctrls.
+                    } else if keycode == VK_SHIFT {
+                        windows.shift_down = down;
+                        return true, .{.SHIFT, down};
+                    } else if keycode == VK_CONTROL {
+                        windows.ctrl_down = down;
+                        return true, .{.CTRL, down};
+                    }
+                    // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
+                    return false, .{};
                 }
 
                 REPEAT_FLAG :: 0x40000000;
@@ -73,14 +96,14 @@ main :: () {
                     // is not.
                     case WM_KEYDOWN;
                         if (l_param & REPEAT_FLAG) == 0 {
-                            success, key := translate_keycode_to_game_input(w_param);
-                            if success append_input_event(.{key=key, down=true});
+                            success, key := translate_keycode_to_game_input(true, w_param);
+                            if success append_input_event(key);
                         }
                         return 0;
                     case WM_KEYUP;
                         if (l_param & REPEAT_FLAG) != 0 {
-                            success, key := translate_keycode_to_game_input(w_param);
-                            if success append_input_event(.{key=key, down=false});
+                            success, key := translate_keycode_to_game_input(false, w_param);
+                            if success append_input_event(key);
                         }
                         return 0;
 

@@ -71,7 +71,18 @@ Key :: enum {
     DELETE;
     OPENING_CURLY_BRACE;
     CLOSING_CURLY_BRACE;
+    SHIFT;
+    CTRL;
     TILDE;
+}
+
+
+// At Thekla, having these modifier flags proved to be kind of annoying for key remapping.
+// Maybe we want to do something else?
+Modifiers :: enum_flags {
+    SHIFT;
+    CTRL;
+    ALT;
 }
 
 

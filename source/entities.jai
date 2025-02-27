@@ -131,7 +131,7 @@ get_entity :: inline (using level: *Level, eid: Entity_Id) -> *Entity {
 // There aren't enough entity types or code for that to manifest yet.
 // We will see what happens.
 
-//          -berk, 18 - 2 - 2025
+//          -berk, 2025 - 2 - 18 
 
 entity_mesh :: (e: *Entity) -> *Mesh {
     using context.game_context;

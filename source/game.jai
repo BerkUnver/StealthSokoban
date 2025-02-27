@@ -32,6 +32,7 @@ Game_Context :: struct {
     item_shader: GLuint;
     unviewed_color_item_shader: GLuint;
     occlusion_shader: GLuint;
+    texture_and_color_shader: GLuint;
     
     enemy_mesh: Mesh;
     enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
@@ -53,6 +54,7 @@ Game :: struct {
     mode: Game_Mode;
     level: Level;
     editor: Editor;
+    editor_level_index: int;
     level_arena: Memory_Arena;
 
     time_elapsed: float64;
@@ -65,7 +67,11 @@ Game_Mode :: enum {
 
 #assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
 
-LEVEL_NAME :: "test.level";
+LEVELS :: string.[
+    "test.level",
+    "test2.level",
+    "test3.level",
+];
 
 #program_export "game_init"
 game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
@@ -146,6 +152,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(unviewed_color_item_shader != 0);
         occlusion_shader = load_shader("shaders/occlusion.gl");
         assert(occlusion_shader != 0);
+        texture_and_color_shader = load_shader("shaders/texture_and_color.gl");
+        assert(texture_and_color_shader != 0);
        
         //
         // Now that the game_context is initted, we can init the game.
@@ -229,12 +237,6 @@ game_update : Game_Update : (
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
-        // @Temporary Just a quick way to switch what level we're on using DLL hot-reloading
-        if LEVEL_NAME != level.name {
-            free_level(*level, *level_arena);
-            set_mode(*game, mode);
-        }
-        
         for input.events {
             if it.key == .TILDE && it.down {
                 free_level(*level, *level_arena);
@@ -257,6 +259,18 @@ game_update : Game_Update : (
                 case .GAME;
                     level_handle_input(*level, *level_arena, it);
                 case .EDITOR;
+                    if it.key == .OPENING_CURLY_BRACE && it.down {
+                        editor_level_index = (editor_level_index - 1 + LEVELS.count) % LEVELS.count;
+                        set_mode(*game, .EDITOR);
+                        continue;    
+                    }
+
+                    if it.key == .CLOSING_CURLY_BRACE && it.down {
+                        editor_level_index = (editor_level_index + 1) % LEVELS.count;
+                        set_mode(*game, .EDITOR);
+                        continue;
+                    }
+
                     editor_handle_input(*level, *level_arena, *editor, mouse, it);
             }
         }
@@ -287,234 +301,247 @@ game_update : Game_Update : (
         if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
 
         
+        using level;
+
+
+        // @TODO: Make a real renderer.
+        // This is all just temporary code to get stuff to draw on the screen.
+        // I'm not sure about what the editor drawing code vs gameplay drawing code distinction will 
+        // look like in the future, so I'm okay with the repetition here for now.
+        // Eventually, we will probably want a system resembling what an actual renderer looks like
+        // where you output "render commands" into a buffer, that then get sorted and drawn. That is
+        // too much complication for this initial phase of development, so I'm okay with doing this.
+
+        //          -berk, 2025 - 26 - 2
         
         world_to_camera: Matrix4 = ---;
         if #complete mode == {
             case .GAME;
                 world_to_camera = get_gameplay_camera_matrix(*level);
-            case .EDITOR;
-                world_to_camera = get_editor_camera_matrix(*editor);
-        }
 
-        using level;
-        
-        //
-        // Draw blocks.
-        //
-        
-        // We need a special shader for blocks because blocks are grid-aligned.
-        // We would get floating-point precision error if we just tried to 
-        // determine which collision cell each vertex mapped to using just its
-        // position.
-        glUseProgram(block_shader);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, block_bitmap);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
-
-        set_uniform("bitmap", cast(s32, 0));
-        set_uniform("viewed", cast(s32, 1));
-        set_uniform("viewed_size", level_size);
-
-        for * _Block {
-            projection := translate(world_to_camera, to_vector3(it.position));
-            set_uniform("viewed_position", it.position - level_position);
-            set_uniform("projection", projection);
-            set_uniform("color", it.color);
-            bind_and_draw(*it.mesh);
-        } 
-
-        
-        //
-        // Draw enemies
-        //
-
-        glDisable(GL_CULL_FACE);
-
-        set_uniforms_for_item_shaders :: () #expand {
-            set_uniform("viewed_position", level_position);
-            set_uniform("viewed_size", level_size);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
-            set_uniform("viewed", cast(s32, 0));
-            set_uniform("world_to_camera", world_to_camera);
-        }
-
-        glUseProgram(item_shader);
-        set_uniforms_for_item_shaders();
-
-        // @Speed draw instanced 
-        for * _Enemy {
-            color_weight: float;
-            
-            matrix := Matrix4_Identity;
-            if #complete it.state == {
-                case .IDLE;
-                    color_weight = 1;
-
-                case.MOVING;
-                    weight := enemy_timer / Enemy.MOVING_TIME;
-                    weight = weight * weight;
-                    position := (to_vector3(it.position) - it.moving_from) * (1 - weight);
-                    matrix = make_translation_matrix4(-position);
-                    color_weight = 1;
-
-                case .SPAWNING;
-                    weight := enemy_timer / Enemy.SPAWNING_TIME;
-                    matrix = make_scale_matrix4(.{weight, weight, weight});
-                    color_weight = weight;
-            }
-            
-            rotation: float;
-            if it.facing == {
-                case .X_POSITIVE;
-                case .Z_NEGATIVE; rotation = PI / 2;
-                case .X_NEGATIVE; rotation = PI;
-                case .Z_POSITIVE; rotation = -PI / 2;
-            }
-            
-            matrix = matrix * make_y_rotation_matrix(Matrix4, -rotation);
-            matrix = make_translation_matrix4(to_vector3(it.position) + Vector3.{0.5, 0, 0.5}) * matrix;
-            
-            set_uniform("model_to_world", matrix);
-
-            
-            color: Vector4;
-            if #complete it.favored_direction == {
-                case .LEFT;
-                    color = .{0, 68.0 / 255.0, 166.0 / 255.0, 1};
-                case .RIGHT;
-                    color = .{1, 0, 0, 1};
-            };
-
-            set_uniform("color", color_weight * color);
-            bind_and_draw(*enemy_mesh);
-
-            set_uniform("color", color_weight * 0.5 * color);
-            bind_and_draw(*enemy_nose_mesh);
-        }
-
-        set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
-        for enemy_annihilations {
-            set_uniform("model_to_world", make_translation_matrix4(to_vector3(it)));
-            bind_and_draw(*enemy_annihilation_mesh);
-        }
-
-        set_uniform("color", Vector4.{0.5, 0, 0, 1});
-        for * _Enemy_Spawner {
-            set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-            bind_and_draw(*enemy_spawner_mesh);
-        }
-
-        //
-        // Draw things that always appear
-        //
-
-        glUseProgram(unviewed_color_item_shader);
-        set_uniforms_for_item_shaders();
-
-        draw_unviewed_item :: (position: Vector3i, mesh: *Mesh, color: Vector4, unviewed_color: Vector4) {
-            using context.game_context;
-            model_to_world := make_translation_matrix4(to_vector3(position));
-            set_uniform("model_to_world", model_to_world);
-            set_uniform("color", color);
-            set_uniform("unviewed_color", unviewed_color);
-            bind_and_draw(mesh);
-        }
-        
-        ENTRANCE_COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
-        for * _Entrance draw_unviewed_item(it.position, *entrance_mesh, ENTRANCE_COLOR, ENTRANCE_COLOR / 2);
-        EXIT_COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
-        for * _Exit draw_unviewed_item(it.position, *exit_mesh, EXIT_COLOR, EXIT_COLOR / 2);
-
-        glEnable(GL_CULL_FACE);
-
-        
-        //
-        // Draw the player
-        //
-
-        glUseProgram(color_shader);
-        set_uniform("color", Vector4.{1, 1, 1, 1});
-        for * _Player {
-            set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-            bind_and_draw(*player_mesh);
-        }
-        
-
-
-        
-        //
-        // Draw the occlusion effects
-        //
-
-        // @TODO: Depth sorting. Possibly for when we need a real renderer.
-        glDepthFunc(GL_GREATER);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        glUseProgram(occlusion_shader);
-        
-        // Do we want this? Also, it needs to be depth-sorted with the player.
-        // set_uniform("projection", translate(world_to_camera, to_vector3(entrance.position)));
-        // set_uniform("color", Vector4.{ENTRANCE_COLOR.x, ENTRANCE_COLOR.y, ENTRANCE_COLOR.z, 0.5});
-        // bind_and_draw(*entrance_mesh);
-        
-        set_uniform("color", Vector4.{EXIT_COLOR.x, EXIT_COLOR.y, EXIT_COLOR.z, 0.5});
-        for * _Exit {
-            set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-            bind_and_draw(*exit_mesh);
-        }
-
-
-        set_uniform("color", Vector4.{1, 1, 1, 0.5});
-        for * _Player {
-            set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-            bind_and_draw(*player_mesh);
-        }
-
-        glDisable(GL_BLEND); 
-        glDepthFunc(GL_LESS);
-
-
-
-        if mode == .EDITOR {
-            if editor.selected_exists {
-                t := (cos(editor.selected_timer * TAU) + 1) / 2;
-                color := Vector4.{t, t, t, 1};
+                //
+                // Draw blocks.
+                //
                 
-                e := get_entity(*level, editor.selected);
-                mesh := entity_mesh(e);
-                position := to_vector3(e.position);
-                
-                draw_wireframe_mesh(mesh, translate(world_to_camera, position), color);
-            }
+                // We need a special shader for blocks because blocks are grid-aligned.
+                // We would get floating-point precision error if we just tried to 
+                // determine which collision cell each vertex mapped to using just its
+                // position.
+                glUseProgram(block_shader);
 
-            if editor.mode == .EXTRUDE {
-                using editor.extrude;
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
 
-                start := start_position;
-                end := to_vector3i(floor(end_intersection));
+                set_uniform("bitmap", cast(s32, 0));
+                set_uniform("viewed", cast(s32, 1));
+                set_uniform("viewed_size", level_size);
 
-                position, size := get_editor_extrude_size(*editor);
+                for * _Block {
+                    projection := translate(world_to_camera, to_vector3(it.position));
+                    set_uniform("viewed_position", it.position - level_position);
+                    set_uniform("projection", projection);
+                    set_uniform("color", it.color);
+                    bind_and_draw(*it.mesh);
+                } 
 
-                glUseProgram(imm_color_shader);
-                set_uniform("projection", world_to_camera);
+                //
+                // Draw enemies
+                //
 
-                R :: Vector3.{0.1, 0.1, 0.1};
+                glDisable(GL_CULL_FACE);
 
-                imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
-                imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
-                WIDTH :: 0.03;
-                COLOR :: Vector4.{1, 1, 1, 1};
-                for :iterate_vector3i size {
-                    cuboid_position := to_vector3(position + it);
-                    imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, COLOR);
+                set_uniforms_for_item_shaders :: () #expand {
+                    set_uniform("viewed_position", level_position);
+                    set_uniform("viewed_size", level_size);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+                    set_uniform("viewed", cast(s32, 0));
+                    set_uniform("world_to_camera", world_to_camera);
                 }
 
-                imm_flush();
-            }
+                glUseProgram(item_shader);
+                set_uniforms_for_item_shaders();
+
+                for * _Enemy {
+                    matrix, color := get_enemy_draw_info(*level, it);
+                    set_uniform("model_to_world", matrix);
+
+                    set_uniform("color", color);
+                    bind_and_draw(*enemy_mesh);
+
+                    set_uniform("color", 0.5 * color);
+                    bind_and_draw(*enemy_nose_mesh);
+                }
+
+                set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
+                for enemy_annihilations {
+                    set_uniform("model_to_world", make_translation_matrix4(to_vector3(it)));
+                    bind_and_draw(*enemy_annihilation_mesh);
+                }
+
+                set_uniform("color", Enemy_Spawner.COLOR);
+                for * _Enemy_Spawner {
+                    set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+                    bind_and_draw(*enemy_spawner_mesh);
+                }
+
+                //
+                // Draw things that always appear
+                //
+
+                glUseProgram(unviewed_color_item_shader);
+                set_uniforms_for_item_shaders();
+
+                draw_unviewed_item :: (position: Vector3i, mesh: *Mesh, color: Vector4, unviewed_color: Vector4) {
+                    using context.game_context;
+                    model_to_world := make_translation_matrix4(to_vector3(position));
+                    set_uniform("model_to_world", model_to_world);
+                    set_uniform("color", color);
+                    set_uniform("unviewed_color", unviewed_color);
+                    bind_and_draw(mesh);
+                }
+                
+                for * _Entrance draw_unviewed_item(it.position, *entrance_mesh, Entrance.COLOR, Entrance.COLOR / 2);
+                for * _Exit draw_unviewed_item(it.position, *exit_mesh, Exit.COLOR, Exit.COLOR / 2);
+
+                glEnable(GL_CULL_FACE);
+
+                //
+                // Draw the player
+                //
+
+                glUseProgram(color_shader);
+                set_uniform("color", Player.COLOR);
+                for * _Player {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*player_mesh);
+                }
+
+
+                //
+                // Draw the occlusion effects
+                //
+
+                // @TODO: Depth sorting. Possibly for when we need a real renderer.
+                glDepthFunc(GL_GREATER);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+                glUseProgram(occlusion_shader);
+                
+                // Do we want this? Also, it needs to be depth-sorted with the player.
+                // set_uniform("projection", translate(world_to_camera, to_vector3(entrance.position)));
+                // set_uniform("color", Vector4.{ENTRANCE_COLOR.x, ENTRANCE_COLOR.y, ENTRANCE_COLOR.z, 0.5});
+                // bind_and_draw(*entrance_mesh);
+                
+                set_uniform("color", Vector4.{Exit.COLOR.x, Exit.COLOR.y, Exit.COLOR.z, 0.5});
+                for * _Exit {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*exit_mesh);
+                }
+
+
+                set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
+                for * _Player {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*player_mesh);
+                }
+
+                glDisable(GL_BLEND); 
+                glDepthFunc(GL_LESS);
+
+            case .EDITOR;
+                world_to_camera = get_editor_camera_matrix(*editor);
+
+                glUseProgram(texture_and_color_shader);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+                set_uniform("bitmap", cast(s32, 0));
+
+                for * _Block {
+                    projection := translate(world_to_camera, to_vector3(it.position));
+                    set_uniform("projection", projection);
+                    set_uniform("color", it.color);
+                    bind_and_draw(*it.mesh);
+                }
+
+                glUseProgram(color_shader);
+
+                for * _Enemy {
+                    matrix, color := get_enemy_draw_info(*level, it);
+                    set_uniform("projection", world_to_camera * matrix);
+                    
+                    // @Copypasta from the ordinary enemy drawing code.
+                    // Eventually enemies will just be one mesh anyway.
+                    set_uniform("color", color);
+                    bind_and_draw(*enemy_mesh);
+
+                    set_uniform("color", 0.5 * color);
+                    bind_and_draw(*enemy_nose_mesh);
+                }
+
+                set_uniform("color", Enemy_Spawner.COLOR);
+                for * _Enemy_Spawner {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*enemy_spawner_mesh);
+                }
+                
+                set_uniform("color", Entrance.COLOR);
+                for * _Entrance {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*entrance_mesh);
+                }
+
+                set_uniform("color", Exit.COLOR);
+                for * _Exit {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*exit_mesh);
+                }
+
+                set_uniform("color", Player.COLOR);
+                for * _Player {
+                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    bind_and_draw(*player_mesh);
+                }
+
+                if editor.selected_exists {
+                    t := (cos(editor.selected_timer * TAU) + 1) / 2;
+                    color := Vector4.{t, t, t, 1};
+                    
+                    e := get_entity(*level, editor.selected);
+                    mesh := entity_mesh(e);
+                    position := to_vector3(e.position);
+                    
+                    draw_wireframe_mesh(mesh, translate(world_to_camera, position), color);
+                }
+
+                if editor.mode == .EXTRUDE {
+                    using editor.extrude;
+
+                    start := start_position;
+                    end := to_vector3i(floor(end_intersection));
+
+                    position, size := get_editor_extrude_size(*editor);
+
+                    glUseProgram(imm_color_shader);
+                    set_uniform("projection", world_to_camera);
+
+                    R :: Vector3.{0.1, 0.1, 0.1};
+
+                    imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
+                    imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
+                    WIDTH :: 0.03;
+                    COLOR :: Vector4.{1, 1, 1, 1};
+                    for :iterate_vector3i size {
+                        cuboid_position := to_vector3(position + it);
+                        imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, COLOR);
+                    }
+
+                    imm_flush();
+                }
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
@@ -581,22 +608,20 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
     mode = new_mode;
     if #complete new_mode == {
         case .GAME;
-            assert(load_level_part_1_deserialize(LEVEL_NAME, *level, *level_arena));
+            assert(load_level_part_1_deserialize(LEVELS[0], *level, *level_arena));
             // Not every serialized level is a valid game level.
             // (Player entity could be missing, Entrance entity could be missing, etc.)
-            load_level_part_2_init_unserialized_fields(LEVEL_NAME, *level, *level_arena);
+            load_level_part_2_init_unserialized_fields(LEVELS[0], *level, *level_arena);
             load_level_part_3_for_game(*level, *level_arena);
         case .EDITOR;
-            if !load_level_part_1_deserialize(LEVEL_NAME, *level, *level_arena) {
-                load_level_part_1_example(*level, *level_arena);
+            if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, *level_arena) {
+                load_level_part_1_new(*level, *level_arena);
             } 
-            load_level_part_2_init_unserialized_fields(LEVEL_NAME, *level, *level_arena);
-            load_level_part_3_for_editor(*level, *level_arena);
+            load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, *level_arena);
             editor = .{};
             editor.camera_position = .{0, 8, -4};
             editor.camera_yaw = 0;
             editor.camera_pitch = -PI / 3;
-
     }
 }
 
