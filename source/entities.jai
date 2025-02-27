@@ -43,7 +43,8 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
     // actually is. DO NOT CALL THE NORMAL "append" FUNCTION HERE!
     if array.count == array.allocated {
         assert(arena != null);
-        array.allocated *= 2;
+        if array.allocated == 0 array.allocated = 8;
+        else array.allocated *= 2;
         new_memory := cast(*u8, alloc(arena, array.allocated * type.runtime_size, zero_init=false));
         memcpy(new_memory, array.data, array.count * type.runtime_size);
         array.data = new_memory;
@@ -52,30 +53,29 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
     e := cast(*Entity, cast(*u8, array.data) + array.count * type.runtime_size);
     array.count += 1;
     
-    assert(entities.count < (1 << 24) - 1);
     e.eid = xx entities.count;
+    
+    // This is very dumb. We should just be able to assign a runtime Type_Info
+    // to a runtime Type.
+    #insert -> string {
+        buf: [1024] u8 = ---;
+        sb := make_string_builder(buf);
+
+        print(*sb, "if index == {\n");
+        for Entity_Types.TYPES {
+            print(*sb, "    case %; e.type = %;\n", it_index, it.name);
+        }
+        print(*sb, "}\n");
+
+        return get_string(*sb);
+    }
+
     if arena append(*entities, e, arena);
     else append_no_resize(*entities, e);
     
     init_from_info(type, e);
 
     return e;
-}
-
-
-make_entity :: (using level: *Level, $T: Type) -> *T {
-    get_entity_index :: () -> int {
-        for Entity_Types.TYPES {
-            if it == type_info(T) {
-                return it_index;
-            }
-        }
-        assert(false);
-        return -1;
-    }
-
-    INDEX :: #run get_entity_index();
-    return xx make_entity(level, INDEX);
 }
 
 

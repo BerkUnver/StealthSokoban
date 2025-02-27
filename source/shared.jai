@@ -50,6 +50,7 @@ Input :: struct {
 
 Input_Event :: struct {
     key: Key; // Do we want to pack the "down" into these bits?
+    modifiers: Modifiers;
     down: bool; // Up or down?
 }
 
@@ -82,7 +83,6 @@ Key :: enum {
 Modifiers :: enum_flags {
     SHIFT;
     CTRL;
-    ALT;
 }
 
 

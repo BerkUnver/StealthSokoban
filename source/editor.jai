@@ -81,6 +81,12 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
 
+    if event.key == #char "S" && event.modifiers & .CTRL && event.down {
+        serialize_level(level);
+        print("Serialized level.\n");
+        return;
+    }
+
     if editor.mode == {
         case .IDLE;
             if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.down {
