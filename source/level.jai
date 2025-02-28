@@ -341,7 +341,7 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
             i += dir_x;
             start.x += dir_x;
 
-            if visitor(start, user_data) `return true, (start.x + ifx dir_x == 1 then 0 else 1 - ray_start.x) / (ray_end.x - ray_start.x);
+            if visitor(start, user_data) `return true, (start.x + (ifx dir_x == 1 then 0 else 1) - ray_start.x) / (ray_end.x - ray_start.x);
         }
     }
 

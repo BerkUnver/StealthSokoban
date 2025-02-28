@@ -120,9 +120,9 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             
             // @TODO Merge this with "X", this is a better version of "X".
             if event.key == xx #char "Z" && event.down {
-                mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
                 mouse_start := editor.camera_position;
-                mouse_end := mouse_start + mouse_direction;
+                mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
+                mouse_direction := mouse_end - mouse_start;
 
                 Data :: struct {
                     blocks: [] Block;
@@ -150,8 +150,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 start_position: Vector3i;
                 if event.modifiers & .SHIFT start_position = data.selected_position;
                 else                        start_position = data.previous_position;
+                
+                go_back := normalize(mouse_direction) * 0.001;
+                // Because the intersection between the mouse and a block by definition
+                // lies exactly on an integer value of an axis for one of the coordinates,
+                // there will be weird floating-point precision errors when we try to 
+                // calculate future intersections. Therefore, we "go back" a little bit to
+                // avoid this.
 
-                intersection := mouse_start + mouse_direction * t;
+                intersection := mouse_start + mouse_direction * t - go_back;
+
                 editor.mode = .EXTRUDE;
                 editor.extrude = .{
                     selected_block = data.selected,
