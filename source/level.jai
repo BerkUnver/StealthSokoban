@@ -769,9 +769,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         camera_yaw_ticks = (camera_yaw_ticks - 1 + CAMERA_YAW_TICK_COUNT) % CAMERA_YAW_TICK_COUNT;
     } else if event.key == #char "J" && event.down {
         camera_yaw_ticks = (camera_yaw_ticks + 1) % CAMERA_YAW_TICK_COUNT;
-    } else if event.key == .OPENING_CURLY_BRACE && event.down {
+    } else if event.key == #char "-" && event.down {
         if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
-    } else if event.key == .CLOSING_CURLY_BRACE && event.down {
+    } else if event.key == #char "=" && event.down {
         if dt_modifier < 16 dt_modifier *= 2;
     } else {
         if !event.down return;
@@ -883,7 +883,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 break;
             }
         }
-
+        
+        // @TODO: Add a fade effect when you exit the level.
+        /*
         if !move_failed {
             player.position = new_player_position;
             for * _Exit {
@@ -896,6 +898,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 }
             }
         }
+        */
     }
 }
 

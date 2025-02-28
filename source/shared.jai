@@ -60,6 +60,8 @@ Key :: enum {
     // A - Z: Ascii 'A' - 'Z' 
     // 0 - 9: Ascii '0' - '9'
     // Space: Ascii ' '
+    // '[', ']'
+    // '-', '='
     MOUSE_LEFT_BUTTON :: 256;
     MOUSE_RIGHT_BUTTON;
     F_BASE :: MOUSE_RIGHT_BUTTON;
@@ -70,8 +72,6 @@ Key :: enum {
     UP_ARROW;
     BACKSPACE;
     DELETE;
-    OPENING_CURLY_BRACE;
-    CLOSING_CURLY_BRACE;
     SHIFT;
     CTRL;
     TILDE;

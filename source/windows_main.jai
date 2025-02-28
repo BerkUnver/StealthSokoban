@@ -64,10 +64,13 @@ main :: () {
                     } else if keycode == VK_OEM_3 {
                         key = .TILDE;
                     } else if keycode == VK_OEM_4 {
-                        key = .OPENING_CURLY_BRACE;
+                        key = #char "[";
                     } else if keycode == VK_OEM_6 {
-                        key = .CLOSING_CURLY_BRACE;
-                    
+                        key = #char "]";
+                    } else if keycode == VK_OEM_PLUS {
+                        key = #char "=";
+                    } else if keycode == VK_OEM_MINUS {
+                        key = #char "-";
                     // @TODO: Properly handle left and right alts, shifts, and ctrls.
                     } else if keycode == VK_SHIFT {
                         if down windows.modifiers |= .SHIFT;

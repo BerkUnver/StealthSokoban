@@ -432,7 +432,7 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
 
             if parallel continue;
           
-            if t > smallest_t continue;
+            if t <= 0 || smallest_t < t continue;
 
             if dot(normal, cross(v1-v0, intersection-v0)) <= 0 continue;
             if dot(normal, cross(v2-v1, intersection-v1)) <= 0 continue;

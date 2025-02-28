@@ -55,6 +55,7 @@ Game :: struct {
     level: Level;
     editor: Editor;
     editor_level_index: int;
+    game_level_index: int;
     level_arena: Memory_Arena;
 
     time_elapsed: float64;
@@ -257,16 +258,42 @@ game_update : Game_Update : (
 
             if #complete mode == {
                 case .GAME;
+                    change_level :: (dir: int) #expand {
+                        free_level(*level, *level_arena);
+                        old_index := game_level_index;
+                        game_level_index = (game_level_index + dir + LEVELS.count) % LEVELS.count;
+
+                        if !load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena) {
+                            print("Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[game_level_index]);
+                            game_level_index = old_index;
+                            assert(load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena));
+                        }
+                        load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, *level_arena);
+                        load_level_part_3_for_game(*level, *level_arena);
+                    }
+
+                    if it.key == #char "[" && it.down {
+                        change_level(-1);
+                        continue;
+                    }
+
+                    if it.key == #char "]" && it.down {
+                        change_level(1);
+                        continue;
+                    }
+
                     level_handle_input(*level, *level_arena, it);
                 case .EDITOR;
-                    if it.key == .OPENING_CURLY_BRACE && it.down {
+                    if it.key == #char "[" && it.down {
                         editor_level_index = (editor_level_index - 1 + LEVELS.count) % LEVELS.count;
+                        free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
                         continue;    
                     }
 
-                    if it.key == .CLOSING_CURLY_BRACE && it.down {
+                    if it.key == #char "]" && it.down {
                         editor_level_index = (editor_level_index + 1) % LEVELS.count;
+                        free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
                         continue;
                     }
