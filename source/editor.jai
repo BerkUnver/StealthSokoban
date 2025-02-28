@@ -139,10 +139,13 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                                     break;
                                 }
                             }
+                            
+                            // @TODO: Maybe we should shrink the bounds of the entity if it no longer
+                            // fills up its entire bounding box.
 
                             if all_zero {
                                 delete_entity(level, it.eid);
-                                if it.eid == editor.selected editor.selected = xx 0;
+                                if it.eid == editor.selected editor.selected = 0;
                             } else {
                                 update_block_mesh(it, arena);
                             }
@@ -270,7 +273,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     editor.selected = selected;
                     editor.selected_timer = 0;
                 } else {
-                    editor.selected = xx 0;
+                    editor.selected = 0;
                 }
 
                 return;

@@ -128,7 +128,7 @@ delete_entity :: (using level: *Level, eid: Entity_Id) {
     memcpy(e, final, entity_size);
 
     assert(final.eid != 0);
-    entities[xx final.eid] = e;
+    entities[final.eid] = e;
 }
 
 

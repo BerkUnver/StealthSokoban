@@ -92,24 +92,18 @@ Entity :: struct {
 
 Player :: struct {
     using #as e: Entity;
-    e.type = Player;
-
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
 
 Entrance :: struct { 
     using #as e: Entity;
-    e.type = Entrance;
-
     COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
 }
 
 
 Exit :: struct {
     using #as e: Entity;
-    e.type = Exit;
-
     COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
 }
 
@@ -167,7 +161,6 @@ Favored_Direction :: enum u8 {
 
 Enemy :: struct {
     using #as e: Entity;
-    e.type = Enemy;
 
     desired_position: Vector3i; // Only used when we are updating all the enemies.
     MOVING_TIME :: 0.1;
@@ -182,7 +175,6 @@ Enemy :: struct {
 
 Enemy_Spawner :: struct {
     using #as e: Entity;
-    e.type = Enemy_Spawner;
 
     favored_direction: Favored_Direction;
     facing: Facing;
@@ -194,7 +186,6 @@ Enemy_Spawner :: struct {
 
 Block :: struct {
     using #as e: Entity;
-    e.type = Block;
 
     size: Vector3i;
     filled: [] bool;
