@@ -48,12 +48,17 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
         new_memory := cast(*u8, alloc(arena, array.allocated * type.runtime_size, zero_init=false));
         memcpy(new_memory, array.data, array.count * type.runtime_size);
         array.data = new_memory;
+
+        for 0..array.count-1 {
+            offset := it * type.runtime_size;
+            e := cast(*Entity, array.data + offset);
+            entities[e.eid] = e;
+        }
     }
 
     e := cast(*Entity, cast(*u8, array.data) + array.count * type.runtime_size);
     array.count += 1;
-    
-    e.eid = xx entities.count;
+    init_from_info(type, e);
     
     // This is very dumb. We should just be able to assign a runtime Type_Info
     // to a runtime Type.
@@ -70,10 +75,9 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
         return get_string(*sb);
     }
 
+    e.eid = xx entities.count;
     if arena append(*entities, e, arena);
     else append_no_resize(*entities, e);
-    
-    init_from_info(type, e);
 
     return e;
 }
@@ -95,11 +99,13 @@ make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *
 
 
 delete_entity :: (using level: *Level, eid: Entity_Id) {
+    assert(eid != 0);
     e := entities[eid];
     entities[eid] = null;
     
     type_index := -1;
     entity_size := 0;
+
     // @Speed @Hack
     for * types.components {
         entity_size = Entity_Types.TYPES[it_index].runtime_size;
@@ -121,6 +127,7 @@ delete_entity :: (using level: *Level, eid: Entity_Id) {
     final := cast(*Entity, cast(*u8, array.data) + array.count * entity_size);
     memcpy(e, final, entity_size);
 
+    assert(final.eid != 0);
     entities[xx final.eid] = e;
 }
 
@@ -135,6 +142,7 @@ as :: (e: *Entity, $T: Type) -> *T {
 }
 
 get_entity :: inline (using level: *Level, eid: Entity_Id) -> *Entity {
+    assert(eid != 0);
     return entities[eid];
 }
 
@@ -176,7 +184,8 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 
 iterate_entities :: (level: *Level, body: Code, flags: For_Flags) #expand {
     #assert flags == 0;
-    for `it, `it_index: level.entities {
+    for `it_index: 1..level.entities.count-1 {
+        `it := level.entities[it_index];
         if !it continue;
         #insert(remove=#assert false) body;
     }

@@ -487,14 +487,20 @@ make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *
     memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
 
     generated_mesh := make_block_mesh(t.size, filled_allocated, arena);
-    block.* = .{
-       position = t.position,
-       size = t.size,
-       filled = filled_allocated,
-       color = t.color,
-       moveable = t.moveable,
-       mesh = generated_mesh
-    };
+    
+    // Uhhh... This is weird.
+    // There was a bug where the eid of an already-initialized entity was getting
+    // overwritten by calling this with the normal initializer. That is why each
+    // element is initialized individually.
+    // Perhaps this is a red flag that we shouldn't have half-initialized entities
+    // flying around...
+
+    block.position = t.position;
+    block.size = t.size;
+    block.filled = filled_allocated;
+    block.color = t.color;
+    block.moveable = t.moveable;
+    block.mesh = generated_mesh;
 }
 
 
@@ -624,7 +630,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     
     // Count up all the entities so we can allocate an array big enough
     // to hold pointers to all of them for the Entity_Id system
-    count := 0;
+    count := 1;
     #insert -> string {
         buf: [1024] u8;
         sb := make_string_builder(buf);
@@ -633,10 +639,12 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
         }
         return get_string(*sb);
     }
-    entities = alloc_array(arena, count, *Entity);
+    entities = alloc_array(arena, count, *Entity, zero_init=false);
+    entities[0] = null; // Let's treat an Entity_Id of zero as a
+    // special null Entity_Id.
     
     // Give each entity an Entity_Id
-    index := 0;
+    index := 1;
     #insert -> string {
         buf: [1024] u8;
         sb := make_string_builder(buf);

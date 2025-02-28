@@ -47,7 +47,6 @@ Editor :: struct {
         }
     }
     
-    selected_exists: bool;
     selected: Entity_Id;
     selected_timer: float;
     
@@ -124,9 +123,10 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 Data :: struct {
                     level: *Level;
                     arena: *Memory_Arena;
+                    editor: *Editor;
                 }
 
-                visitor :: (position: Vector3i, using d: Data) -> bool {
+                visitor :: (position: Vector3i, using d: *Data) -> bool {
                     for * level._Block {
                         success, index := get_3d_index(position, it.position, it.size);
                         if success && it.filled[index] {
@@ -142,6 +142,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
                             if all_zero {
                                 delete_entity(level, it.eid);
+                                if it.eid == editor.selected editor.selected = xx 0;
                             } else {
                                 update_block_mesh(it, arena);
                             }
@@ -151,8 +152,8 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     return false;
                 }
                 
-                data := Data.{ level=level, arena=level_arena };
-                raycast(mouse_start, mouse_end, visitor, data);
+                data := Data.{ level=level, editor=editor, arena=level_arena };
+                raycast(mouse_start, mouse_end, visitor, *data);
                 return;
             }
             
@@ -266,11 +267,10 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_position, mouse_direction);
                 
                 if success {
-                    editor.selected_exists = true;
                     editor.selected = selected;
                     editor.selected_timer = 0;
                 } else {
-                    editor.selected_exists = false;
+                    editor.selected = xx 0;
                 }
 
                 return;
@@ -278,11 +278,11 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
                 delete_entity(level, editor.selected);
-                editor.selected_exists = false;
+                editor.selected = 0;
             }
             
             enable_drag :: (index: u8) #expand {
-                if editor.selected_exists {
+                if editor.selected {
                     e := get_entity(level, editor.selected);
                     editor.mode = .DRAG;
                     editor.drag = .{
@@ -325,6 +325,12 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
         case .CAMERA;
             using editor.camera;
+
+            set_moving_direction :: (dir: Moving_Direction) #expand {
+                if event.down moving_direction |= dir;
+                else moving_direction &= ~dir;
+            }
+
             if event.key == {
                 case .MOUSE_RIGHT_BUTTON; #through;
                 case xx #char " "; // There's no easy way to right-click and hold on a trackpad.
@@ -337,12 +343,12 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                             rotating_previous_mouse_position = mouse;
                         }
                     }
-                case xx #char "W"; if event.down moving_direction |= .Z_POSITIVE; else moving_direction &= ~.Z_POSITIVE;
-                case xx #char "A"; if event.down moving_direction |= .X_NEGATIVE; else moving_direction &= ~.X_NEGATIVE;
-                case xx #char "S"; if event.down moving_direction |= .Z_NEGATIVE; else moving_direction &= ~.Z_NEGATIVE;
-                case xx #char "D"; if event.down moving_direction |= .X_POSITIVE; else moving_direction &= ~.X_POSITIVE;
-                case xx #char "Q"; if event.down moving_direction |= .Y_POSITIVE; else moving_direction &= ~.Y_POSITIVE;
-                case xx #char "E"; if event.down moving_direction |= .Y_NEGATIVE; else moving_direction &= ~.Y_NEGATIVE;
+                case xx #char "W"; set_moving_direction(.Z_POSITIVE);
+                case xx #char "A"; set_moving_direction(.X_NEGATIVE);
+                case xx #char "S"; set_moving_direction(.Z_NEGATIVE);
+                case xx #char "D"; set_moving_direction(.X_POSITIVE);
+                case xx #char "Q"; set_moving_direction(.Y_POSITIVE);
+                case xx #char "E"; set_moving_direction(.Y_NEGATIVE);
             }
             
             // The user has released all keys.
@@ -543,7 +549,7 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
     }
     
     FLASH_TIME :: 1;
-    if editor.selected_exists {
+    if editor.selected {
         editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
     }
 }

@@ -507,7 +507,7 @@ game_update : Game_Update : (
                     bind_and_draw(*player_mesh);
                 }
 
-                if editor.selected_exists {
+                if editor.selected {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
                     color := Vector4.{t, t, t, 1};
                     
