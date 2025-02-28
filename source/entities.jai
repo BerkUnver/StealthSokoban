@@ -79,6 +79,21 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
 }
 
 
+make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *T {
+    INDEX :: #run -> int {
+        for Entity_Types.TYPES {
+            if it == type_info(T) {
+                return it_index;
+            }
+        }
+        assert(false);
+        return -1;
+    }
+
+    return xx make_entity(level, INDEX, arena);
+}
+
+
 delete_entity :: (using level: *Level, eid: Entity_Id) {
     e := entities[eid];
     entities[eid] = null;

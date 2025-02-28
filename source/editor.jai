@@ -118,7 +118,6 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             
-            // @TODO Merge this with "X", this is a better version of "X".
             if event.key == xx #char "Z" && event.down {
                 mouse_start := editor.camera_position;
                 mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
@@ -129,6 +128,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     selected: *Block;
                     selected_position: Vector3i;
                     previous_position: Vector3i;
+                    previous_position_exists: bool;
                 }
 
                 visitor :: (position: Vector3i, using data: *Data) -> bool {
@@ -141,85 +141,81 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                         }
                     }
                     previous_position = position;
+                    previous_position_exists = true;
                     return false;
                 }
+
                 data := Data.{blocks = _Block};
                 collided, t := raycast(mouse_start, mouse_end, visitor, *data);
-                if !collided return;
-                
-                start_position: Vector3i;
-                if event.modifiers & .SHIFT start_position = data.selected_position;
-                else                        start_position = data.previous_position;
-                
-                go_back := normalize(mouse_direction) * 0.001;
-                // Because the intersection between the mouse and a block by definition
-                // lies exactly on an integer value of an axis for one of the coordinates,
-                // there will be weird floating-point precision errors when we try to 
-                // calculate future intersections. Therefore, we "go back" a little bit to
-                // avoid this.
 
-                intersection := mouse_start + mouse_direction * t - go_back;
-
-                editor.mode = .EXTRUDE;
-                editor.extrude = .{
-                    selected_block = data.selected,
-                    start_position = start_position,
-                    start_intersection = intersection,
-                    end_intersection = intersection,
-                    plane_normal = .{0, 1, 0},
-                };
-
-                return;
-            }
-
-
-            if event.key == xx #char "X" && event.down {
-                // @TODO When we add multi-extrude, check to see if intersections between blocks
-                // which aren't legal in gameplay actually happen in the editor, if so, add UI 
-                // that warns about these.
-
-                ray_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
-                block, _, previous_position_exists, previous_position := editor_raycast_to_block(level, editor.camera_position, ray_end);
-                
-                if block {    
+                if collided {
                     // There won't be a previous position if we started the raycast
                     // while the camera was inside of a block. We shouldn't do 
                     // anything in that case.
-                    if previous_position_exists {
-                        block.position, block.size, block.filled = realloc_3d_array_to_fit_subarea(block.position, block.size, block.filled, previous_position, Vector3i.{1, 1, 1}, level_arena);
-                       
-                        block_success, block_index := get_3d_index(previous_position, block.position, block.size);
-                        assert(block_success);
-                        block.filled[block_index] = true;
-                        update_block_mesh(*block.mesh, block.size, block.filled, level_arena);
+                    if !data.previous_position_exists return;
+
+                    start_position: Vector3i;
+                    tweak_sign := 0.0;
+
+                    if event.modifiers & .SHIFT {
+                        start_position = data.selected_position;
+                        tweak_sign = 1;
+                    } else {
+                        start_position = data.previous_position;
+                        tweak_sign = -1;
                     }
+
+                    tweak := tweak_sign * normalize(mouse_direction) * 0.001;
+                    // Because the intersection between the mouse and a block by definition
+                    // lies exactly on an integer value of an axis for one of the coordinates,
+                    // there will be weird floating-point precision errors when we try to 
+                    // calculate future intersections. Therefore, we tweak in the direction we 
+                    // want to go to avoid this.
+
+                    intersection := mouse_start + mouse_direction * t + tweak;
+
+                    editor.mode = .EXTRUDE;
+                    editor.extrude = .{
+                        selected_block = data.selected,
+                        start_position = start_position,
+                        start_intersection = intersection,
+                        end_intersection = intersection,
+                        plane_normal = .{0, 1, 0},
+                    };
+
                 } else {
-                    parallel, point, t := get_intersection_between_line_and_plane(
-                        line_point = editor.camera_position,
-                        line_direction = ray_end - editor.camera_position,
+                    parallel, point, new_block_t := get_intersection_between_line_and_plane(
+                        line_point = mouse_start,
+                        line_direction = mouse_direction,
                         plane_point = .{0, 0, 0},
                         plane_normal = .{0, 1, 0}
                     );
 
-                    if !parallel && t > 0 {
-                        // @TODO: Bring this functionality back
-                        /*
-                        temp_block := Temporary_Block.{
-                            position = .{xx floor(point.x), xx floor(point.y), xx floor(point.z)},
-                            size = .{1, 1, 1},
-                            filled = .[true],
-                            color = .{1, 1, 1, 1},
-                            moveable = false
-                        };
-                        
-                        block := add_temporary_block_to_level(*temp_block, level, level_arena);
+                    if parallel || new_block_t <= 0 return;
 
-                        append(*selectables).* = .{
-                            position = *block.position,
-                            mesh = *block.mesh,
-                        };
-                        */
-                    }
+
+                    temp_block := Temporary_Block.{
+                        position = .{xx floor(point.x), xx floor(point.y), xx floor(point.z)},
+                        size = .{1, 1, 1},
+                        filled = .[true],
+                        color = .{1, 1, 1, 1},
+                        moveable = false
+                    };
+
+
+                    block := make_entity(level, Block, level_arena);
+                    make_block_from_temporary_block(*temp_block, block, level_arena);
+
+                    start_intersection := point + normalize(mouse_direction) * 0.001;
+
+                    editor.mode = .EXTRUDE;
+                    editor.extrude = .{
+                        selected_block = block,
+                        start_position = block.position,
+                        start_intersection = point,
+                        end_intersection = point,
+                        plane_normal = .{0, 1, 0},
+                    };
                 }
                 return;
             }
@@ -403,43 +399,6 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
     }
 
     return selected_found, selected, selected_intersection;
-}
-
-
-editor_raycast_to_block :: (using level: *Level, ray_start: Vector3, ray_end: Vector3) -> *Block, collision_position: Vector3i, previous_position_exists: bool, previous_position: Vector3i {
-    Raycast_Data :: struct {
-        blocks: [] Block;
-        collided_block: *Block;
-        collision_position: Vector3i;
-        previous_position: Vector3i;
-        previous_position_exists: bool;
-    }
-
-    raycast_visitor :: (position: Vector3i, using data: *Raycast_Data) -> bool {
-        // @Speed
-        for * blocks {
-            success, index := get_3d_index(position, it.position, it.size);
-            if success && it.filled[index] {
-                collision_position = position;
-                collided_block = it;
-                return true;
-            }
-        }
-
-        previous_position_exists = true;
-        previous_position = position;
-        return false;
-    }
-    
-    data := Raycast_Data.{
-        blocks = _Block
-    };
-
-    raycast(ray_start, ray_end, raycast_visitor, *data);
-
-    block := data.collided_block;
-    if !data.collided_block return null, .{}, false, .{};
-    return data.collided_block, data.collision_position, data.previous_position_exists, data.previous_position;
 }
 
 
