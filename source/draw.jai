@@ -280,8 +280,8 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
 }
 
 
-update_block_mesh :: (mesh: *Mesh, size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) {
-    mesh.vertex_positions = make_block_mesh_data(size, filled, mesh.vbo, level_arena);
+update_block_mesh :: (block: *Block, arena: *Memory_Arena) {
+    block.mesh.vertex_positions = make_block_mesh_data(block.size, block.filled, block.mesh.vbo, arena);
 }
 
 

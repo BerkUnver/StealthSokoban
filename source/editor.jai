@@ -116,7 +116,45 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     return;
                 }
             }
+            
+            if event.key == #char "X" && event.down {
+                mouse_start := editor.camera_position;
+                mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
 
+                Data :: struct {
+                    level: *Level;
+                    arena: *Memory_Arena;
+                }
+
+                visitor :: (position: Vector3i, using d: Data) -> bool {
+                    for * level._Block {
+                        success, index := get_3d_index(position, it.position, it.size);
+                        if success && it.filled[index] {
+                            it.filled[index] = false;
+
+                            all_zero := true;
+                            for it.filled {
+                                if it {
+                                    all_zero = false;
+                                    break;
+                                }
+                            }
+
+                            if all_zero {
+                                delete_entity(level, it.eid);
+                            } else {
+                                update_block_mesh(it, arena);
+                            }
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                
+                data := Data.{ level=level, arena=level_arena };
+                raycast(mouse_start, mouse_end, visitor, data);
+                return;
+            }
             
             if event.key == xx #char "Z" && event.down {
                 mouse_start := editor.camera_position;
@@ -338,7 +376,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     assert(success);
                     block.filled[index] = true;
                 }
-                update_block_mesh(*block.mesh, block.size, block.filled, level_arena);
+                update_block_mesh(block, level_arena);
 
                 editor.mode = .IDLE;
             }
