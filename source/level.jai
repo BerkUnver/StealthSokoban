@@ -955,17 +955,21 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
 
 level_update :: (using level: *Level, dt: float) {
+    using context.game_context;
+
     dt *= dt_modifier;
     
     CAMERA_YAW_TIME :: 1.0 / 12.0;
     camera_yaw_interp = min(camera_yaw_interp + dt / CAMERA_YAW_TIME, 1);
-    print("camera_yaw_interp: %\n", camera_yaw_interp);
 
     CAMERA_PITCH_TIME :: 1.0 / 16.0;
     camera_pitch_interp = min(camera_pitch_interp + dt / CAMERA_PITCH_TIME, 1);
 
     CAMERA_FOCUS_TIME :: 1.0 / 8.0;
     camera_focus_interp = min(camera_focus_interp + dt / CAMERA_FOCUS_TIME, 1);
+    
+    // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
+    // I will see if this turns out to be a bad idea.
 
     // The following code is nontrivial so I will write an explanation.
     // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
@@ -989,8 +993,6 @@ level_update :: (using level: *Level, dt: float) {
         viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
     }
     
-    using context.game_context;
-
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
     positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
@@ -1084,6 +1086,57 @@ level_update :: (using level: *Level, dt: float) {
         check_axis(1);
         check_axis(2);
     }
+    
+    /*
+    player := *_Player[0];
+
+    for :iterate_vector3i level_size {
+        viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
+    }
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    // Should this instead be stashed in the data structure for the level so we know how much memory is being used?
+    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
+    position_count := 1;
+
+    player_success, player_index := get_3d_index(player.position, level_position, level_size);
+    assert(player_success);
+    positions[0] = player.position;
+    viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
+
+    while position_count {
+        position_count -= 1;
+        position := positions[position_count];
+
+        check_axis :: (i: int) #expand {
+            check_position :: (position: Vector3i) #expand {
+                success, index := get_3d_index(position, level_position, level_size);
+                if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
+                    eid := collision[index];
+                    if !as(eid, Block) {
+                        viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
+                        positions[position_count] = position;
+                        position_count += 1;
+                    }
+                }
+            }
+
+            p := position;
+            p.component[i] += 1;
+            check_position(p);
+
+            n := position;
+            n.component[i] -= 1;
+            check_position(n);
+        }
+
+        check_axis(0);
+        check_axis(1);
+        check_axis(2);
+    }
+    */
+
 
 
     ENEMY_TICK_TIME :: 1;

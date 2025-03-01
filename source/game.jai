@@ -131,7 +131,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         }
 
 
-        glClearColor(0, 0, 0, 1);
+        glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
@@ -444,8 +444,7 @@ game_update : Game_Update : (
                     set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
                     bind_and_draw(*player_mesh);
                 }
-
-
+                
                 //
                 // Draw the occlusion effects
                 //
