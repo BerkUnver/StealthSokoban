@@ -21,11 +21,16 @@ Level :: struct {
 
     flags: enum {PULLING :: 1;}; @Ignore
     
+    camera_focus_old: Vector3; @Ignore
+    camera_focus_interp := 1.0; @Ignore
+    
     camera_pitch_ticks: s8 = 0; @Ignore
-    camera_yaw_ticks: s8; @Ignore
+    camera_pitch_interp := 1.0; @Ignore
+    camera_pitch_old: float64; @Ignore
 
-    camera_yaw_previous_value: float; @Ignore;
-    camera_yaw_interp: float; @Ignore;
+    camera_yaw_target: float64; @Ignore
+    camera_yaw_old: float64; @Ignore
+    camera_yaw_interp := 1.0; @Ignore
 
     enemy_timer: float; @Ignore
     dt_modifier := 1.0; @Ignore
@@ -453,14 +458,16 @@ remove_block_from_collision :: (using level: *Level, block: *Block) {
 }
 
 
-get_camera_yaw :: (using level: *Level) -> float {
-    yaw := TAU * cast(float, camera_yaw_ticks) / cast(float, CAMERA_YAW_TICK_COUNT);
-    return lerp(yaw, camera_yaw_previous_value, camera_yaw_interp);
+get_camera_pitch :: (using level: *Level) -> float {
+    pitch := lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
+    return xx lerp(camera_pitch_old, pitch, camera_pitch_interp);
 }
 
 
-get_camera_pitch :: (using level: *Level) -> float {
-    return lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
+get_camera_yaw :: (using level: *Level) -> float {
+    return xx lerp(camera_yaw_old, camera_yaw_target, camera_yaw_interp);
+    // return xx lerp(camera_yaw_old, camera_yaw_target, sin((1 - camera_yaw_interp) * PI / 2));
+    // This one feels kind of "gummy".
 }
 
 
@@ -469,12 +476,16 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     offset_matrix := make_translation_matrix4(camera_offset);
     
     player := *_Player[0];
-    position_matrix := make_translation_matrix4(-to_vector3(player.position) - Vector3.{0.5, 0.5, 0.5});
+    
+    camera_focus_target := to_vector3(player.position);
+    camera_focus := lerp(camera_focus_old, camera_focus_target, camera_focus_interp);
 
-    pitch := lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
+    position_matrix := make_translation_matrix4(-camera_focus - Vector3.{0.5, 0.5, 0.5});
+
+    pitch := get_camera_pitch(level);
     pitch_matrix := make_x_rotation_matrix(Matrix4, -pitch);
-
-    yaw_matrix := make_y_rotation_matrix(Matrix4, -get_camera_yaw(level));
+    
+    yaw_matrix := make_y_rotation_matrix(Matrix4, xx -get_camera_yaw(level));
     
     return multiply(FRUSTUM, multiply(offset_matrix, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix))));
 }
@@ -785,18 +796,27 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
+
     } else if event.key == #char "K" && event.down {
+        camera_pitch_old = get_camera_pitch(level);
         camera_pitch_ticks = max(camera_pitch_ticks - 1, 0);
+        camera_pitch_interp = 0;
+
     } else if event.key == #char "I" && event.down {
+        camera_pitch_old = get_camera_pitch(level);
         camera_pitch_ticks = min(camera_pitch_ticks + 1, CAMERA_PITCH_TICK_COUNT);
+        camera_pitch_interp = 0;
+
     } else if event.key == #char "L" && event.down {
-        camera_yaw_previous_value = get_camera_yaw(level);
-        camera_yaw_interp = 1;
-        camera_yaw_ticks = (camera_yaw_ticks - 1 + CAMERA_YAW_TICK_COUNT) % CAMERA_YAW_TICK_COUNT;
+        camera_yaw_old = get_camera_yaw(level);
+        camera_yaw_interp = 0;
+        camera_yaw_target -= TAU / 12;
+
     } else if event.key == #char "J" && event.down {
-        camera_yaw_previous_value = get_camera_yaw(level);
-        camera_yaw_interp = 1;
-        camera_yaw_ticks = (camera_yaw_ticks + 1) % CAMERA_YAW_TICK_COUNT;
+        camera_yaw_old = get_camera_yaw(level);
+        camera_yaw_interp = 0;
+        camera_yaw_target += TAU / 12;
+
     } else if event.key == #char "-" && event.down {
         if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
     } else if event.key == #char "=" && event.down {
@@ -806,7 +826,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         push_direction: Vector3i;
 
         move :: (direction: Vector2) #expand {
-            rotated := rotate(direction, get_camera_yaw(level));
+            rotated := rotate(direction, cast(float, camera_yaw_target));
             if abs(rotated.x) > abs(rotated.y) {
                 push_direction.x += cast(s32, sign(rotated.x));
             } else {
@@ -914,6 +934,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         
         // @TODO: Add a fade effect when you exit the level.
         if !move_failed {
+            camera_focus_old = lerp(camera_focus_old, to_vector3(player.position), camera_focus_interp);
+            camera_focus_interp = 0;
+
             player.position = new_player_position;
             /*
                 for * _Exit {
@@ -934,7 +957,16 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 level_update :: (using level: *Level, dt: float) {
     dt *= dt_modifier;
     
-    camera_yaw_interp = max(camera_yaw_interp - dt, 0);
+    CAMERA_YAW_TIME :: 1.0 / 12.0;
+    camera_yaw_interp = min(camera_yaw_interp + dt / CAMERA_YAW_TIME, 1);
+    print("camera_yaw_interp: %\n", camera_yaw_interp);
+
+    CAMERA_PITCH_TIME :: 1.0 / 16.0;
+    camera_pitch_interp = min(camera_pitch_interp + dt / CAMERA_PITCH_TIME, 1);
+
+    CAMERA_FOCUS_TIME :: 1.0 / 8.0;
+    camera_focus_interp = min(camera_focus_interp + dt / CAMERA_FOCUS_TIME, 1);
+
     // The following code is nontrivial so I will write an explanation.
     // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
     // Here's why:
