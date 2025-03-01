@@ -88,6 +88,29 @@ print :: (s: string, args: ..Any) {
 }
 
 
+Log_Level :: enum {
+    OK;
+    ERROR;
+};
+
+
+log :: (level: Log_Level, s: string, args: ..Any, loc := #caller_location) {
+    using context.game_context;
+    
+    if level == .ERROR set_console_text_color(.RED);
+
+    buf: [4096] u8 = ---;
+    sb := make_string_builder(buf);
+   
+    print(*sb, "%(%): ", loc.fully_pathed_filename, loc.line_number);
+    print(*sb, s, ..args);
+    os_print(get_string(*sb));
+
+    if level == .ERROR set_console_text_color(.WHITE);
+}
+
+
+
 byte_count :: (a: [] $T) -> s64 {
     return size_of(T) * a.count;
 }

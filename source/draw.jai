@@ -378,7 +378,7 @@ load_shader :: (file_name: string, prefix := "") -> GLuint {
     buf: [10000] u8 = ---;
     success, str := read_file(file_name, buf);
     if !success {
-        print("Failed to load the file for shader \"%\"\n", file_name);
+        log(.ERROR, "Failed to load the file for shader \"%\"\n", file_name);
         return 0;
     }
 
@@ -428,7 +428,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
 
         str := string.{data=*buffer[0], count=count};
 
-        print("Compilation error in vertex shader \"%\"\n%", name, str);
+        log(.ERROR, "Compilation error in vertex shader \"%\"\n%", name, str);
         return 0;
     }
     
@@ -454,7 +454,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
         glGetShaderInfoLog(fragment, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Compilation error in fragment shader \"%\"\n%", name, str);
+        log(.ERROR, "Compilation error in fragment shader \"%\"\n%", name, str);
         return 0;
     }
 
@@ -471,8 +471,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
         glGetProgramInfoLog(program, LOG_SIZE, *count, *buffer[0]);
 
         str := string.{data=*buffer[0], count=count};
-        print("Linking error in shader \"%\"\n%", name, str);
-        print(str);
+        log(.ERROR, "Linking error in shader \"%\"\n%", name, str);
         return 0;
     }
 

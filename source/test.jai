@@ -2,11 +2,11 @@ expect :: (b: bool, loc := #caller_location) {
     using context.game_context;
     if b {
         set_console_text_color(.GREEN);
-        print("%:% success\n", loc.fully_pathed_filename, loc.line_number);
+        print("%(%) success\n", loc.fully_pathed_filename, loc.line_number);
         set_console_text_color(.WHITE);
     } else {
         set_console_text_color(.RED);
-        print("%:% failure\n", loc.fully_pathed_filename, loc.line_number);
+        print("%(%) failure\n", loc.fully_pathed_filename, loc.line_number);
         set_console_text_color(.WHITE);
     }
 }
@@ -25,11 +25,11 @@ expect :: (err: Deserialization_Error, loc := #caller_location) {
     using context.game_context;
     if err.ok {
         set_console_text_color(.GREEN);
-        print("%:% success (Deserialization)\n", loc.fully_pathed_filename, loc.line_number);
+        print("%(%) success (Deserialization)\n", loc.fully_pathed_filename, loc.line_number);
         set_console_text_color(.WHITE);
     } else {
         set_console_text_color(.RED);
-        print("%:% failure (Deserialization): Byte %,% %\n",
+        print("%(%) failure (Deserialization): Byte %,% %\n",
             loc.fully_pathed_filename,
             loc.line_number, 
             err.loc.start,

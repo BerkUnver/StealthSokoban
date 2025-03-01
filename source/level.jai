@@ -24,6 +24,9 @@ Level :: struct {
     camera_pitch_ticks: s8 = 0; @Ignore
     camera_yaw_ticks: s8; @Ignore
 
+    camera_yaw_previous_value: float; @Ignore;
+    camera_yaw_interp: float; @Ignore;
+
     enemy_timer: float; @Ignore
     dt_modifier := 1.0; @Ignore
 
@@ -256,9 +259,7 @@ add_block_to_collision :: (using level: *Level, block: *Block) -> Add_Block_Resu
     offset := block.position - level_position;
     end := offset + block.size;
     if !inside_positive_bounding_box(offset, level_size) return .OUT_OF_BOUNDS;
-    if (end.x < 0 || level_size.x < end.x ||
-        end.x < 0 || level_size.x < end.x ||
-        end.x < 0 || level_size.x < end.x ) return .OUT_OF_BOUNDS;
+    if !inside_positive_bounding_box(end - Vector3i.{1, 1, 1}, level_size) return .OUT_OF_BOUNDS;
 
     // @Speed we could just detect when the failure happens and unwind what we've
     // already added instead of first checking, then adding.
@@ -452,6 +453,17 @@ remove_block_from_collision :: (using level: *Level, block: *Block) {
 }
 
 
+get_camera_yaw :: (using level: *Level) -> float {
+    yaw := TAU * cast(float, camera_yaw_ticks) / cast(float, CAMERA_YAW_TICK_COUNT);
+    return lerp(yaw, camera_yaw_previous_value, camera_yaw_interp);
+}
+
+
+get_camera_pitch :: (using level: *Level) -> float {
+    return lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
+}
+
+
 get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     camera_offset := Vector3.{0, 0, 12};
     offset_matrix := make_translation_matrix4(camera_offset);
@@ -468,30 +480,8 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
 }
 
 
-get_camera_yaw :: (using level: *Level) -> float {
-    return TAU * cast(float, camera_yaw_ticks) / cast(float, CAMERA_YAW_TICK_COUNT);
-}
-
-
 make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *Memory_Arena) {
-    filled_allocated := alloc_view(arena, t.filled.count, bool);
-    memcpy(filled_allocated.data, t.filled.data, size_of(type_of(t.filled.data.*)) * t.filled.count);
 
-    generated_mesh := make_block_mesh(t.size, filled_allocated, arena);
-    
-    // Uhhh... This is weird.
-    // There was a bug where the eid of an already-initialized entity was getting
-    // overwritten by calling this with the normal initializer. That is why each
-    // element is initialized individually.
-    // Perhaps this is a red flag that we shouldn't have half-initialized entities
-    // flying around...
-
-    block.position = t.position;
-    block.size = t.size;
-    block.filled = filled_allocated;
-    block.color = t.color;
-    block.moveable = t.moveable;
-    block.mesh = generated_mesh;
 }
 
 
@@ -574,7 +564,20 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
 
     _Block = alloc_array(arena, temp_blocks.count, Block);
     for * temp_blocks {
-        make_block_from_temporary_block(it, *_Block[it_index], arena);
+        filled := alloc_view(arena, it.filled.count, bool);
+        memcpy(filled.data, it.filled.data, size_of(type_of(it.filled.data.*)) * it.filled.count);
+
+        generated_mesh := make_block_mesh(it.size, filled, arena);
+
+        _Block[it_index] = .{
+            position = it.position,
+            size = it.size,
+            filled = filled,
+            color = it.color,
+            moveable = it.moveable,
+            mesh = generated_mesh
+
+        };
     }
 
     _Enemy = alloc_array(arena, 2, Enemy);
@@ -599,7 +602,7 @@ load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena
     mark := get_mark(arena);
     err := deserialize(level_text, level, arena);
     if !err.ok {
-        print("Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
+        log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
         restore_mark(arena, mark);
         return false;
     }
@@ -616,7 +619,7 @@ serialize_level :: (using level: *Level) {
 }
 
 
-load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
+load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> bool {
     name = copy_string(arena, level_name);
     
     // Count up all the entities so we can allocate an array big enough
@@ -657,12 +660,31 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     level_position, level_size = get_block_extents(_Block);
     // @TODO: Make sure none of the other entities are outside of the level
 
+
+
+
+    if for_mode != .GAME return true;
+
+    //
+    // Now init the fields unique to the GAME mode
+    //
+
+    if _Player.count != 0 {
+        log(.ERROR, "There were player entities in the serialized level \"%\".\n", level.name);
+        return false;
+    }
+
+    if _Entrance.count != 1 {
+        log(.ERROR, "There were more or less than 1 level entrances in the serialized level \"%\".\n");
+        return false;
+    }
+
+    player := make_entity(level, Player, arena);
+    player.position = _Entrance[0].position;
+
+
+
     view_texture = make_view_texture(level_size);
-}
-
-
-load_level_part_3_for_game :: (using level: *Level, arena: *Memory_Arena) {
-
     size_1d := level_size.x * level_size.y * level_size.z;
 
     // @Hack @Speed @Memory
@@ -694,6 +716,8 @@ load_level_part_3_for_game :: (using level: *Level, arena: *Memory_Arena) {
         assert(is_null(eid));
         collision[index] = make_eid(it);
     }
+
+    return true;
 }
 
 
@@ -766,8 +790,12 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     } else if event.key == #char "I" && event.down {
         camera_pitch_ticks = min(camera_pitch_ticks + 1, CAMERA_PITCH_TICK_COUNT);
     } else if event.key == #char "L" && event.down {
+        camera_yaw_previous_value = get_camera_yaw(level);
+        camera_yaw_interp = 1;
         camera_yaw_ticks = (camera_yaw_ticks - 1 + CAMERA_YAW_TICK_COUNT) % CAMERA_YAW_TICK_COUNT;
     } else if event.key == #char "J" && event.down {
+        camera_yaw_previous_value = get_camera_yaw(level);
+        camera_yaw_interp = 1;
         camera_yaw_ticks = (camera_yaw_ticks + 1) % CAMERA_YAW_TICK_COUNT;
     } else if event.key == #char "-" && event.down {
         if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
@@ -885,26 +913,28 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         }
         
         // @TODO: Add a fade effect when you exit the level.
-        /*
         if !move_failed {
             player.position = new_player_position;
-            for * _Exit {
-                if player.position == it.position {
-                    free_level(level, level_arena);
-                    assert(load_level_part_1_deserialize(LEVELS[0], level, level_arena));
-                    load_level_part_2_init_unserialized_fields(LEVELS[0], level, level_arena);
-                    load_level_part_3_for_game(level, level_arena);
-                    break;
+            /*
+                for * _Exit {
+                    if player.position == it.position {
+                        free_level(level, level_arena);
+                        assert(load_level_part_1_deserialize(LEVELS[0], level, level_arena));
+                        load_level_part_2_init_unserialized_fields(LEVELS[0], level, level_arena);
+                        load_level_part_3_for_game(level, level_arena);
+                        break;
+                    }
                 }
-            }
+            */
         }
-        */
     }
 }
 
 
 level_update :: (using level: *Level, dt: float) {
     dt *= dt_modifier;
+    
+    camera_yaw_interp = max(camera_yaw_interp - dt, 0);
     // The following code is nontrivial so I will write an explanation.
     // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
     // Here's why:

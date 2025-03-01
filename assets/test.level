@@ -83,14 +83,7 @@ types
 		facing 2
 		;
 	]
-	_Player 1[
-		e
-			position
-				x -1
-				z -1
-				;
-			;
-		;
+	_Player 0[
 	]
 	_Entrance 1[
 		e

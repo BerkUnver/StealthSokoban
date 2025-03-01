@@ -79,12 +79,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
     if event.key == #char "S" && event.modifiers & .CTRL && event.down {
         serialize_level(level);
-        print("Serialized level.\n");
+        log(.OK, "Serialized level.\n");
         return;
     }
 
     if editor.mode == {
         case .IDLE;
+            mouse_start := editor.camera_position;
+            mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
+            mouse_direction := mouse_end - mouse_start;
+
             if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.down {
                 editor.mode = .CAMERA;
                 editor.camera = .{
@@ -161,10 +165,6 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
             
             if event.key == xx #char "Z" && event.down {
-                mouse_start := editor.camera_position;
-                mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
-                mouse_direction := mouse_end - mouse_start;
-
                 Data :: struct {
                     blocks: [] Block;
                     selected: *Block;
@@ -264,10 +264,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
 
             if event.key == .MOUSE_LEFT_BUTTON && event.down {
-                mouse_direction := multiply_homogeneous(inverse(get_editor_camera_matrix(editor)), .{mouse.x, mouse.y, 0}) - editor.camera_position;
-                mouse_position := editor.camera_position;
-
-                success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_position, mouse_direction);
+                success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_direction);
                 
                 if success {
                     editor.selected = selected;
@@ -282,6 +279,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
                 delete_entity(level, editor.selected);
                 editor.selected = 0;
+                return;
             }
             
             enable_drag :: (index: u8) #expand {
@@ -312,16 +310,38 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + Entity_Types.TYPES.count) && event.down {
+                success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_direction);
+                position: Vector3i;
+                if success {
+                    // The 0.001 go-back is in case the intersection is on an integer boundary (like colliding with Blocks),
+                    // where we're at risk of floating-point errors.
+                    position = to_vector3i(floor(intersection - normalize(mouse_direction) * 0.001));
+                } else {
+                    parallel, intersection, t := get_intersection_between_line_and_plane(
+                        line_point = mouse_start,
+                        line_direction = mouse_direction,
+                        plane_point = .{0, 0, 0},
+                        plane_normal = .{0, 1, 0}
+                    );
+
+                    if parallel || t <= 0 return;
+
+                    position = .{xx floor(intersection.x), 0, xx floor(intersection.y)};
+                }
+
+
                 index := cast(int, event.key - 1 - .F_BASE);
                 e := make_entity(level, index, level_arena);
+                e.position = position;
                 block := as(e, Block);
                 if block {
-                    t := Temporary_Block.{
-                        size = .{1, 1, 1},
-                        filled = .[true],
-                        color = .{1, 1, 1, 1}
-                    };
-                    make_block_from_temporary_block(*t, block, level_arena);
+                    filled := alloc_view(level_arena, 1, bool);
+                    filled[0] = true;
+
+                    block.size = .{1, 1, 1};
+                    block.filled = filled;
+                    block.color = .{1, 1, 1, 1};
+                    block.mesh = make_block_mesh(.{1, 1, 1}, filled, level_arena);
                 }
                 return;
             }
