@@ -2,6 +2,7 @@
     TYPES :: #string END
     *Type_Info_Struct.[
         type_info(Block),
+        type_info(Door),
         type_info(Enemy),
         type_info(Enemy_Spawner),
         type_info(Player),
@@ -161,6 +162,9 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 
     block := as(e, Block);
     if block return *block.mesh;
+
+    door := as(e, Door);
+    if door return *door_mesh;
 
     player := as(e, Player);
     if player return *player_mesh;

@@ -204,6 +204,13 @@ Block :: struct {
 }
 
 
+Door :: struct {
+    using #as e: Entity;
+
+    COLOR :: Vector4.{60.0/256.0, 38.0/256.0, 38.0/256.0, 1};
+}
+
+
 // This solely exists as a convenience so I can type blocks into the editor for now.
 Temporary_Block :: struct {
     position: Vector3i;
@@ -728,6 +735,14 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
         collision[index] = make_eid(it);
     }
 
+    for * _Door {
+        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+        assert(in_bounds);
+        eid := collision[index];
+        assert(is_null(eid));
+        collision[index] = make_eid(it);
+    }
+
     return true;
 }
 
@@ -971,6 +986,8 @@ level_update :: (using level: *Level, dt: float) {
     // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
     // I will see if this turns out to be a bad idea.
 
+    /*
+
     // The following code is nontrivial so I will write an explanation.
     // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
     // Here's why:
@@ -1086,8 +1103,8 @@ level_update :: (using level: *Level, dt: float) {
         check_axis(1);
         check_axis(2);
     }
+    */
     
-    /*
     player := *_Player[0];
 
     for :iterate_vector3i level_size {
@@ -1114,7 +1131,7 @@ level_update :: (using level: *Level, dt: float) {
                 success, index := get_3d_index(position, level_position, level_size);
                 if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                     eid := collision[index];
-                    if !as(eid, Block) {
+                    if !as(eid, Block) && !as(eid, Door) {
                         viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
                         positions[position_count] = position;
                         position_count += 1;
@@ -1135,7 +1152,6 @@ level_update :: (using level: *Level, dt: float) {
         check_axis(1);
         check_axis(2);
     }
-    */
 
 
 

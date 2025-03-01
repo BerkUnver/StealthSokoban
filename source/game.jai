@@ -41,6 +41,7 @@ Game_Context :: struct {
     player_mesh: Mesh;
     entrance_mesh: Mesh;
     exit_mesh: Mesh;
+    door_mesh: Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -200,6 +201,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
+
+        door_mesh = make_cuboid_vertex_mesh(.{-0.001, -0.001, -0.001}, .{1.001, 1.001, 1.001}, *permanent_arena);
+        // @Hack this is axis-aligned. We need it do draw from an adjacent cell, so we make it slightly oversized.
+        // This is dumb. Also, we likely are going to want doors that are arbitrarily sized, so should this behave like blocks?
 
         set_mode(*game, .GAME);
         
@@ -373,7 +378,7 @@ game_update : Game_Update : (
                 } 
 
                 //
-                // Draw enemies
+                // Draw things that only appear when seen
                 //
 
                 glDisable(GL_CULL_FACE);
@@ -407,11 +412,16 @@ game_update : Game_Update : (
                     bind_and_draw(*enemy_annihilation_mesh);
                 }
 
-                set_uniform("color", Enemy_Spawner.COLOR);
-                for * _Enemy_Spawner {
-                    set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-                    bind_and_draw(*enemy_spawner_mesh);
+                draw_entities :: (e: [] $T/Entity, mesh: *Mesh) {
+                    set_uniform("color", T.COLOR);
+                    for * e {
+                        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+                        bind_and_draw(mesh);
+                    }
                 }
+
+                draw_entities(_Enemy_Spawner, *enemy_spawner_mesh);
+                draw_entities(_Door, *door_mesh);
 
                 //
                 // Draw things that always appear
@@ -508,29 +518,20 @@ game_update : Game_Update : (
                     bind_and_draw(*enemy_nose_mesh);
                 }
 
-                set_uniform("color", Enemy_Spawner.COLOR);
-                for * _Enemy_Spawner {
-                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-                    bind_and_draw(*enemy_spawner_mesh);
-                }
-                
-                set_uniform("color", Entrance.COLOR);
-                for * _Entrance {
-                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-                    bind_and_draw(*entrance_mesh);
+
+                draw_entities :: (e: [] $T/Entity, mesh: *Mesh) #expand {
+                set_uniform("color", T.COLOR);
+                    for * e {
+                        set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                        bind_and_draw(mesh);
+                    }
                 }
 
-                set_uniform("color", Exit.COLOR);
-                for * _Exit {
-                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-                    bind_and_draw(*exit_mesh);
-                }
-
-                set_uniform("color", Player.COLOR);
-                for * _Player {
-                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-                    bind_and_draw(*player_mesh);
-                }
+                draw_entities(_Enemy_Spawner, *enemy_spawner_mesh);
+                draw_entities(_Entrance, *entrance_mesh);
+                draw_entities(_Exit, *exit_mesh);
+                draw_entities(_Player, *player_mesh);
+                draw_entities(_Door, *door_mesh);
 
                 if editor.selected {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;

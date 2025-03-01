@@ -97,6 +97,23 @@ types
 			z 1
 			w 1
 			;
+		moveable 1
+		;
+	]
+	_Door 2[
+		e
+			position
+				x -5
+				z 3
+				;
+			;
+		;
+		e
+			position
+				x 5
+				z 3
+				;
+			;
 		;
 	]
 	_Enemy_Spawner 2[
