@@ -262,16 +262,6 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
                     if parallel || new_block_t <= 0 return;
 
-
-                    temp_block := Temporary_Block.{
-                        position = .{xx floor(point.x), xx floor(point.y), xx floor(point.z)},
-                        size = .{1, 1, 1},
-                        filled = .[true],
-                        color = .{1, 1, 1, 1},
-                        moveable = false
-                    };
-
-                    
                     filled := alloc_view(level_arena, 1, bool);
                     filled[0] = true;
                     size := Vector3i.{1, 1, 1};
@@ -463,7 +453,7 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
     selected: Entity_Id;
     selected_intersection: Vector3;
     
-    for :iterate_entities e: level {
+    for :iterate_entities e: types {
         position := to_vector3(e.position);
         mesh := entity_mesh(e);
 

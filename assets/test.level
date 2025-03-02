@@ -55,7 +55,7 @@ types
 			z 1
 			w 1
 			;
-		moveable 1
+		block_type 1
 		;
 	]
 	_Enemy 2[

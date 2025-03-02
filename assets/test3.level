@@ -1,5 +1,5 @@
 types
-	_Block 5[
+	_Block 7[
 		e
 			position
 				x -6
@@ -38,7 +38,7 @@ types
 			z 0.3828125
 			w 1
 			;
-		moveable 1
+		block_type 1
 		;
 		e
 			position
@@ -57,7 +57,7 @@ types
 			z 0.5546875
 			w 1
 			;
-		moveable 1
+		block_type 1
 		;
 		e
 			position
@@ -77,7 +77,7 @@ types
 			z 0.6484375
 			w 1
 			;
-		moveable 1
+		block_type 1
 		;
 		e
 			position
@@ -97,16 +97,18 @@ types
 			z 1
 			w 1
 			;
-		moveable 1
+		block_type 1
 		;
-	]
-	_Door 2[
 		e
 			position
 				x -5
 				z 3
 				;
 			;
+		size x 1 y 1 z 1;
+		filled 1[1]
+		color x 0 y 1 z 0 w 1;
+		block_type 2
 		;
 		e
 			position
@@ -114,6 +116,10 @@ types
 				z 3
 				;
 			;
+		size x 1 y 1 z 1;
+		filled 1[1]
+		color x 0 y 1 z 0 w 1;
+		block_type 2
 		;
 	]
 	_Enemy_Spawner 2[

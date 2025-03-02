@@ -35,7 +35,7 @@ Level :: struct {
     enemy_timer: float; @Ignore
     dt_modifier := 1.0; @Ignore
 
-    collision: [] Eid; @Ignore
+    collision: [] Entity_Id; @Ignore
     viewed: [] View_State; @Ignore
     desired_enemy_moves: [] Desired_Enemy_Move; @Ignore
     enemy_move_results: [] Enemy_Move_Result; @Ignore
@@ -56,38 +56,6 @@ CAMERA_MIN_PITCH :: -PI / 3;
 CAMERA_MAX_PITCH :: PI / 3;
 
 CAMERA_YAW_TICK_COUNT :: 12;
-
-
-// @TODO Delete soon, this has been replaced by Entity_Id.
-Eid :: struct { // Entity ID
-    type: Type;
-    ptr: *void;
-}
-
-
-make_eid :: inline (ptr: *$T) -> Eid {
-    return .{T, ptr};
-}
-
-
-as :: inline (eid: Eid, $T: Type) -> *T {
-    if eid.type == T return eid.ptr;
-    return null;
-}
-
-
-eq :: inline (a: Eid, b: Eid) -> bool {
-    if a.ptr == b.ptr {
-        assert(a.type == b.type);
-        return true;
-    }
-    return false;
-}
-
-
-is_null :: inline (eid: Eid) -> bool {
-    return eid.ptr == null;
-}
 
 
 Entity :: struct {
@@ -191,6 +159,40 @@ Enemy_Spawner :: struct {
 }
 
 
+/*
+Block :: struct {
+    size: Vector3i;
+    filled: [] bool;
+    color: Vector4;
+    block_type: bool;
+    mesh: Mesh; @Ignore
+}
+
+
+Stationary_Block :: struct {
+    using #as e: Entity;
+    using block: Block;
+}
+
+
+Moving_Block :: struct {
+    using #as e: Entity;
+    using block: Block;
+}
+
+
+Door :: struct {
+    using #as e: Entity;
+    using block: Block;
+}
+*/
+
+Block_Type :: enum {
+    STATIONARY;
+    MOVING;
+    DOOR;
+}
+
 
 Block :: struct {
     using #as e: Entity;
@@ -198,16 +200,9 @@ Block :: struct {
     size: Vector3i;
     filled: [] bool;
     color: Vector4;
-    moveable: bool;
+    block_type: Block_Type;
     mesh: Mesh; @Ignore
     // @TODO Make a bit array data structure for better cache coherency
-}
-
-
-Door :: struct {
-    using #as e: Entity;
-
-    COLOR :: Vector4.{60.0/256.0, 38.0/256.0, 38.0/256.0, 1};
 }
 
 
@@ -217,7 +212,7 @@ Temporary_Block :: struct {
     size: Vector3i;
     filled: [] bool;
     color: Vector4;
-    moveable: bool;
+    block_type: Block_Type;
 }
 
 
@@ -283,7 +278,7 @@ add_block_to_collision :: (using level: *Level, block: *Block) -> Add_Block_Resu
         in_bounds, index := get_3d_index(it + offset, level_size);
         assert(in_bounds);
         eid := collision[index];
-        if !is_null(eid) return .CELL_ALREADY_OCCUPIED;
+        if eid return .CELL_ALREADY_OCCUPIED;
     }
 
     for :iterate_vector3i block.size {
@@ -291,7 +286,7 @@ add_block_to_collision :: (using level: *Level, block: *Block) -> Add_Block_Resu
 
         collision_coord := it + offset;
         collision_index := get_3d_index_unchecked(collision_coord, level_size);
-        collision[collision_index] = make_eid(block);
+        collision[collision_index] = block.eid;
     }
 
     return .OK;
@@ -459,8 +454,9 @@ remove_block_from_collision :: (using level: *Level, block: *Block) {
         in_bounds, index := get_3d_index(it + offset, level_size);
         assert(in_bounds);
         eid := collision[index];
-        assert(eid.ptr == block);
-        collision[index] = .{};
+        assert(eid != 0);
+        assert(get_entity(level, eid) == block);
+        collision[index] = 0;
     }
 }
 
@@ -549,7 +545,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
                 T, T, T, T, T, T, T, T, T, T, T, T,
             ],
             color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
-            moveable = false
+            block_type = .STATIONARY,
         },
         .{
             position = .{-3, 0, -2},
@@ -560,7 +556,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
             ],
             color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
             // .{1, 143.0/255.0, 0, 1} Orange color that I liked
-            moveable = false
+            block_type = .MOVING,
         },
         .{
             position = .{-1, 0, 4},
@@ -571,7 +567,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
                 T,
             ],
             color = .{0, 0, 1, 1},
-            moveable = true
+            block_type = .MOVING,
         }
     ];
 
@@ -587,9 +583,8 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
             size = it.size,
             filled = filled,
             color = it.color,
-            moveable = it.moveable,
+            block_type = it.block_type,
             mesh = generated_mesh
-
         };
     }
 
@@ -636,33 +631,17 @@ serialize_level :: (using level: *Level) {
 
 load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> bool {
     name = copy_string(arena, level_name);
-    
-    // Count up all the entities so we can allocate an array big enough
-    // to hold pointers to all of them for the Entity_Id system
-    count := 1;
-    #insert -> string {
-        buf: [1024] u8;
-        sb := make_string_builder(buf);
-        for Entity_Types.TYPES {
-            print(*sb, "count += _%.count;\n", it.name);
-        }
-        return get_string(*sb);
-    }
-    entities = alloc_array(arena, count, *Entity, zero_init=false);
-    entities[0] = null; // Let's treat an Entity_Id of zero as a
-    // special null Entity_Id.
-    
+   
     // Give each entity an Entity_Id
-    index := 1;
+    entity_count := 1;
     #insert -> string {
         buf: [1024] u8;
         sb := make_string_builder(buf);
         for Entity_Types.TYPES {
             print(*sb, "for * _% {\n", it.name);
-            print(*sb, "    entities[index] = it;\n");
-            print(*sb, "    it.eid = xx index;\n");
+            print(*sb, "    it.eid = xx entity_count;\n");
             print(*sb, "    it.type = %;\n", it.name);
-            print(*sb, "    index += 1;\n");
+            print(*sb, "    entity_count += 1;\n");
             print(*sb, "}\n");
         }
         return get_string(*sb);
@@ -672,75 +651,84 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
         it.mesh = make_block_mesh(it.size, it.filled, arena);
     }
 
-    level_position, level_size = get_block_extents(_Block);
-    // @TODO: Make sure none of the other entities are outside of the level
+    if #complete for_mode == {
+        case .EDITOR;
+            entities = alloc_array(arena, entity_count, *Entity, zero_init = false);
+            entities[0] = null;
 
+            for :iterate_entities types {
+                entities[it.eid] = it;
+            }
+            return true;
 
+        case .GAME;
+            level_position, level_size = get_block_extents(_Block);
+            size_1d := level_size.x * level_size.y * level_size.z;
+            // @Hack @Speed @Memory
+            // This is a dumb workaround.
+            // Right now, the serialization system will allocate as many elements as was serialized for an array.
+            // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
+            // dynamically allocate memory while the a level is running, and we can easily know how much memory the
+            // game will ever use (when we're in the GAME mode. When we're in the EDITOR mode, do whatever you want.)
+            alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
 
+            // Count up all the entities so we can allocate an array big enough
+            // to hold pointers to all of them for the Entity_Id system
+            // The first slot is null, so we start at 1.
+            count := 1;
+            #insert -> string {
+                buf: [1024] u8;
+                sb := make_string_builder(buf);
+                for Entity_Types.TYPES {
+                    print(*sb, "count += _%.allocated;\n", it.name);
+                }
+                return get_string(*sb);
+            }
+            count += 1; // For the player we are about to add
 
-    if for_mode != .GAME return true;
+            entities = alloc_array(arena, count, *Entity, zero_init=false);
+            entities[0] = null;
 
-    //
-    // Now init the fields unique to the GAME mode
-    //
+            for :iterate_entities types {
+                entities[it.eid] = it;
+            }
 
-    if _Player.count != 0 {
-        log(.ERROR, "There were player entities in the serialized level \"%\".\n", level.name);
-        return false;
+            // @TODO: Make sure none of the other entities are outside of the level
+
+            view_texture = make_view_texture(level_size);
+
+            viewed = alloc_view(arena, size_1d, View_State);
+            collision = alloc_view(arena, size_1d, Entity_Id);
+            enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
+            desired_enemy_moves = alloc_view(arena, size_1d, Desired_Enemy_Move);
+            enemy_annihilations = reserve_array(arena, size_1d / 2, Vector3i);
+
+            for * _Block {
+                assert(add_block_to_collision(level, it) == .OK);
+            }
+            
+            for * _Enemy {
+                in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                assert(in_bounds);
+                assert(collision[index] == 0);
+                collision[index] = it.eid;
+            }
+
+            if _Player.count != 0 {
+                log(.ERROR, "There were player entities in the serialized level \"%\".\n", level.name);
+                return false;
+            }
+
+            if _Entrance.count != 1 {
+                log(.ERROR, "There were more or less than 1 level entrances in the serialized level \"%\".\n", level.name);
+                return false;
+            }
+
+            player := make_entity(level, Player, arena);
+            player.position = _Entrance[0].position;
+
+            return true;
     }
-
-    if _Entrance.count != 1 {
-        log(.ERROR, "There were more or less than 1 level entrances in the serialized level \"%\".\n", level.name);
-        return false;
-    }
-
-    player := make_entity(level, Player, arena);
-    player.position = _Entrance[0].position;
-
-
-
-    view_texture = make_view_texture(level_size);
-    size_1d := level_size.x * level_size.y * level_size.z;
-
-    // @Hack @Speed @Memory
-    // This is a dumb workaround.
-    // Right now, the serialization system will allocate as many elements as was serialized for an array.
-    // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
-    // dynamically allocate memory while the a level is running, and we can easily know how much memory the
-    // game will ever use (in release mode, do whatever you want in the editor. As such, we resize them 
-    // here.
-    alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
-    for * _Enemy {
-        entities[it.eid] = it;
-    }
-
-    viewed = alloc_view(arena, size_1d, View_State);
-    collision = alloc_view(arena, size_1d, Eid);
-    enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
-    desired_enemy_moves = alloc_view(arena, size_1d, Desired_Enemy_Move);
-    enemy_annihilations = reserve_array(arena, size_1d / 2, Vector3i);
-
-    for * _Block {
-        assert(add_block_to_collision(level, it) == .OK);
-    }
-    
-    for * _Enemy {
-        in_bounds, index := get_3d_index(it.position, level_position, level_size);
-        assert(in_bounds);
-        eid := collision[index];
-        assert(is_null(eid));
-        collision[index] = make_eid(it);
-    }
-
-    for * _Door {
-        in_bounds, index := get_3d_index(it.position, level_position, level_size);
-        assert(in_bounds);
-        eid := collision[index];
-        assert(is_null(eid));
-        collision[index] = make_eid(it);
-    }
-
-    return true;
 }
 
 
@@ -891,14 +879,15 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
         if !pushed_in_bounds return;
         pushed_eid := collision[pushed_index];
-        if !is_null(pushed_eid) {
-            pushed_block := as(pushed_eid, Block);
-            if pushed_block {
-                if !pushed_block.moveable return;
+        if pushed_eid {
+            e := get_entity(level, pushed_eid);
+
+            if e.type == Enemy return;
+
+            if e.type == Block {
+                pushed_block := as(e, Block);
+                if pushed_block.block_type != .MOVING return;
                 append_no_resize(*moving_blocks, pushed_block);
-            } else {
-                enemy := as(pushed_eid, Enemy);
-                if enemy return;
             }
         }
 
@@ -909,9 +898,11 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             pulled_in_bounds, pulled_index := get_3d_index(player.position - push_direction, level_position, level_size);
             if pulled_in_bounds {
                 pulled_eid := collision[pulled_index];
-                if !is_null(pulled_eid) {
-                    pulled_block := as(pulled_eid, Block);
-                    if pulled_block && pulled_block.moveable && !contains(*moving_blocks, pulled_block) {
+                if pulled_eid {
+                    pulled_block := as(get_entity(level, pulled_eid), Block);
+                    if pulled_block 
+                    && pulled_block.block_type == .MOVING
+                    && !contains(*moving_blocks, pulled_block) {
                         append_no_resize(*moving_blocks, pulled_block);
                     }
                 }
@@ -1128,7 +1119,7 @@ level_update :: (using level: *Level, dt: float) {
                 success, index := get_3d_index(position, level_position, level_size);
                 if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                     eid := collision[index];
-                    if !as(eid, Block) && !as(eid, Door) {
+                    if !eid || get_entity(level, eid).type != Block {
                         viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
                         positions[position_count] = position;
                         position_count += 1;
@@ -1164,8 +1155,8 @@ level_update :: (using level: *Level, dt: float) {
 
             in_bounds, index := get_3d_index(it.position + desired_direction, level_position, level_size);
             
-            // Try the favored side
-            if !in_bounds || as(collision[index], Block) { // The block in front of you is blocked
+            if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == Block) { // The block in front of you is blocked
+                // Try the favored side
                 new_facing: Facing;
 
                 if #complete it.favored_direction == {
@@ -1178,8 +1169,9 @@ level_update :: (using level: *Level, dt: float) {
                 new_desired_direction := facing_vector3i(new_facing);
                 in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
                 
-                // Try the disfavored side
-                if !in_bounds || as(collision[index], Block) {
+
+                if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == Block) {
+                    // Try the disfavored side
                     if #complete it.favored_direction == {
                         case .LEFT;
                             new_facing = facing_right(it.facing);
@@ -1190,14 +1182,14 @@ level_update :: (using level: *Level, dt: float) {
                     new_desired_direction = facing_vector3i(new_facing);
                     in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
 
-                    // Try behind you
-                    if !in_bounds || as(collision[index], Block) {
+                    if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == Block) {
+                        // Try behind you
                         new_facing = facing_opposite(it.facing);
                         
                         new_desired_direction := facing_vector3i(new_facing);
                         in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
                         
-                        if !in_bounds || as(collision[index], Block) {
+                        if !in_bounds || collision[index] && get_entity(level, collision[index]).type == Block {
                             it.desired_position = it.position;
                         } else {
                             it.desired_position = it.position + new_desired_direction;
@@ -1235,7 +1227,7 @@ level_update :: (using level: *Level, dt: float) {
             // Flip the favored direction every tick
             it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
 
-            if as(collision[index], Block) continue;
+            if collision[index] && get_entity(level, collision[index]).type == Block continue;
  
             // @Copypasta from above
             if #complete desired_enemy_moves[index] == {
@@ -1259,8 +1251,8 @@ level_update :: (using level: *Level, dt: float) {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
             assert(in_bounds);
             eid := collision[index];
-            assert(eid.ptr == it);
-            collision[index] = .{};
+            assert(collision[index] == it.eid);
+            collision[index] = 0;
         }
 
         for * _Enemy {
@@ -1274,7 +1266,7 @@ level_update :: (using level: *Level, dt: float) {
                     it.state = .MOVING;
                     it.moving_from = to_vector3(it.position);
                     it.position = it.desired_position;
-                    collision[index] = make_eid(it);
+                    collision[index] = it.eid;
 
                 case .MUTUAL_ANNIHILATION;
                     if enemy_move_results[index] == .NOTHING {
@@ -1290,18 +1282,16 @@ level_update :: (using level: *Level, dt: float) {
             assert(in_bounds); 
             if #complete desired_enemy_moves[index] == {
                 case .EMPTY;
-                    assert(as(collision[index], Block) != null);
+                    assert(collision[index] && get_entity(level, collision[index]).type == Block);
 
                 case .WILL_BE_FILLED;
-                    e := append_no_resize(*_Enemy);
-                    e.* = .{
-                        position = it.position,
-                        state = .SPAWNING,
-                        favored_direction = it.favored_direction,
-                        facing = it.facing
-                    };
-                    assert(is_null(collision[index]));
-                    collision[index] = make_eid(e);
+                    e := make_entity(level, Enemy);
+                    e.position = it.position;
+                    e.state = .SPAWNING;
+                    e.favored_direction = it.favored_direction;
+                    e.facing = it.facing;
+                    assert(collision[index] == 0);
+                    collision[index] = e.eid;
 
                 case .MUTUAL_ANNIHILATION;
                     // @TODO: If two enemy spawners end up on the same square

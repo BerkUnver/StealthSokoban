@@ -2,7 +2,6 @@
     TYPES :: #string END
     *Type_Info_Struct.[
         type_info(Block),
-        type_info(Door),
         type_info(Enemy),
         type_info(Enemy_Spawner),
         type_info(Player),
@@ -163,9 +162,6 @@ entity_mesh :: (e: *Entity) -> *Mesh {
     block := as(e, Block);
     if block return *block.mesh;
 
-    door := as(e, Door);
-    if door return *door_mesh;
-
     player := as(e, Player);
     if player return *player_mesh;
 
@@ -186,11 +182,22 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 }
 
 
-iterate_entities :: (level: *Level, body: Code, flags: For_Flags) #expand {
+iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand {
+    `it_index := -1; // It doesn't make sense to use this here
+    `it: *Entity = null;
     #assert flags == 0;
-    for `it_index: 1..level.entities.count-1 {
-        `it := level.entities[it_index];
-        if !it continue;
-        #insert(remove=#assert false) body;
+    
+    // @Speed This generates more code EVERY TIME this macro
+    // is invoked! This might kill compile times!
+    #insert -> string {
+        buf: [4096] u8 = ---;
+        sb := make_string_builder(buf);
+        for Entity_Types.TYPES {
+            print(*sb, "for * e: types._% {\n", it.name);
+            print(*sb, "    it = e;\n");
+            print(*sb, "    #insert body;\n");
+            print(*sb, "}\n");
+        }
+        return get_string(*sb);
     }
 }
