@@ -103,6 +103,36 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
 
                 member_val := val + it.offset_in_bytes;
                 member_default := struct_default + it.offset_in_bytes;
+                
+                // We don't want to serialize empty arrays that have a count of zero but might not have a data
+                // pointer of zero.
+                if it.type.type == .ARRAY {
+                    array_info := cast(*Type_Info_Array, it.type);
+                    if #complete array_info.array_type == {
+                        case .FIXED;
+                            assert(false);
+                        case .VIEW;
+                            member_val_view := cast(*Array_View_64, member_val);
+                            member_default_view := cast(*Array_View_64, member_default);
+                            
+                            assert(member_default_view.count == 0);
+                            // If you're trying to serialize a view as anything other than a zeroed-out view,
+                            // don't! You are assigning something to a static pointer, which you shouldn't do.
+                            // All serialized struct members of unknown size are expected to be heap-allocated.
+
+                            if member_val_view.count == 0 continue;
+
+                        case .RESIZABLE;
+                            member_val_array := cast(*Resizable_Array, member_val);
+                            member_default_array := cast(*Resizable_Array, member_default);
+
+                            assert(member_default_array.count == 0);
+                            // I don't even know if you can assign to a dynamically-resizing array in a struct
+                            // initializer
+
+                            if member_val_array.count == 0 continue;
+                    }
+                }
 
                 if memcmp(member_val, member_default, it.type.runtime_size) == 0 {
                     continue; // The member has its default value. Don't serialize it.

@@ -83,8 +83,6 @@ types
 		facing 2
 		;
 	]
-	_Player 0[
-	]
 	_Entrance 1[
 		e
 			position

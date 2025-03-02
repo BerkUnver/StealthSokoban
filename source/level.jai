@@ -498,11 +498,6 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
 }
 
 
-make_block_from_temporary_block :: (t: *Temporary_Block, block: *Block, arena: *Memory_Arena) {
-
-}
-
-
 load_level_part_1_new :: (using level: *Level, arena: *Memory_Arena) {
     level.* = .{};
 }
@@ -615,7 +610,9 @@ load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena
     
     buf: [100000] u8 = ---;
     success, level_text := read_file(level_name, buf);
-    if !success return false;
+    if !success {
+        log(.ERROR, "Could not read the file \"%\"\n", level_name); 
+    }
 
     mark := get_mark(arena);
     err := deserialize(level_text, level, arena);
@@ -693,7 +690,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     }
 
     if _Entrance.count != 1 {
-        log(.ERROR, "There were more or less than 1 level entrances in the serialized level \"%\".\n");
+        log(.ERROR, "There were more or less than 1 level entrances in the serialized level \"%\".\n", level.name);
         return false;
     }
 

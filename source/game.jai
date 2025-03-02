@@ -73,6 +73,7 @@ LEVELS :: string.[
     "test.level",
     "test2.level",
     "test3.level",
+    "test4.level",
 ];
 
 #program_export "game_init"
@@ -267,13 +268,17 @@ game_update : Game_Update : (
                         free_level(*level, *level_arena);
                         old_index := game_level_index;
                         game_level_index = (game_level_index + dir + LEVELS.count) % LEVELS.count;
+                        
+                        success := load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena);
+                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena);
 
-                        if !load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena) {
+                        if !success{
                             log(.ERROR, "Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[game_level_index]);
                             game_level_index = old_index;
                             assert(load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena));
+
+                            assert(load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena));
                         }
-                        load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena);
                     }
 
                     if it.key == #char "[" && it.down {
@@ -637,14 +642,24 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
             assert(load_level_part_1_deserialize(LEVELS[0], *level, *level_arena));
             // Not every serialized level is a valid game level.
             // (Player entity could be missing, Entrance entity could be missing, etc.)
-            load_level_part_2_init_unserialized_fields(LEVELS[0], *level, .GAME, *level_arena);
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[0], *level, .GAME, *level_arena));
         case .EDITOR;
             if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, *level_arena) {
                 load_level_part_1_new(*level, *level_arena);
             } 
-            load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_arena);
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_arena)); // This should not fail in editor mode
+            
+            position, size := get_block_extents(level._Block);
+
+            level_center := to_vector3(position) + to_vector3(size) / 2;
+            level_radius := cast(float, max(size.x, max(size.y, size.z)));
+
+            camera_distance := level_radius * 2;
+            camera_y := sin(PI / 3) * camera_distance;
+            camera_z := cos(PI / 3) * camera_distance;
+
             editor = .{};
-            editor.camera_position = .{0, 8, -4};
+            editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
             editor.camera_yaw = 0;
             editor.camera_pitch = -PI / 3;
     }

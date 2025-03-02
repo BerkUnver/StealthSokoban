@@ -133,28 +133,55 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 visitor :: (position: Vector3i, using d: *Data) -> bool {
                     for * level._Block {
                         success, index := get_3d_index(position, it.position, it.size);
-                        if success && it.filled[index] {
-                            it.filled[index] = false;
+                        if !success || !it.filled[index] continue;
 
-                            all_zero := true;
-                            for it.filled {
-                                if it {
-                                    all_zero = false;
-                                    break;
-                                }
-                            }
+                        it.filled[index] = false;
+
+                        all_zero := true;
+                        new_position: Vector3i;
+                        new_end: Vector3i;
+
+                        for :iterate_vector3i v: it.size {
+                            filled := it.filled[it_index];
+                            if !filled continue;
+                            cell_position := v + it.position;
                             
-                            // @TODO: Maybe we should shrink the bounds of the entity if it no longer
-                            // fills up its entire bounding box.
-
                             if all_zero {
-                                delete_entity(level, it.eid);
-                                if it.eid == editor.selected editor.selected = 0;
+                                all_zero = false;
+                                new_position = cell_position;
+                                new_end = cell_position;
                             } else {
-                                update_block_mesh(it, arena);
+                                if cell_position.x < new_position.x new_position.x = cell_position.x;
+                                if cell_position.y < new_position.y new_position.y = cell_position.y;
+                                if cell_position.z < new_position.z new_position.z = cell_position.z;
+                                
+                                if cell_position.x > new_end.x new_end.x = cell_position.x;
+                                if cell_position.y > new_end.y new_end.y = cell_position.y;
+                                if cell_position.z > new_end.z new_end.z = cell_position.z;
                             }
-                            return true;
                         }
+
+                        if all_zero {
+                            if it.eid == editor.selected editor.selected = 0;
+                            delete_entity(level, it.eid);
+                        } else {
+                            new_size := new_end - new_position + Vector3i.{1,1,1};
+                            if it.size != new_size {
+                                new_filled := alloc_view(arena, new_size.x * new_size.y * new_size.z, bool);
+                                for :iterate_vector3i v: new_size {
+                                    success, src_index := get_3d_index(v + new_position, it.position, it.size);
+                                    assert(success);
+                                    new_filled[it_index] = it.filled[src_index];
+                                }
+
+                                it.filled = new_filled;
+                                it.position = new_position;
+                                it.size = new_size;
+                            }
+
+                            update_block_mesh(it, arena);
+                        }
+                        return true;
                     }
                     return false;
                 }
@@ -244,9 +271,17 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                         moveable = false
                     };
 
+                    
+                    filled := alloc_view(level_arena, 1, bool);
+                    filled[0] = true;
+                    size := Vector3i.{1, 1, 1};
 
                     block := make_entity(level, Block, level_arena);
-                    make_block_from_temporary_block(*temp_block, block, level_arena);
+                    block.size = size;
+                    block.position = .{xx floor(point.x), 0, xx floor(point.z)};
+                    block.filled = filled;
+                    block.color = .{1, 1, 1, 1};
+                    block.mesh = make_block_mesh(size, filled, level_arena);
 
                     start_intersection := point + normalize(mouse_direction) * 0.001;
 
