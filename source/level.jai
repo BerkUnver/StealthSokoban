@@ -9,7 +9,7 @@ Level :: struct {
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
-    // metaprogramming to do this but it seems like overkill right now.
+    // metaprogramming to do this but it seems like overkill right now.K
     
     level_position: Vector3i; @Ignore
     level_size: Vector3i; @Ignore
@@ -18,6 +18,7 @@ Level :: struct {
     unused_eids: [..] Entity_Id; @Ignore
 
     flags: enum {PULLING :: 1;}; @Ignore
+    player_can_move_through_blocks: bool; @Ignore;
     
     camera_focus_old: Vector3; @Ignore
     camera_focus_interp := 1.0; @Ignore
@@ -792,88 +793,111 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
+        return;
+    }
 
-    } else if event.key == #char "K" && event.down {
+    if event.key == #char "K" && event.down {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_ticks = max(camera_pitch_ticks - 1, 0);
         camera_pitch_interp = 0;
+        return;
+    }
 
-    } else if event.key == #char "I" && event.down {
+    if event.key == #char "I" && event.down {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_ticks = min(camera_pitch_ticks + 1, CAMERA_PITCH_TICK_COUNT);
         camera_pitch_interp = 0;
-
-    } else if event.key == #char "L" && event.down {
+        return;
+    } 
+    
+    if event.key == #char "L" && event.down {
         camera_yaw_old = get_camera_yaw(level);
         camera_yaw_interp = 0;
         camera_yaw_target -= TAU / 12;
-
-    } else if event.key == #char "J" && event.down {
+        return;
+    }
+   
+    if event.key == #char "J" && event.down {
         camera_yaw_old = get_camera_yaw(level);
         camera_yaw_interp = 0;
         camera_yaw_target += TAU / 12;
+        return;
+    } 
 
-    } else if event.key == #char "-" && event.down {
+    if event.key == #char "-" && event.down {
         if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
-    } else if event.key == #char "=" && event.down {
+        return;
+    }
+
+    if event.key == #char "=" && event.down {
         if dt_modifier < 16 dt_modifier *= 2;
-    } else {
-        if !event.down return;
-        push_direction: Vector3i;
+        return;
+    }
 
-        move :: (direction: Vector2) #expand {
-            rotated := rotate(direction, cast(float, camera_yaw_target));
-            if abs(rotated.x) > abs(rotated.y) {
-                push_direction.x += cast(s32, sign(rotated.x));
-            } else {
-                push_direction.z += cast(s32, sign(rotated.y));
-            }
+    if event.key == #char "M" && event.down {
+        player_can_move_through_blocks = !player_can_move_through_blocks;
+        return;
+    }
+
+    if !event.down return;
+    push_direction: Vector3i;
+
+    move :: (direction: Vector2) #expand {
+        rotated := rotate(direction, cast(float, camera_yaw_target));
+        if abs(rotated.x) > abs(rotated.y) {
+            push_direction.x += cast(s32, sign(rotated.x));
+        } else {
+            push_direction.z += cast(s32, sign(rotated.y));
         }
+    }
 
-        if event.key == {
-            case xx #char "W"; move(.{0, 1});
-            case xx #char "A"; move(.{-1, 0});
-            case xx #char "S"; move(.{0, -1});
-            case xx #char "D"; move(.{1, 0});
-            case xx #char "Q"; push_direction.y += 1;
-            case xx #char "E"; push_direction.y -= 1;
-            case; return;
+    if event.key == {
+        case xx #char "W"; move(.{0, 1});
+        case xx #char "A"; move(.{-1, 0});
+        case xx #char "S"; move(.{0, -1});
+        case xx #char "D"; move(.{1, 0});
+        case xx #char "Q"; push_direction.y += 1;
+        case xx #char "E"; push_direction.y -= 1;
+        case; return;
 
-        }
+    }
 
-        player := *_Player[0];
-        
-        new_player_position := player.position + push_direction;
+    player := *_Player[0];
+    
+    // This code took a while to put together and likely is only going to get more complex.
 
-        
-        // This code took a while to put together and likely is only going to get more complex.
+    // When the player moves, either the entire move needs to succeed at once or fail at once.
+    // When the player pushes or pulls a block, a lot about the game state needs to change.
+    // If we're trying to update the game state and we find out that the move the player is
+    // trying to make is illegal, then we need to undo all the changes we made to the game
+    // state while determining if that move is legal.
 
-        // When the player moves, either the entire move needs to succeed at once or fail at once.
-        // When the player pushes or pulls a block, a lot about the game state needs to change.
-        // If we're trying to update the game state and we find out that the move the player is
-        // trying to make is illegal, then we need to undo all the changes we made to the game
-        // state while determining if that move is legal.
+    // Right now, I am just removing all the blocks from the collision map, updating them,
+    // re-adding them to the collision map, and undoing all of that if it turns out one of
+    // the blocks is overlapping with something.
+    
+    // If we are not _very_ careful, this could get messy really quickly.
+    // Possibly consider investigating an alternate strategy that does not touch the core
+    // game state until we _know_ we can make a move, then do the update.
 
-        // Right now, I am just removing all the blocks from the collision map, updating them,
-        // re-adding them to the collision map, and undoing all of that if it turns out one of
-        // the blocks is overlapping with something.
-        
-        // If we are not _very_ careful, this could get messy really quickly.
-        // Possibly consider investigating an alternate strategy that does not touch the core
-        // game state until we _know_ we can make a move, then do the update.
+    //          -berk, 2025 - 1 - 22
 
-        //          -berk, 2025 - 1 - 22
+    // @TODO Add pulling blocks next to you, not just in the opposite direction of where
+    // you are moving (I'm pretty sure we want this)
 
-        // @TODO Add pulling blocks next to you, not just in the opposite direction of where
-        // you are moving (I'm pretty sure we want this)
 
+    new_player_position := player.position + push_direction;
+
+
+    pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
+    if !pushed_in_bounds return;
+
+    if !player_can_move_through_blocks {
         moving_block_data: [2] *Block;
         moving_blocks: [..] *Block;
         moving_blocks.allocated = 2;
         moving_blocks.data = moving_block_data.data;
 
-        pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
-        if !pushed_in_bounds return;
         pushed_eid := collision[pushed_index];
         if pushed_eid {
             e := get_entity(level, pushed_eid);
@@ -909,7 +933,6 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             remove_block_from_collision(level, it);
         }
 
-        move_failed := false;
         for moving_blocks {
             it.position += push_direction;
             if add_block_to_collision(level, it) != .OK {
@@ -926,30 +949,28 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                     assert(add_block_to_collision(level, it) == .OK);
                 }
 
-                move_failed = true;
+                return;
+            }
+        }
+    }
+    
+    // @TODO: Add a fade effect when you exit the level.
+    camera_focus_old = lerp(camera_focus_old, to_vector3(player.position), camera_focus_interp);
+    camera_focus_interp = 0;
+
+    player.position = new_player_position;
+    /*
+        for * _Exit {
+            if player.position == it.position {
+                free_level(level, level_arena);
+                assert(load_level_part_1_deserialize(LEVELS[0], level, level_arena));
+                load_level_part_2_init_unserialized_fields(LEVELS[0], level, level_arena);
+                load_level_part_3_for_game(level, level_arena);
                 break;
             }
         }
-        
-        // @TODO: Add a fade effect when you exit the level.
-        if !move_failed {
-            camera_focus_old = lerp(camera_focus_old, to_vector3(player.position), camera_focus_interp);
-            camera_focus_interp = 0;
-
-            player.position = new_player_position;
-            /*
-                for * _Exit {
-                    if player.position == it.position {
-                        free_level(level, level_arena);
-                        assert(load_level_part_1_deserialize(LEVELS[0], level, level_arena));
-                        load_level_part_2_init_unserialized_fields(LEVELS[0], level, level_arena);
-                        load_level_part_3_for_game(level, level_arena);
-                        break;
-                    }
-                }
-            */
-        }
     }
+    */
 }
 
 

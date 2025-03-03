@@ -632,10 +632,10 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
     mode = new_mode;
     if #complete new_mode == {
         case .GAME;
-            assert(load_level_part_1_deserialize(LEVELS[0], *level, *level_arena));
+            assert(load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena));
             // Not every serialized level is a valid game level.
             // (Player entity could be missing, Entrance entity could be missing, etc.)
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[0], *level, .GAME, *level_arena));
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena));
         case .EDITOR;
             if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, *level_arena) {
                 load_level_part_1_new(*level, *level_arena);
