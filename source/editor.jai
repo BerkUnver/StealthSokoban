@@ -163,7 +163,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
                         if all_zero {
                             if it.eid == editor.selected editor.selected = 0;
-                            delete_entity(level, it.eid);
+                            delete_entity(level, it.eid, arena);
                         } else {
                             new_size := new_end - new_position + Vector3i.{1,1,1};
                             if it.size != new_size {
@@ -302,7 +302,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
-                delete_entity(level, editor.selected);
+                delete_entity(level, editor.selected, level_arena);
                 editor.selected = 0;
                 return;
             }
@@ -485,7 +485,7 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
             
             smallest_t = t;
             selected_found = true;
-            selected = xx it_index;
+            selected = e.eid;
             selected_intersection = intersection;
         }
     }

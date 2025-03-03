@@ -405,7 +405,7 @@ game_update : Game_Update : (
                     set_uniform("color", 0.5 * color);
                     bind_and_draw(*enemy_nose_mesh);
                 }
-
+                
                 set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
                 for enemy_annihilations {
                     set_uniform("model_to_world", make_translation_matrix4(to_vector3(it)));

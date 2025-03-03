@@ -255,6 +255,15 @@ append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
 }
 
 
+pop :: (a: *[..] $T) -> bool, T {
+    item: T;
+    if a.count == 0 return false, item;
+    item = a.*[a.count - 1];
+    a.count -= 1;
+    return true, item;
+}
+
+
 copy_string :: (arena: *Memory_Arena, str: string) -> string {
     mem := alloc(arena, str.count, zero_init=false);
     memcpy(mem, str.data, str.count);

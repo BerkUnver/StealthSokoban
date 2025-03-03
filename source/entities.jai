@@ -74,10 +74,18 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
 
         return get_string(*sb);
     }
+    
+    success, eid := pop(*unused_eids);
+    if success {
+        entities[eid] = e;
+    } else {
+        eid = xx entities.count;
+        if arena append(*entities, e, arena);
+        else append_no_resize(*entities, e);
+    }
 
-    e.eid = xx entities.count;
-    if arena append(*entities, e, arena);
-    else append_no_resize(*entities, e);
+    e.eid = eid;
+
 
     return e;
 }
@@ -98,8 +106,11 @@ make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *
 }
 
 
-delete_entity :: (using level: *Level, eid: Entity_Id) {
+delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = null) {
     assert(eid != 0);
+    if arena append(*unused_eids, eid, arena);
+    else append_no_resize(*unused_eids, eid);
+
     e := entities[eid];
     entities[eid] = null;
     

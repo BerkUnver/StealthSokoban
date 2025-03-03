@@ -1,23 +1,22 @@
 
 Level :: struct {
-    ENEMY_COUNT :: 32;
-    
     using types: Entity_Types;
     
     name: string; @Ignore // The file name
-    level_position: Vector3i; @Ignore
-    level_size: Vector3i; @Ignore
+
+    // @TODO: This should be a hash table... probably.
+    entities: [..] *Entity; @Ignore
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
     
-    enemy_annihilations: [..] Vector3i; @Ignore
-    #assert ENEMY_COUNT % 2 == 0;
+    level_position: Vector3i; @Ignore
+    level_size: Vector3i; @Ignore
 
-    // @TODO: This should be a hash table... probably.
-    entities: [..] *Entity; @Ignore
+    enemy_annihilations: [..] Vector3i; @Ignore
+    unused_eids: [..] Entity_Id; @Ignore
 
     flags: enum {PULLING :: 1;}; @Ignore
     
@@ -675,19 +674,25 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             // Count up all the entities so we can allocate an array big enough
             // to hold pointers to all of them for the Entity_Id system
             // The first slot is null, so we start at 1.
+
+            reserved := 1;
             count := 1;
             #insert -> string {
                 buf: [1024] u8;
                 sb := make_string_builder(buf);
                 for Entity_Types.TYPES {
-                    print(*sb, "count += _%.allocated;\n", it.name);
+                    print(*sb, "reserved += _%.allocated;\n", it.name);
+                    print(*sb, "count += _%.count;\n", it.name);
                 }
                 return get_string(*sb);
             }
             count += 1; // For the player we are about to add
 
-            entities = alloc_array(arena, count, *Entity, zero_init=false);
+            entities = reserve_array(arena, reserved, *Entity, zero_init=false);
+            entities.count = count;
             entities[0] = null;
+
+            unused_eids = reserve_array(arena, reserved, Entity_Id, zero_init=false);
 
             for :iterate_entities types {
                 entities[it.eid] = it;
@@ -1250,14 +1255,14 @@ level_update :: (using level: *Level, dt: float) {
         for * _Enemy {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
             assert(in_bounds);
-            eid := collision[index];
             assert(collision[index] == it.eid);
             collision[index] = 0;
         }
 
-        for * _Enemy {
+        for * _Enemy {  
             in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
             assert(in_bounds);
+
             if #complete desired_enemy_moves[index] == {
                 case .EMPTY;
                     assert(false);
@@ -1266,6 +1271,7 @@ level_update :: (using level: *Level, dt: float) {
                     it.state = .MOVING;
                     it.moving_from = to_vector3(it.position);
                     it.position = it.desired_position;
+                    assert(collision[index] == 0);
                     collision[index] = it.eid;
 
                 case .MUTUAL_ANNIHILATION;
@@ -1273,7 +1279,8 @@ level_update :: (using level: *Level, dt: float) {
                         enemy_move_results[index] = .MUTUAL_ANNIHILATION_HAPPENED;
                         append_no_resize(*enemy_annihilations).* = it.desired_position;
                     }
-                    remove it;
+                    delete_entity(level, it.eid);
+                    it_index -= 1; // @Hack so the loop respects that we've deleted the entity.
             }
         }
 

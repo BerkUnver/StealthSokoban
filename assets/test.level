@@ -61,13 +61,13 @@ types
 	_Enemy 2[
 		e
 			position
+				x -1
 				z 2
 				;
 			;
 		;
 		e
 			position
-				x -1
 				z 2
 				;
 			;
