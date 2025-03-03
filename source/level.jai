@@ -1,4 +1,3 @@
-
 Level :: struct {
     using types: Entity_Types;
     
@@ -55,14 +54,6 @@ CAMERA_MIN_PITCH :: -PI / 3;
 CAMERA_MAX_PITCH :: PI / 3;
 
 CAMERA_YAW_TICK_COUNT :: 12;
-
-
-Entity :: struct {
-    type: Type; @Ignore
-    eid: Entity_Id; @Ignore
-    position: Vector3i; // As soon as there's an entity without this member,
-    // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
-}
 
 
 Player :: struct {
@@ -639,7 +630,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
         for Entity_Types.TYPES {
             print(*sb, "for * _% {\n", it.name);
             print(*sb, "    it.eid = xx entity_count;\n");
-            print(*sb, "    it.type = %;\n", it.name);
+            print(*sb, "    it.type = .%;\n", it.name);
             print(*sb, "    entity_count += 1;\n");
             print(*sb, "}\n");
         }
@@ -887,9 +878,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         if pushed_eid {
             e := get_entity(level, pushed_eid);
 
-            if e.type == Enemy return;
+            if e.type == .Enemy return;
 
-            if e.type == Block {
+            if e.type == .Block {
                 pushed_block := as(e, Block);
                 if pushed_block.block_type != .MOVING return;
                 append_no_resize(*moving_blocks, pushed_block);
@@ -1124,7 +1115,7 @@ level_update :: (using level: *Level, dt: float) {
                 success, index := get_3d_index(position, level_position, level_size);
                 if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                     eid := collision[index];
-                    if !eid || get_entity(level, eid).type != Block {
+                    if !eid || get_entity(level, eid).type != .Block {
                         viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
                         positions[position_count] = position;
                         position_count += 1;
@@ -1160,7 +1151,7 @@ level_update :: (using level: *Level, dt: float) {
 
             in_bounds, index := get_3d_index(it.position + desired_direction, level_position, level_size);
             
-            if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == Block) { // The block in front of you is blocked
+            if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == .Block) { // The block in front of you is blocked
                 // Try the favored side
                 new_facing: Facing;
 
@@ -1175,7 +1166,7 @@ level_update :: (using level: *Level, dt: float) {
                 in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
                 
 
-                if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == Block) {
+                if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == .Block) {
                     // Try the disfavored side
                     if #complete it.favored_direction == {
                         case .LEFT;
@@ -1187,14 +1178,14 @@ level_update :: (using level: *Level, dt: float) {
                     new_desired_direction = facing_vector3i(new_facing);
                     in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
 
-                    if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == Block) {
+                    if !in_bounds || (collision[index] && get_entity(level, collision[index]).type == .Block) {
                         // Try behind you
                         new_facing = facing_opposite(it.facing);
                         
                         new_desired_direction := facing_vector3i(new_facing);
                         in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
                         
-                        if !in_bounds || collision[index] && get_entity(level, collision[index]).type == Block {
+                        if !in_bounds || collision[index] && get_entity(level, collision[index]).type == .Block {
                             it.desired_position = it.position;
                         } else {
                             it.desired_position = it.position + new_desired_direction;
@@ -1232,7 +1223,7 @@ level_update :: (using level: *Level, dt: float) {
             // Flip the favored direction every tick
             it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
 
-            if collision[index] && get_entity(level, collision[index]).type == Block continue;
+            if collision[index] && get_entity(level, collision[index]).type == .Block continue;
  
             // @Copypasta from above
             if #complete desired_enemy_moves[index] == {
@@ -1289,7 +1280,7 @@ level_update :: (using level: *Level, dt: float) {
             assert(in_bounds); 
             if #complete desired_enemy_moves[index] == {
                 case .EMPTY;
-                    assert(collision[index] && get_entity(level, collision[index]).type == Block);
+                    assert(collision[index] && get_entity(level, collision[index]).type == .Block);
 
                 case .WILL_BE_FILLED;
                     e := make_entity(level, Enemy);

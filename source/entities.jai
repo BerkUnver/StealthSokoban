@@ -1,34 +1,42 @@
-#insert -> string {
-    TYPES :: #string END
-    *Type_Info_Struct.[
+// @TODO: Generate Entity_Type and Entity_Types in the metaprogram.
+
+Entity_Type :: enum {
+    Block;
+    Enemy;
+    Enemy_Spawner;
+    Player;
+    Entrance;
+    Exit;
+}
+
+Entity_Types :: struct {
+    _Block: [..] Block;
+    _Enemy: [..] Enemy;
+    _Enemy_Spawner: [..] Enemy_Spawner;
+    _Player: [..] Player;
+    _Entrance: [..] Entrance;
+    _Exit: [..] Exit;
+
+    #place _Block;
+    components: [TYPES.count] Resizable_Array;
+
+    TYPES :: *Type_Info_Struct.[
         type_info(Block),
         type_info(Enemy),
         type_info(Enemy_Spawner),
         type_info(Player),
         type_info(Entrance),
-        type_info(Exit),
+        type_info(Exit)
     ];
-    END
-    entities := #insert TYPES;
-    
-    for entities {
-        assert(it.members[0].flags & .CONSTANT == 0);
-        assert(it.members[0].type == type_info(Entity));
-    }
+}
 
-    buf: [4096] u8;
-    sb := make_string_builder(buf);
-    
-    print(*sb, "Entity_Types :: struct {\n");
-    print(*sb, "    TYPES :: %\n", TYPES);
-    for entities {
-        print(*sb, "    _%: [..] %;\n", it.name, it.name);
-    }
-    print(*sb, "    #place _%;\n", entities[0].name);
-    print(*sb, "    components: [%] Resizable_Array;\n", entities.count);
-    print(*sb, "}\n");
-    
-    return get_string(*sb);
+Entity_Id :: #type,distinct u32; // Literally just an index
+
+Entity :: struct {
+    type: Entity_Type; @Ignore
+    eid: Entity_Id; @Ignore
+    position: Vector3i; // As soon as there's an entity without this member,
+    // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
 }
 
 
@@ -59,21 +67,8 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
     e := cast(*Entity, cast(*u8, array.data) + array.count * type.runtime_size);
     array.count += 1;
     init_from_info(type, e);
-    
-    // This is very dumb. We should just be able to assign a runtime Type_Info
-    // to a runtime Type.
-    #insert -> string {
-        buf: [1024] u8 = ---;
-        sb := make_string_builder(buf);
 
-        print(*sb, "if index == {\n");
-        for Entity_Types.TYPES {
-            print(*sb, "    case %; e.type = %;\n", it_index, it.name);
-        }
-        print(*sb, "}\n");
-
-        return get_string(*sb);
-    }
+    e.type = xx index;
     
     success, eid := pop(*unused_eids);
     if success {
@@ -143,14 +138,21 @@ delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = nu
 }
 
 
-
-Entity_Id :: #type,distinct u32; // Literally just an index
-
-
 as :: (e: *Entity, $T: Type) -> *T {
-    if e.type == T return xx e;
+    INDEX :: #run -> int {
+        for type_info(Entity_Type).names {
+            if it == type_info(T).name {
+                return it_index;
+            }
+        }
+        assert(false);
+        return 1;
+    }
+
+    if e.type == xx INDEX return xx e;
     return null;
 }
+
 
 get_entity :: inline (using level: *Level, eid: Entity_Id) -> *Entity {
     assert(eid != 0);

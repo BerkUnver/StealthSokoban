@@ -6,9 +6,9 @@
 #load "draw.jai";
 #load "helpers.jai";
 #load "math.jai";
+#load "entities.jai";
 #load "level.jai";
 #load "editor.jai";
-#load "entities.jai";
 #load "serialize.jai";
 #load "test.jai";
 

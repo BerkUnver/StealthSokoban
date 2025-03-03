@@ -1,5 +1,5 @@
 types
-	_Block 2[
+	_Block 3[
 		e
 			position
 				x -2
@@ -37,6 +37,26 @@ types
 			x 0.8000000119209289549
 			y 0.8078431487083435056
 			z 0.8117647171020507812
+			w 1
+			;
+		;
+		e
+			position
+				x 2
+				y 2
+				z -3
+				;
+			;
+		size
+			x 4
+			y 1
+			z 2
+			;
+		filled 8[ 1 1 1 1 0 1 0 0 ]
+		color
+			x 1
+			y 0
+			z 0
 			w 1
 			;
 		;
