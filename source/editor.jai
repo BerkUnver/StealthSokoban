@@ -11,25 +11,12 @@ Editor_Mode :: enum {
     DRAG;
 }
 
-
-Moving_Direction :: enum_flags u8 {
-    X_NEGATIVE;
-    X_POSITIVE;
-    Y_NEGATIVE;
-    Y_POSITIVE;
-    Z_NEGATIVE;
-    Z_POSITIVE;
-}
-
 Editor :: struct {
     mode: Editor_Mode;
 
     union {
         camera: struct {
-            rotating: bool;
-            rotating_key: Key;
             rotating_previous_mouse_position: Vector2;
-            moving_direction: Moving_Direction;
         }
 
         extrude: struct {
@@ -72,12 +59,12 @@ get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
 }
 
 
-editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event) {
+editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event, keys_down: *[Key.COUNT] bool) {
     using context.game_context;
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
 
-    if event.key == #char "S" && event.modifiers & .CTRL && event.down {
+    if event.key == #char "S" && keys_down.*[Key.CTRL] && event.down {
         serialize_level(level);
         log(.OK, "Serialized level.\n");
         return;
@@ -92,32 +79,22 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.down {
                 editor.mode = .CAMERA;
                 editor.camera = .{
-                    rotating = true,
-                    rotating_key = event.key,
                     rotating_previous_mouse_position = mouse
                 };
                 return;
             }
             
             // Check to see if the camera is moving
-            if event.down {
-                moving_direction: Moving_Direction;
-                if event.key == {
-                    case xx #char "W"; moving_direction = .Z_POSITIVE;
-                    case xx #char "A"; moving_direction = .X_NEGATIVE;
-                    case xx #char "S"; moving_direction = .Z_NEGATIVE;
-                    case xx #char "D"; moving_direction = .X_POSITIVE;
-                    case xx #char "Q"; moving_direction = .Y_POSITIVE;
-                    case xx #char "E"; moving_direction = .Y_NEGATIVE;
-                }
-
-                if moving_direction != 0 {
+            if event.down 
+            && (event.key == #char "W" 
+             || event.key == #char "A"
+             || event.key == #char "S"
+             || event.key == #char "D"
+             || event.key == #char "Q"
+             || event.key == #char "E") {
                     editor.mode = .CAMERA;
-                    editor.camera = .{
-                        moving_direction = moving_direction
-                    };
+                    editor.camera = .{};
                     return;
-                }
             }
             
             if event.key == #char "X" && event.down {
@@ -374,37 +351,30 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
         case .CAMERA;
             using editor.camera;
 
-            set_moving_direction :: (dir: Moving_Direction) #expand {
-                if event.down moving_direction |= dir;
-                else moving_direction &= ~dir;
+            if event.key == #char " " && event.down && !keys_down.*[Key.MOUSE_RIGHT_BUTTON] {
+                rotating_previous_mouse_position = mouse;
+                return;
             }
 
-            if event.key == {
-                case .MOUSE_RIGHT_BUTTON; #through;
-                case xx #char " "; // There's no easy way to right-click and hold on a trackpad.
-                    if rotating {
-                        if event.key == rotating_key && !event.down rotating = false;
-                    } else {
-                        if event.down {
-                            rotating = true;
-                            rotating_key = event.key;
-                            rotating_previous_mouse_position = mouse;
-                        }
-                    }
-                case xx #char "W"; set_moving_direction(.Z_POSITIVE);
-                case xx #char "A"; set_moving_direction(.X_NEGATIVE);
-                case xx #char "S"; set_moving_direction(.Z_NEGATIVE);
-                case xx #char "D"; set_moving_direction(.X_POSITIVE);
-                case xx #char "Q"; set_moving_direction(.Y_POSITIVE);
-                case xx #char "E"; set_moving_direction(.Y_NEGATIVE);
+            if event.key == .MOUSE_RIGHT_BUTTON && event.down && !keys_down.*[#char " "] {
+                rotating_previous_mouse_position = mouse;
+                return;
+            }
+
+            if !keys_down.*[#char "W"]
+            && !keys_down.*[#char "S"]
+            && !keys_down.*[#char "A"]
+            && !keys_down.*[#char "D"]
+            && !keys_down.*[#char "Q"]
+            && !keys_down.*[#char "E"] 
+            && !keys_down.*[#char " "] 
+            && !keys_down.*[Key.MOUSE_RIGHT_BUTTON] {
+                // The user has released all keys.
+                // :AltTab this might not be true on Windows.
+                editor.mode = .IDLE;
+
             }
             
-            // The user has released all keys.
-            // :AltTab this might not be true on Windows.
-            if !rotating && moving_direction == 0 {
-                editor.mode = .IDLE;
-            }
-
         case .EXTRUDE;
             using editor.extrude;
             if event.key == #char " " && event.down {
@@ -494,13 +464,13 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
 }
 
 
-editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: float) {
+editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, keys_down: *[Key.COUNT] bool, dt: float) {
     using context.game_context;
 
     if editor.mode == {
         case .CAMERA;
             using editor.camera;
-            if rotating {
+            if keys_down.*[#char " "] || keys_down.*[Key.MOUSE_RIGHT_BUTTON] {
                 PITCH_SPEED :: 50;
                 YAW_SPEED :: 100;
                 mouse_movement := rotating_previous_mouse_position - mouse;
@@ -513,17 +483,18 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
                 clamp(*editor.camera_pitch, -PI/2, PI/2);
             }
 
-            CAMERA_SPEED :: 240.0 / 60.0;
+            CAMERA_NORMAL_SPEED :: 240.0 / 60.0;
+            CAMERA_FAST_SPEED :: 960.0 / 60.0;
 
-            x_p := ifx moving_direction & .X_POSITIVE then 1.0 else 0.0;
-            x_n := ifx moving_direction & .X_NEGATIVE then 1.0 else 0.0;
-            y_p := ifx moving_direction & .Y_POSITIVE then 1.0 else 0.0;
-            y_n := ifx moving_direction & .Y_NEGATIVE then 1.0 else 0.0;
-            z_p := ifx moving_direction & .Z_POSITIVE then 1.0 else 0.0;
-            z_n := ifx moving_direction & .Z_NEGATIVE then 1.0 else 0.0;
+            camera_speed := CAMERA_NORMAL_SPEED;
+            if keys_down.*[Key.SHIFT] camera_speed = CAMERA_FAST_SPEED;
 
-            dir := Vector3.{x_p - x_n, y_p - y_n, z_p - z_n};
-            camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * dir * (dt * CAMERA_SPEED);
+            x := cast(int, keys_down.*[#char "D"]) - cast(int, keys_down.*[#char "A"]);
+            y := cast(int, keys_down.*[#char "Q"]) - cast(int, keys_down.*[#char "E"]);
+            z := cast(int, keys_down.*[#char "W"]) - cast(int, keys_down.*[#char "S"]);
+            dir := Vector3.{xx x, xx y, xx z};
+
+            camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * dir * (dt * camera_speed);
             editor.camera_position += camera_movement;
 
         case .EXTRUDE;

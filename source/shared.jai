@@ -34,12 +34,14 @@ Game_Init_Proc :: #type (init: *Game_Init_Data) #no_context;
 
 Game_Update :: #type (
     game_memory: *void,
-    input: *Input,
+    input: Input,
     time_elapsed: float64
 ) #no_context;
 
 
 Input :: struct {
+    keys_down: *[Key.COUNT] bool; // :BitArray
+
     events: [] Input_Event; // Stored by the OS layer
 
     // In the range (-1, 1) for the x and y axis of the window. Maybe this is a mistake?
@@ -75,6 +77,7 @@ Key :: enum {
     SHIFT;
     CTRL;
     TILDE;
+    COUNT;
 }
 
 

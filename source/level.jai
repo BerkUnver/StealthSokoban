@@ -204,7 +204,7 @@ Block :: struct {
     using #as e: Entity;
 
     size: Vector3i;
-    filled: [] bool;
+    filled: [] bool; // :BitArray
     color: Vector4;
     block_type: Block_Type;
     mesh: Mesh; @Ignore

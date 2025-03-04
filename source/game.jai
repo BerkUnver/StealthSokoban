@@ -213,7 +213,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 #program_export "game_update"
 game_update : Game_Update : (
     game_memory_: *void, 
-    input: *Input,
+    input: Input,
     time_elapsed_: float64
 ) #no_context {
     push_context {
@@ -304,7 +304,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    editor_handle_input(*level, *level_arena, *editor, mouse, it);
+                    editor_handle_input(*level, *level_arena, *editor, mouse, it, input.keys_down);
             }
         }
         
@@ -320,7 +320,7 @@ game_update : Game_Update : (
         // However, we need to update the camera movement before we can set the projection for imm_state.
         if #complete mode == {
             case .EDITOR;
-                editor_update(*level, *editor, mouse, dt);
+                editor_update(*level, *editor, mouse, input.keys_down, dt);
             case .GAME;
                 level_update(*level, dt);
         }

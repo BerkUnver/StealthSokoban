@@ -9,14 +9,12 @@ windows: struct {
     stdout: HANDLE;
     input_events: [64] Input_Event;
     input_event_count: s64;
-
-    // Maybe this stuff should be handled from the game instead of in the platform layer?
-    mouse_buttons_down: enum_flags { LEFT; RIGHT; };
-    modifiers: Modifiers;
+    keys_down: [Key.COUNT] bool; // :BitArray
 }
 
 append_input_event :: (e: Input_Event) #no_context {
     using windows;
+    keys_down[e.key] = e.down;
     if input_event_count < input_events.count {
         input_events[input_event_count] = e;
         input_event_count += 1;
@@ -39,7 +37,8 @@ main :: () {
             push_context .{} {
         
                 translate_keycode_to_game_input :: (down: bool, keycode: WPARAM) #no_context {
-                    modifiers := windows.modifiers;
+                    using windows;
+                    modifiers: Modifiers = 0; // @TODO: Remove Modifiers, use the new keys_down array
 
                     key: Key;
 
@@ -73,12 +72,8 @@ main :: () {
                         key = #char "-";
                     // @TODO: Properly handle left and right alts, shifts, and ctrls.
                     } else if keycode == VK_SHIFT {
-                        if down windows.modifiers |= .SHIFT;
-                        else    windows.modifiers &= ~.SHIFT;
                         key = .SHIFT;
                     } else if keycode == VK_CONTROL {
-                        if down windows.modifiers |= .CTRL;
-                        else    windows.modifiers &= ~.CTRL;
                         key = .CTRL;
                     } else return;
                     // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
@@ -114,27 +109,24 @@ main :: () {
                         return 0;
 
                     case WM_LBUTTONDOWN;
-                        windows.mouse_buttons_down |= .LEFT;
                         SetCapture(window);
                         append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=true});
                         return 0;
 
                     case WM_RBUTTONDOWN;
-                        windows.mouse_buttons_down |= .RIGHT;
                         SetCapture(window);
                         append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=true});
                         return 0;
 
 
                     case WM_LBUTTONUP;
-                        windows.mouse_buttons_down &= ~.LEFT;
-                        if !windows.mouse_buttons_down ReleaseCapture();
-                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, modifiers=windows.modifiers, down=false});
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=false});
+                        if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
+                        return 0;
                         
                     case WM_RBUTTONUP;
-                        windows.mouse_buttons_down &= ~.RIGHT;
-                        if !windows.mouse_buttons_down ReleaseCapture();
-                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, modifiers=windows.modifiers, down=false});
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=false});
+                        if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
 
                     case WM_CLOSE;
@@ -474,6 +466,7 @@ main :: () {
         mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
 
         input := Input.{
+            keys_down = *windows.keys_down,
             events = .{windows.input_event_count, windows.input_events.data},
             mouse_x = mouse_x,
             mouse_y = mouse_y
@@ -483,7 +476,7 @@ main :: () {
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
-        game_update(game_memory, *input, time_elapsed);
+        game_update(game_memory, input, time_elapsed);
         windows.input_event_count = 0;
 
         SwapBuffers(dc);
