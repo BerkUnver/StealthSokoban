@@ -453,6 +453,48 @@ game_update : Game_Update : (
                     set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
                     bind_and_draw(*player_mesh);
                 }
+
+                //
+                // Draw the mesh to conceal the invisible level parts
+                //
+            
+                // Because this changes so frequently, it makes the most sense for me to draw this in immediate mode.
+                glUseProgram(imm_color_shader); 
+                set_uniform("projection", world_to_camera);
+
+                for :iterate_vector3i level_size {
+                    hidden := viewed[it_index] & (.SEEN | .VISIBLE) == 0;
+                    a_block_is_here := collision[it_index] && get_entity(*level, collision[it_index]).type == .Block;
+
+                    origin := to_vector3(level_position + it);
+
+                    check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
+                        in_bounds, index := get_3d_index(position, level_size);
+
+                        if !in_bounds {
+                            if hidden || a_block_is_here {
+                                for 0..5 imm_vertex(origin + cube_vertices[xx face + it], .{0,0,0,1});
+                            }
+                        } else {
+                            if hidden && !a_block_is_here && viewed[index] & .SEEN != 0 {
+                                a_block_is_there := collision[index] && get_entity(*level, collision[index]).type == .Block;
+
+                                if !a_block_is_there {
+                                    for 0..5 imm_vertex(origin + cube_vertices[xx face + it], .{0,0,0,1});
+                                }
+                            }
+                        }
+                    }
+
+                    check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
+                    check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
+                    check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
+                    check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
+                    check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
+                    check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
+                }
+                imm_flush();
+
                 
                 //
                 // Draw the occlusion effects
