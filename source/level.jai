@@ -18,11 +18,16 @@ Level :: struct {
     unused_eids: [..] Entity_Id; @Ignore
 
     flags: enum {PULLING :: 1;}; @Ignore
-    player_can_move_through_blocks: bool; @Ignore;
+    player_can_move_through_blocks: bool; @Ignore
     
-    camera_focus_old: Vector3; @Ignore
-    camera_focus_interp := 1.0; @Ignore
-    
+    camera_mode: Camera_Mode; @Ignore
+    camera: union {
+        focus_on_player: struct {
+            focus_old: Vector3;
+            focus_interp := 1.0;
+        };
+    }; @Ignore
+
     camera_pitch_ticks: s8 = 0; @Ignore
     camera_pitch_interp := 1.0; @Ignore
     camera_pitch_old: float64; @Ignore
@@ -30,6 +35,8 @@ Level :: struct {
     camera_yaw_target: float64; @Ignore
     camera_yaw_old: float64; @Ignore
     camera_yaw_interp := 1.0; @Ignore
+
+    camera_matrix: Matrix4; @Ignore
 
     enemy_timer: float; @Ignore
     dt_modifier := 1.0; @Ignore
@@ -55,6 +62,14 @@ CAMERA_MIN_PITCH :: -PI / 3;
 CAMERA_MAX_PITCH :: PI / 3;
 
 CAMERA_YAW_TICK_COUNT :: 12;
+
+
+Camera_Mode :: enum {
+    FOCUS_ON_PLAYER;
+    FOCUS_ON_LEVEL;
+    FOCUS_ON_FLOODFILL;
+    COUNT;
+}
 
 
 Player :: struct {
@@ -465,26 +480,6 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
-get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
-    camera_offset := Vector3.{0, 0, 12};
-    offset_matrix := make_translation_matrix4(camera_offset);
-    
-    player := *_Player[0];
-    
-    camera_focus_target := to_vector3(player.position);
-    camera_focus := lerp(camera_focus_old, camera_focus_target, camera_focus_interp);
-
-    position_matrix := make_translation_matrix4(-camera_focus - Vector3.{0.5, 0.5, 0.5});
-
-    pitch := get_camera_pitch(level);
-    pitch_matrix := make_x_rotation_matrix(Matrix4, -pitch);
-    
-    yaw_matrix := make_y_rotation_matrix(Matrix4, xx -get_camera_yaw(level));
-    
-    return multiply(FRUSTUM, multiply(offset_matrix, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix))));
-}
-
-
 load_level_part_1_new :: (using level: *Level, arena: *Memory_Arena) {
     level.* = .{};
 }
@@ -839,6 +834,16 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         return;
     }
 
+    if event.key == #char "U" && event.down {
+       camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
+        if camera_mode == {
+            case .FOCUS_ON_PLAYER;
+                using camera.focus_on_player;
+                focus_interp = 1;
+        }
+        return;
+    }
+
     if !event.down return;
     push_direction: Vector3i;
 
@@ -955,8 +960,11 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     }
     
     // @TODO: Add a fade effect when you exit the level.
-    camera_focus_old = lerp(camera_focus_old, to_vector3(player.position), camera_focus_interp);
-    camera_focus_interp = 0;
+    if camera_mode == .FOCUS_ON_PLAYER {
+        using camera.focus_on_player;
+        focus_old = lerp(focus_old, to_vector3(player.position), focus_interp);
+        focus_interp = 0;
+    }
 
     player.position = new_player_position;
     /*
@@ -986,7 +994,10 @@ level_update :: (using level: *Level, dt: float) {
     camera_pitch_interp = min(camera_pitch_interp + dt / CAMERA_PITCH_TIME, 1);
 
     CAMERA_FOCUS_TIME :: 1.0 / 8.0;
-    camera_focus_interp = min(camera_focus_interp + dt / CAMERA_FOCUS_TIME, 1);
+    if camera_mode == .FOCUS_ON_PLAYER {
+        using camera.focus_on_player;
+        focus_interp = min(focus_interp + dt / CAMERA_FOCUS_TIME, 1);
+    }
     
     // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
     // I will see if this turns out to be a bad idea.
@@ -1127,12 +1138,15 @@ level_update :: (using level: *Level, dt: float) {
     positions[0] = player.position;
     viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
 
+    viewed_start := player.position;
+    viewed_end := player.position;
+
     while position_count {
         position_count -= 1;
         position := positions[position_count];
 
         check_axis :: (i: int) #expand {
-            check_position :: (position: Vector3i) #expand {
+            check_position :: (position: Vector3i) -> bool #expand {
                 success, index := get_3d_index(position, level_position, level_size);
                 if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                     eid := collision[index];
@@ -1140,17 +1154,23 @@ level_update :: (using level: *Level, dt: float) {
                         viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
                         positions[position_count] = position;
                         position_count += 1;
+                        return true;
                     }
                 }
+                return false;
             }
 
             p := position;
             p.component[i] += 1;
-            check_position(p);
+            if check_position(p) {
+                viewed_end.component[i] = max(p.component[i], viewed_end.component[i]);
+            }
 
             n := position;
             n.component[i] -= 1;
-            check_position(n);
+            if check_position(n) {
+                viewed_start.component[i] = min(n.component[i], viewed_start.component[i]);
+            }
         }
 
         check_axis(0);
@@ -1337,4 +1357,57 @@ level_update :: (using level: *Level, dt: float) {
     }
     
     update_view_texture(*view_texture, level_size, viewed);
+
+
+
+    //
+    // Update the camera matrix
+    //
+
+    {
+        offset_matrix: Matrix4;
+        position_matrix: Matrix4;
+        
+        CAMERA_MIN_DISTANCE :: 12.0;
+        get_focused_camera :: (position: Vector3i, size: Vector3i, distance: float) -> offset_matrix: Matrix4, position_matrix: Matrix4 {
+            radius := max(size.x, max(size.y, size.z));
+            camera_distance := radius * distance;
+            camera_distance = max(CAMERA_MIN_DISTANCE, camera_distance);
+            offset_matrix := make_translation_matrix4(.{0, 0, camera_distance});
+
+            focus := to_vector3(position) + to_vector3(size) / 2;
+            position_matrix := make_translation_matrix4(-focus);
+
+            return offset_matrix, position_matrix;
+        }
+
+
+        if camera_mode == {
+            case .FOCUS_ON_PLAYER;
+                using camera.focus_on_player;
+                camera_offset := Vector3.{0, 0, CAMERA_MIN_DISTANCE};
+                offset_matrix = make_translation_matrix4(camera_offset);
+
+                player := *_Player[0];
+                focus_target := to_vector3(player.position);
+                focus := lerp(focus_old, focus_target, focus_interp);
+                position_matrix = make_translation_matrix4(-focus - Vector3.{0.5, 0.5, 0.5});
+
+            case .FOCUS_ON_LEVEL;
+                // :LevelSizeInEditor
+                offset_matrix, position_matrix = get_focused_camera(level_position, level_size, 1.8);
+
+            case .FOCUS_ON_FLOODFILL;
+                viewed_size := viewed_end - viewed_start + Vector3i.{1, 1, 1};
+                offset_matrix, position_matrix = get_focused_camera(viewed_start, viewed_size, 1.8);
+        }
+
+
+        pitch := get_camera_pitch(level);
+        pitch_matrix := make_x_rotation_matrix(Matrix4, -pitch);
+        
+        yaw_matrix := make_y_rotation_matrix(Matrix4, xx -get_camera_yaw(level));
+        
+        camera_matrix = multiply(FRUSTUM, multiply(offset_matrix, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix))));
+    }
 }

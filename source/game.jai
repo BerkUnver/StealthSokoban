@@ -347,11 +347,8 @@ game_update : Game_Update : (
 
         //          -berk, 2025 - 26 - 2
         
-        world_to_camera: Matrix4 = ---;
         if #complete mode == {
             case .GAME;
-                world_to_camera = get_gameplay_camera_matrix(*level);
-
                 //
                 // Draw blocks.
                 //
@@ -360,6 +357,9 @@ game_update : Game_Update : (
                 // We would get floating-point precision error if we just tried to 
                 // determine which collision cell each vertex mapped to using just its
                 // position.
+
+                world_to_camera := camera_matrix;
+
                 glUseProgram(block_shader);
 
                 glActiveTexture(GL_TEXTURE0);
@@ -531,7 +531,7 @@ game_update : Game_Update : (
                 glDepthFunc(GL_LESS);
 
             case .EDITOR;
-                world_to_camera = get_editor_camera_matrix(*editor);
+                world_to_camera := get_editor_camera_matrix(*editor);
 
                 glUseProgram(texture_and_color_shader);
 
@@ -693,6 +693,10 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
             editor.camera_pitch = -PI / 3;
 
             if level._Block.count != 0 {
+                // :LevelSizeInEditor
+                // It makes me slightly uncomfortable at how this code overlaps with the 
+                // gameplay code but we don't have access to the level size in the editor.
+
                 position, size := get_block_extents(level._Block);
                 level_center := to_vector3(position) + to_vector3(size) / 2;
                 level_radius := cast(float, max(size.x, max(size.y, size.z)));
