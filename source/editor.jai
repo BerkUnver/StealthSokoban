@@ -351,7 +351,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
                     if parallel || t <= 0 return;
 
-                    position = .{xx floor(intersection.x), 0, xx floor(intersection.y)};
+                    position = .{xx floor(intersection.x), 0, xx floor(intersection.z)};
                 }
 
 

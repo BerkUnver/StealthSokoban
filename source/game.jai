@@ -69,10 +69,12 @@ Game_Mode :: enum {
 #assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
 
 LEVELS :: string.[
-    "test.level",
-    "test2.level",
-    "test3.level",
-    "test4.level",
+    "levels/test.level",
+    "levels/test2.level",
+    "levels/test3.level",
+    "levels/test4.level",
+    "levels/intro.level",
+    "levels/comb.level",
 ];
 
 #program_export "game_init"
@@ -683,20 +685,27 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
                 load_level_part_1_new(*level, *level_arena);
             } 
             assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_arena)); // This should not fail in editor mode
-            
-            position, size := get_block_extents(level._Block);
 
-            level_center := to_vector3(position) + to_vector3(size) / 2;
-            level_radius := cast(float, max(size.x, max(size.y, size.z)));
-
-            camera_distance := level_radius * 2;
-            camera_y := sin(PI / 3) * camera_distance;
-            camera_z := cos(PI / 3) * camera_distance;
 
             editor = .{};
-            editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+
             editor.camera_yaw = 0;
             editor.camera_pitch = -PI / 3;
+
+            if level._Block.count != 0 {
+                position, size := get_block_extents(level._Block);
+                level_center := to_vector3(position) + to_vector3(size) / 2;
+                level_radius := cast(float, max(size.x, max(size.y, size.z)));
+
+                camera_distance := level_radius * 2;
+                camera_y := sin(PI / 3) * camera_distance;
+                camera_z := cos(PI / 3) * camera_distance;
+
+                editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+
+            } else {
+                editor.camera_position = .{0, 8, -4};
+            }
     }
 }
 
