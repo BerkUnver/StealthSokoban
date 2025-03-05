@@ -190,7 +190,7 @@ Block_Vertex :: struct {
 }
 
 
-make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
+make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
     
     // @Temporary @TODO: Make it so we can freely resize the topmost allocations of memory arenas!
@@ -245,7 +245,7 @@ make_block_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *M
 }
 
 
-make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) -> Mesh {      
+make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) -> Mesh {      
     using context.game_context;
 
     vao, vbo: GLuint;
@@ -269,7 +269,7 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
 
 
 
-    vertex_positions := make_block_mesh_data(size, filled, vbo, level_arena);
+    vertex_positions := make_gridlike_mesh_data(size, filled, vbo, level_arena);
 
     // @TODO Store vertex buffers in SOA form!
     return .{
@@ -280,8 +280,8 @@ make_block_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena)
 }
 
 
-update_block_mesh :: (block: *Block, arena: *Memory_Arena) {
-    block.mesh.vertex_positions = make_block_mesh_data(block.size, block.filled, block.mesh.vbo, arena);
+update_gridlike_mesh :: (e: *$T, arena: *Memory_Arena) {
+    e.mesh.vertex_positions = make_gridlike_mesh_data(e.size, e.filled, e.mesh.vbo, arena);
 }
 
 

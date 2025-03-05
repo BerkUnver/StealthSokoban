@@ -379,6 +379,14 @@ game_update : Game_Update : (
                     bind_and_draw(*it.mesh);
                 } 
 
+                set_uniform("color", Door.COLOR);
+                for * _Door {
+                    projection := translate(world_to_camera, to_vector3(it.position));
+                    set_uniform("viewed_position", it.position - level_position);
+                    set_uniform("projection", projection);
+                    bind_and_draw(*it.mesh);
+                }
+
                 //
                 // Draw things that only appear when seen
                 //
@@ -543,6 +551,13 @@ game_update : Game_Update : (
                     projection := translate(world_to_camera, to_vector3(it.position));
                     set_uniform("projection", projection);
                     set_uniform("color", it.color);
+                    bind_and_draw(*it.mesh);
+                }
+
+                set_uniform("color", Door.COLOR);
+                for * _Door {
+                    projection := translate(world_to_camera, to_vector3(it.position));
+                    set_uniform("projection", projection);
                     bind_and_draw(*it.mesh);
                 }
 

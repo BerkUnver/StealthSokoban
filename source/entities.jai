@@ -1,7 +1,8 @@
-// @TODO: Generate Entity_Type and Entity_Types in the metaprogram.
+// @TODO: Generate Entity_Type and in the metaprogram.
 
 ENTITIES :: *Type_Info_Struct.[
     type_info(Block),
+    type_info(Door),
     type_info(Enemy),
     type_info(Enemy_Spawner),
     type_info(Player),
@@ -13,6 +14,7 @@ ENTITIES :: *Type_Info_Struct.[
 Entity_Type :: enum {
     // I cannot figure out how to get #insert to generate these...
     Block;
+    Door;
     Enemy;
     Enemy_Spawner;
     Player;
@@ -178,6 +180,9 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 
     block := as(e, Block);
     if block return *block.mesh;
+    
+    door := as(e, Door);
+    if door return *door.mesh;
 
     player := as(e, Player);
     if player return *player_mesh;

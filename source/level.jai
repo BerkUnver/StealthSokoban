@@ -184,6 +184,8 @@ Door :: struct {
     size: Vector3i;
     filled: [] bool; // :BitArray
     mesh: Mesh; @Ignore
+
+    COLOR :: Vector4.{1, 0.5, 0.5, 1};
 }
 
 
@@ -536,15 +538,12 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
         filled := alloc_view(arena, it.filled.count, bool);
         memcpy(filled.data, it.filled.data, size_of(type_of(it.filled.data.*)) * it.filled.count);
 
-        generated_mesh := make_block_mesh(it.size, filled, arena);
-
         _Block[it_index] = .{
             position = it.position,
             size = it.size,
             filled = filled,
             color = it.color,
             moveable = it.moveable,
-            mesh = generated_mesh
         };
     }
 
@@ -608,7 +607,11 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     }
     
     for * _Block {
-        it.mesh = make_block_mesh(it.size, it.filled, arena);
+        it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
+    }
+
+    for * _Door {
+        it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
     }
 
     if #complete for_mode == {

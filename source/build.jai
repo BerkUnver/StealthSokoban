@@ -44,13 +44,6 @@
         compiler_begin_intercept(w);
         add_build_file("game.jai", w);
         
-        /*
-        entities: [1024] *Type_Info_Struct;
-        entity_count := 0;
-
-        generated_entities := false;
-        */
-
         while true {
             message := compiler_wait_for_message();
             if message.kind == {

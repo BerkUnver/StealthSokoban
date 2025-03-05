@@ -1,5 +1,5 @@
 types
-	_Block 10[
+	_Block 11[
 		e
 			position
 				x -2
@@ -198,6 +198,26 @@ types
 			w 1
 			;
 		moveable 1
+		;
+		e
+			position
+				x 3
+				y 5
+				z 3
+				;
+			;
+		size
+			x 1
+			y 1
+			z 1
+			;
+		filled 1[ 1 ]
+		color
+			x 1
+			y 1
+			z 1
+			w 1
+			;
 		;
 	]
 	_Entrance 1[
