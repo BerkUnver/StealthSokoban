@@ -64,7 +64,7 @@ imm_vertex_ptr :: () -> *Vertex {
 }
 
 
-imm_vertex :: (position: Vector3, color: Vector4, uv: Vector2) {
+imm_vertex :: (position: Vector3, uv: Vector2, color: Vector4) {
     v := imm_vertex_ptr();
     v.position = position;
     v.color = color;
@@ -111,7 +111,7 @@ imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
 imm_cuboid_with_uvs :: (begin: Vector3, end: Vector3, color: Vector4) {
     size := end - begin;
     for 0..35 {
-        imm_vertex(begin + cube_vertices[it] * size, color, cube_uvs[it]);
+        imm_vertex(begin + cube_vertices[it] * size, cube_uvs[it], color);
     }
 }
 
@@ -192,31 +192,31 @@ draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: Matrix4
     imm_cuboid(cuboid_start, cuboid_end, color);
 
     // arrow head
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color, .{});
-    imm_vertex(.{arrow_length, 0, 0}, color, .{});
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color);
+    imm_vertex(.{arrow_length, 0, 0}, color);
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color);
     
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
-    imm_vertex(.{arrow_length, 0, 0}, color, .{});
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color);
+    imm_vertex(.{arrow_length, 0, 0}, color);
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color);
 
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color, .{});
-    imm_vertex(.{arrow_length, 0, 0}, color, .{});
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color);
+    imm_vertex(.{arrow_length, 0, 0}, color);
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color);
 
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
-    imm_vertex(.{arrow_length, 0, 0}, color, .{});
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color);
+    imm_vertex(.{arrow_length, 0, 0}, color);
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color);
     
     // Face behind arrow head
 
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color, .{});
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, -arrow_head_radius}, color);
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color);
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color);
 
-    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color, .{});
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color, .{});
-    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color, .{});
+    imm_vertex(.{cuboid_end_x, -arrow_head_radius, arrow_head_radius}, color);
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, -arrow_head_radius}, color);
+    imm_vertex(.{cuboid_end_x, arrow_head_radius, arrow_head_radius}, color);
 
     imm_flush();
 }

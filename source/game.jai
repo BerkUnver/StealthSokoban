@@ -1,9 +1,11 @@
 #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
+#import "freetype-2.12.1";
 
 #load "gl.jai";
 #load "shared.jai";
 #load "imm.jai";
 #load "imgui.jai";
+#load "font.jai";
 #load "draw.jai";
 #load "helpers.jai";
 #load "math.jai";
@@ -25,9 +27,11 @@ Game_Context :: struct {
     frame_arena: Memory_Arena;
     permanent_arena: Memory_Arena;
 
+    imm_color_shader: GLuint;
+    imm_text_shader: GLuint;
+
     gridlike_shader: GLuint;
     gridlike_bitmap: GLuint;
-    imm_color_shader: GLuint;
     color_shader: GLuint;
     wireframe_shader: GLuint;
     color_and_bitmap_shader: GLuint;
@@ -35,6 +39,8 @@ Game_Context :: struct {
     unviewed_color_item_shader: GLuint;
     occlusion_shader: GLuint;
     texture_and_color_shader: GLuint;
+
+    consolas: Font;
     
     enemy_mesh: Mesh;
     enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
@@ -142,10 +148,13 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         imm_init();
 
-        gridlike_shader = load_shader("shaders/gridlike.gl");
-        assert(gridlike_shader != 0);
         imm_color_shader = load_shader("shaders/imm_color.gl");
         assert(imm_color_shader != 0);
+        imm_text_shader = load_shader("shaders/imm_text.gl");
+        assert(imm_text_shader != 0);
+
+        gridlike_shader = load_shader("shaders/gridlike.gl");
+        assert(gridlike_shader != 0);
         color_shader = load_shader("shaders/color.gl");
         assert(color_shader != 0);
         wireframe_shader = load_shader("shaders/wireframe.gl");
@@ -164,6 +173,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         //
         // Now that the game_context is initted, we can init the game.
         //
+
+        consolas = make_font();
         
         using game_memory;
         using game_memory.game;
@@ -205,6 +216,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
+
 
         set_mode(*game, .EDITOR);
         
@@ -676,7 +688,6 @@ game_update : Game_Update : (
 
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
-               
                 glUseProgram(imm_color_shader);
                 set_uniform("projection", imgui_to_camera);
 
@@ -685,8 +696,17 @@ game_update : Game_Update : (
                 imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
                 imm_flush();
 
+
+
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
+                draw_text(*consolas, imgui_to_camera);
+                glDisable(GL_BLEND);
+
                 glEnable(GL_CULL_FACE);
                 glEnable(GL_DEPTH_TEST);
+
+
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

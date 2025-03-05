@@ -145,12 +145,12 @@ Favored_Direction :: enum u8 {
 Enemy :: struct {
     using #as e: Entity;
 
-    desired_position: Vector3i; // Only used when we are updating all the enemies.
-    MOVING_TIME :: 0.1;
-    SPAWNING_TIME :: 0.2;
-    ANNIHILATION_TIME :: 0.15;
-    moving_from: Vector3;
-    state: Enemy_State;
+    desired_position: Vector3i; @Ignore // Only used when we are updating all the enemies.
+    MOVING_TIME :: 0.1; @Ignore
+    SPAWNING_TIME :: 0.2; @Ignore
+    ANNIHILATION_TIME :: 0.15; @Ignore
+    moving_from: Vector3; @Ignore
+    state: Enemy_State; @Ignore
     favored_direction: Favored_Direction;
     facing: Facing;
 }
