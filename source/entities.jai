@@ -1,33 +1,23 @@
 // @TODO: Generate Entity_Type and Entity_Types in the metaprogram.
 
+ENTITIES :: *Type_Info_Struct.[
+    type_info(Block),
+    type_info(Enemy),
+    type_info(Enemy_Spawner),
+    type_info(Player),
+    type_info(Entrance),
+    type_info(Exit)
+];
+
+
 Entity_Type :: enum {
+    // I cannot figure out how to get #insert to generate these...
     Block;
     Enemy;
     Enemy_Spawner;
     Player;
     Entrance;
     Exit;
-}
-
-Entity_Types :: struct {
-    _Block: [..] Block;
-    _Enemy: [..] Enemy;
-    _Enemy_Spawner: [..] Enemy_Spawner;
-    _Player: [..] Player;
-    _Entrance: [..] Entrance;
-    _Exit: [..] Exit;
-
-    #place _Block;
-    components: [TYPES.count] Resizable_Array;
-
-    TYPES :: *Type_Info_Struct.[
-        type_info(Block),
-        type_info(Enemy),
-        type_info(Enemy_Spawner),
-        type_info(Player),
-        type_info(Entrance),
-        type_info(Exit)
-    ];
 }
 
 Entity_Id :: #type,distinct u32; // Literally just an index
@@ -39,12 +29,26 @@ Entity :: struct {
     // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
 }
 
+Entity_Types :: struct {
+    #insert -> string {
+        buf: [4096] u8 = ---;
+        sb := make_string_builder(buf);
+        for ENTITIES {
+            print(*sb, "    _%: [..] %;\n", it.name, it.name);
+        }
+        print(*sb, "    #place _%;\n", ENTITIES[0].name);
+        print(*sb, "    components: [%] Resizable_Array;\n", ENTITIES.count);
+        str := get_string(*sb);
+        return str;
+    }
+}
+
 
 // We only ever want the arena when we're in the editor mode.
 // Should we assert on this or something?
 make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) -> *Entity {
     array := *types.components[index];
-    type := Entity_Types.TYPES[index];
+    type := ENTITIES[index];
     
     // Note that because "array" is an alias for whatever the actual underlying
     // type is, the count and allocated will NOT CORRESPOND to how big the array
@@ -88,7 +92,7 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
 
 make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *T {
     INDEX :: #run -> int {
-        for Entity_Types.TYPES {
+        for ENTITIES {
             if it == type_info(T) {
                 return it_index;
             }
@@ -114,7 +118,7 @@ delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = nu
 
     // @Speed @Hack
     for * types.components {
-        entity_size = Entity_Types.TYPES[it_index].runtime_size;
+        entity_size = ENTITIES[it_index].runtime_size;
         if it.data <= e && e < it.data + it.count * entity_size {
             type_index = it_index;
             break;
@@ -205,7 +209,7 @@ iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand
     #insert -> string {
         buf: [4096] u8 = ---;
         sb := make_string_builder(buf);
-        for Entity_Types.TYPES {
+        for ENTITIES {
             print(*sb, "for * e: types._% {\n", it.name);
             print(*sb, "    it = e;\n");
             print(*sb, "    #insert body;\n");

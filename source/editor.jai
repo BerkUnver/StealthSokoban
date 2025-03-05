@@ -311,7 +311,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 return;
             }
 
-            if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + Entity_Types.TYPES.count) && event.down {
+            if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.down {
                 success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_direction);
                 position: Vector3i;
                 if success {

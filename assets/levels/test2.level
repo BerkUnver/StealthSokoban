@@ -35,7 +35,7 @@ types
 			z 1
 			w 1
 			;
-		block_type 1
+		moveable 1
 		;
 		e
 			position
@@ -54,7 +54,7 @@ types
 			y 0.55859375
 			w 1
 			;
-		block_type 1
+		moveable 1
 		;
 	]
 	_Entrance 1[

@@ -40,7 +40,8 @@ Level :: struct {
 
     enemy_timer: float; @Ignore
     dt_modifier := 1.0; @Ignore
-
+    
+    doors: [] Entity_Id; @Ignore
     collision: [] Entity_Id; @Ignore
     viewed: [] View_State; @Ignore
     desired_enemy_moves: [] Desired_Enemy_Move; @Ignore
@@ -165,60 +166,24 @@ Enemy_Spawner :: struct {
 }
 
 
-/*
-Block :: struct {
-    size: Vector3i;
-    filled: [] bool;
-    color: Vector4;
-    block_type: bool;
-    mesh: Mesh; @Ignore
-}
-
-
-Stationary_Block :: struct {
-    using #as e: Entity;
-    using block: Block;
-}
-
-
-Moving_Block :: struct {
-    using #as e: Entity;
-    using block: Block;
-}
-
-
-Door :: struct {
-    using #as e: Entity;
-    using block: Block;
-}
-*/
-
-Block_Type :: enum {
-    STATIONARY;
-    MOVING;
-    DOOR;
-}
-
-
 Block :: struct {
     using #as e: Entity;
 
     size: Vector3i;
     filled: [] bool; // :BitArray
     color: Vector4;
-    block_type: Block_Type;
+    moveable: bool;
     mesh: Mesh; @Ignore
     // @TODO Make a bit array data structure for better cache coherency
 }
 
 
-// This solely exists as a convenience so I can type blocks into the editor for now.
-Temporary_Block :: struct {
-    position: Vector3i;
+Door :: struct {
+    using #as e: Entity;
+
     size: Vector3i;
-    filled: [] bool;
-    color: Vector4;
-    block_type: Block_Type;
+    filled: [] bool; // :BitArray
+    mesh: Mesh; @Ignore
 }
 
 
@@ -517,6 +482,15 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
         facing = .X_NEGATIVE,
     };
 
+
+    Temporary_Block :: struct {
+        position: Vector3i;
+        size: Vector3i;
+        filled: [] bool;
+        color: Vector4;
+        moveable: bool;
+    }
+
     temp_blocks := Temporary_Block.[
         .{
             position = .{-3, -1, -2},
@@ -531,7 +505,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
                 T, T, T, T, T, T, T, T, T, T, T, T,
             ],
             color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
-            block_type = .STATIONARY,
+            moveable = false,
         },
         .{
             position = .{-3, 0, -2},
@@ -542,7 +516,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
             ],
             color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
             // .{1, 143.0/255.0, 0, 1} Orange color that I liked
-            block_type = .MOVING,
+            moveable = true,
         },
         .{
             position = .{-1, 0, 4},
@@ -553,7 +527,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
                 T,
             ],
             color = .{0, 0, 1, 1},
-            block_type = .MOVING,
+            moveable = true,
         }
     ];
 
@@ -569,7 +543,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
             size = it.size,
             filled = filled,
             color = it.color,
-            block_type = it.block_type,
+            moveable = it.moveable,
             mesh = generated_mesh
         };
     }
@@ -623,7 +597,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     #insert -> string {
         buf: [1024] u8;
         sb := make_string_builder(buf);
-        for Entity_Types.TYPES {
+        for ENTITIES {
             print(*sb, "for * _% {\n", it.name);
             print(*sb, "    it.eid = xx entity_count;\n");
             print(*sb, "    it.type = .%;\n", it.name);
@@ -667,7 +641,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             #insert -> string {
                 buf: [1024] u8;
                 sb := make_string_builder(buf);
-                for Entity_Types.TYPES {
+                for ENTITIES {
                     print(*sb, "reserved += _%.allocated;\n", it.name);
                     print(*sb, "count += _%.count;\n", it.name);
                 }
@@ -690,12 +664,13 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             view_texture = make_view_texture(level_size);
 
             viewed = alloc_view(arena, size_1d, View_State);
+            doors = alloc_view(arena, size_1d, Entity_Id);
             collision = alloc_view(arena, size_1d, Entity_Id);
             enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
             desired_enemy_moves = alloc_view(arena, size_1d, Desired_Enemy_Move);
             enemy_annihilations = reserve_array(arena, size_1d / 2, Vector3i);
 
-            for * _Block {
+            for * _Block {  
                 assert(add_block_to_collision(level, it) == .OK);
             }
             
@@ -911,7 +886,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
             if e.type == .Block {
                 pushed_block := as(e, Block);
-                if pushed_block.block_type != .MOVING return;
+                if !pushed_block.moveable return;
                 append_no_resize(*moving_blocks, pushed_block);
             }
         }
@@ -926,7 +901,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 if pulled_eid {
                     pulled_block := as(get_entity(level, pulled_eid), Block);
                     if pulled_block 
-                    && pulled_block.block_type == .MOVING
+                    && pulled_block.moveable
                     && !contains(*moving_blocks, pulled_block) {
                         append_no_resize(*moving_blocks, pulled_block);
                     }

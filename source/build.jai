@@ -1,4 +1,5 @@
 #import "Compiler";
+#load "shared.jai"; // For the String_Builder
 
 #run {
     set_build_options_dc(.{do_output=false}); 
@@ -32,7 +33,7 @@
 
     // Compile the game dynamic link library
     {
-        w := compiler_create_workspace("Compiler Workspace");
+        w := compiler_create_workspace("Game Workspace");
         o := get_build_options(w);
         copy_commonly_propagated_fields(options, *o);
 
@@ -42,13 +43,20 @@
         set_build_options(o, w);
         compiler_begin_intercept(w);
         add_build_file("game.jai", w);
-
+        
+        /*
         entities: [1024] *Type_Info_Struct;
         entity_count := 0;
 
+        generated_entities := false;
+        */
+
         while true {
             message := compiler_wait_for_message();
-            if message.kind == .COMPLETE break;
+            if message.kind == {
+                case .COMPLETE;
+                    break;
+            }
         }
         compiler_end_intercept(w);
     }
