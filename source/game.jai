@@ -3,6 +3,7 @@
 #load "gl.jai";
 #load "shared.jai";
 #load "imm.jai";
+#load "imgui.jai";
 #load "draw.jai";
 #load "helpers.jai";
 #load "math.jai";
@@ -19,6 +20,7 @@ Game_Context :: struct {
     using os_procs: OS_Procedures;
 
     imm_state: Imm_State;
+    imgui_state: Imgui_State;
 
     frame_arena: Memory_Arena;
     permanent_arena: Memory_Arena;
@@ -204,7 +206,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
 
-        set_mode(*game, .GAME);
+        set_mode(*game, .EDITOR);
         
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -241,6 +243,30 @@ game_update : Game_Update : (
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
+        
+        imgui_to_camera: Matrix4 = ---;
+        camera_to_imgui: Matrix4 = ---;
+        {
+            GUI_SCALE :: 4;
+
+            zoom_in_matrix := Matrix4_Identity;
+            zoom_in_matrix._11 /= INNER_WINDOW_W / GUI_SCALE;
+            zoom_in_matrix._22 /= -INNER_WINDOW_H / GUI_SCALE;
+            imgui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
+
+            zoom_out_matrix := Matrix4_Identity;
+            zoom_out_matrix._11 *= INNER_WINDOW_W / GUI_SCALE;
+            zoom_out_matrix._22 *= -INNER_WINDOW_H / GUI_SCALE;
+            camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
+        }
+
+
+        imgui_state.event_count = 0;
+        imgui_state.mouse = (camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
+        IMGUI_RECT :: Rect.{0, 0, 100, 100};
+        imgui_rect_capturing_input := inside(IMGUI_RECT, imgui_state.mouse);
+
+
         for input.events {
             if it.key == .TILDE && it.down {
                 free_level(*level, *level_arena);
@@ -257,7 +283,7 @@ game_update : Game_Update : (
                 test();
                 continue;
             }
-
+            
 
             if #complete mode == {
                 case .GAME;
@@ -290,6 +316,13 @@ game_update : Game_Update : (
 
                     level_handle_input(*level, *level_arena, it);
                 case .EDITOR;
+                    if imgui_rect_capturing_input && it.down {
+                        assert(imgui_state.event_count < imgui_state.events.count);
+                        imgui_state.events[imgui_state.event_count] = it.key;
+                        imgui_state.event_count += 1;
+                        continue;
+                    }
+
                     if it.key == #char "[" && it.down {
                         editor_level_index = (editor_level_index - 1 + LEVELS.count) % LEVELS.count;
                         free_level(*level, *level_arena);
@@ -639,6 +672,21 @@ game_update : Game_Update : (
 
                     imm_flush();
                 }
+
+
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_CULL_FACE);
+               
+                glUseProgram(imm_color_shader);
+                set_uniform("projection", imgui_to_camera);
+
+                imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
+                
+                imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
+                imm_flush();
+
+                glEnable(GL_CULL_FACE);
+                glEnable(GL_DEPTH_TEST);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

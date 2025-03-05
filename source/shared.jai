@@ -8,6 +8,8 @@ BACKGROUND_B :: 19;
 INNER_WINDOW_W :: 1920;
 INNER_WINDOW_H :: 1080;
 
+MAX_INPUT_EVENTS_PER_TICK :: 64;
+
 // @TODO: See how much of this memory is actually used!
 GAME_MEMORY_SIZE     :: 1 << 24; 
 LEVEL_ARENA_SIZE     :: 1 << 24;

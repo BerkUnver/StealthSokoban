@@ -85,13 +85,18 @@ imm_vertex :: (position: Vector3) {
 }
 
 
-imm_quad_y :: (y: float, begin_x: float, begin_z: float, end_x: float, end_z: float) {
-    imm_vertex(.{begin_x, y, begin_z});
-    imm_vertex(.{end_x,   y, begin_z});
-    imm_vertex(.{end_x,   y, end_z});
-    imm_vertex(.{begin_x, y, begin_z});
-    imm_vertex(.{end_x,   y, end_z});
-    imm_vertex(.{begin_x, y, end_z});
+imm_quad :: (using rect: Rect, color: Vector4) {
+    x0 := x;
+    y0 := y;
+    x1 := x + w;
+    y1 := y + h;
+
+    imm_vertex(.{x0, y0, 0}, color);
+    imm_vertex(.{x1, y0, 0}, color);
+    imm_vertex(.{x1, y1, 0}, color);
+    imm_vertex(.{x0, y0, 0}, color);
+    imm_vertex(.{x1, y1, 0}, color);
+    imm_vertex(.{x0, y1, 0}, color);
 }
 
 

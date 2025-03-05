@@ -7,7 +7,7 @@
 
 windows: struct {
     stdout: HANDLE;
-    input_events: [64] Input_Event;
+    input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
     input_event_count: s64;
     keys_down: [Key.COUNT] bool; // :BitArray
 }
@@ -330,6 +330,24 @@ main :: () {
 
     wglSwapIntervalEXT := cast((s32) -> BOOL #c_call, wglGetProcAddress("wglSwapIntervalEXT"));
     assert(wglSwapIntervalEXT(1) != 0);
+
+
+
+    //
+    // Init sound
+    //
+    
+    /*
+    hr := CoInitialize(null);
+    assert(hr >= 0);
+    
+    device: *IMMDevice;
+    device_enumerator: *IMMDeviceEnumerator;
+    */
+
+
+
+
     
     ticks_per_second_s64: s64;
     assert(QueryPerformanceFrequency(xx *ticks_per_second_s64) != 0);
