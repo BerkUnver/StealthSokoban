@@ -38,7 +38,6 @@ main :: () {
         
                 translate_keycode_to_game_input :: (down: bool, keycode: WPARAM) #no_context {
                     using windows;
-                    modifiers: Modifiers = 0; // @TODO: Remove Modifiers, use the new keys_down array
 
                     key: Key;
 
@@ -78,7 +77,7 @@ main :: () {
                     } else return;
                     // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
 
-                    append_input_event(.{down=down, modifiers=modifiers, key=key});
+                    append_input_event(.{down=down, key=key});
                 }
 
                 REPEAT_FLAG :: 0x40000000;

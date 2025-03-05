@@ -215,7 +215,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     start_position: Vector3i;
                     tweak_sign := 0.0;
 
-                    if event.modifiers & .SHIFT {
+                    if keys_down.*[Key.SHIFT] {
                         start_position = data.selected_position;
                         tweak_sign = 1;
                     } else {

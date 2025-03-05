@@ -9,7 +9,7 @@ Level :: struct {
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
-    // metaprogramming to do this but it seems like overkill right now.K
+    // metaprogramming to do this but it seems like overkill right now.
     
     level_position: Vector3i; @Ignore
     level_size: Vector3i; @Ignore
@@ -41,7 +41,7 @@ Level :: struct {
     enemy_timer: float; @Ignore
     dt_modifier := 1.0; @Ignore
     
-    doors: [] Entity_Id; @Ignore
+    doors: [] Entity_Id; @Ignore // Only Door entities should be put in here.
     collision: [] Entity_Id; @Ignore
     viewed: [] View_State; @Ignore
     desired_enemy_moves: [] Desired_Enemy_Move; @Ignore
@@ -676,11 +676,35 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             for * _Block {  
                 assert(add_block_to_collision(level, it) == .OK);
             }
+
+            for * door: _Door {
+                offset := door.position - level_position;
+                for :iterate_vector3i door.size {
+                    success, index := get_3d_index(it + offset, level_size);
+                    if !success {
+                        log(.ERROR, "There was a Door entity outside of the level's bounding box.\n");
+                        return false;
+                    }
+                    
+                    // We don't care about overlapping door entities right now.
+                    // Maybe we will care about them in the future.
+                    doors[index] = door.eid;
+                }
+            }
             
             for * _Enemy {
                 in_bounds, index := get_3d_index(it.position, level_position, level_size);
-                assert(in_bounds);
-                assert(collision[index] == 0);
+
+                if !in_bounds {
+                    log(.ERROR, "There was a Enemy entity outside of the level's bounding box.\n");
+                    return false;
+                }
+                
+                if collision[index] != 0 {
+                    log(.ERROR, "There is an overlap between an Enemy entity and something else at (%, %, %)\n", it.position.x, it.position.y, it.position.z);
+                    return false;
+                }
+
                 collision[index] = it.eid;
             }
 
@@ -1128,7 +1152,8 @@ level_update :: (using level: *Level, dt: float) {
                 success, index := get_3d_index(position, level_position, level_size);
                 if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                     eid := collision[index];
-                    if !eid || get_entity(level, eid).type != .Block {
+                    door_eid := doors[index];
+                    if (!eid || get_entity(level, eid).type != .Block) && !door_eid {
                         viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
                         positions[position_count] = position;
                         position_count += 1;

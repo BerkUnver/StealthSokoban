@@ -23,8 +23,8 @@ Game_Context :: struct {
     frame_arena: Memory_Arena;
     permanent_arena: Memory_Arena;
 
-    block_shader: GLuint;
-    block_bitmap: GLuint;
+    gridlike_shader: GLuint;
+    gridlike_bitmap: GLuint;
     imm_color_shader: GLuint;
     color_shader: GLuint;
     wireframe_shader: GLuint;
@@ -140,8 +140,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         imm_init();
 
-        block_shader = load_shader("shaders/block.gl");
-        assert(block_shader != 0);
+        gridlike_shader = load_shader("shaders/gridlike.gl");
+        assert(gridlike_shader != 0);
         imm_color_shader = load_shader("shaders/imm_color.gl");
         assert(imm_color_shader != 0);
         color_shader = load_shader("shaders/color.gl");
@@ -188,10 +188,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
             0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0
         ];
 
-        glGenTextures(1, *block_bitmap);
-        assert(block_bitmap != 0);
+        glGenTextures(1, *gridlike_bitmap);
+        assert(gridlike_bitmap != 0);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, block_bitmap);
+        glBindTexture(GL_TEXTURE_2D, gridlike_bitmap);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -360,10 +360,10 @@ game_update : Game_Update : (
 
                 world_to_camera := camera_matrix;
 
-                glUseProgram(block_shader);
+                glUseProgram(gridlike_shader);
 
                 glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+                glBindTexture(GL_TEXTURE_2D, gridlike_bitmap);
                 glActiveTexture(GL_TEXTURE1);
                 glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
 
@@ -471,10 +471,26 @@ game_update : Game_Update : (
                 // Because this changes so frequently, it makes the most sense for me to draw this in immediate mode.
                 glUseProgram(imm_color_shader); 
                 set_uniform("projection", world_to_camera);
-
+                
+                // @Speed this is taking 1ms... Look into optimizing this.
                 for :iterate_vector3i level_size {
                     hidden := viewed[it_index] & (.SEEN | .VISIBLE) == 0;
-                    a_block_is_here := collision[it_index] && get_entity(*level, collision[it_index]).type == .Block;
+                
+                    is_a_gridlike_at :: (using level: *Level, index: int) -> bool {
+                        block_eid := collision[index];
+                        if block_eid {
+                            if get_entity(level, block_eid).type == .Block return true;
+                        } 
+
+                        door_eid := doors[index];
+                        if door_eid {
+                            return true;
+                        }
+                        
+                        return false;
+                    }
+
+                    a_gridlike_is_here := is_a_gridlike_at(*level, it_index);
 
                     origin := to_vector3(level_position + it);
 
@@ -482,14 +498,12 @@ game_update : Game_Update : (
                         in_bounds, index := get_3d_index(position, level_size);
 
                         if !in_bounds {
-                            if hidden || a_block_is_here {
+                            if hidden || a_gridlike_is_here {
                                 for 0..5 imm_vertex(origin + cube_vertices[xx face + it], .{0,0,0,1});
                             }
                         } else {
-                            if hidden && !a_block_is_here && viewed[index] & .SEEN != 0 {
-                                a_block_is_there := collision[index] && get_entity(*level, collision[index]).type == .Block;
-
-                                if !a_block_is_there {
+                            if hidden && !a_gridlike_is_here && viewed[index] & .SEEN != 0 {
+                                if !is_a_gridlike_at(*level, index) {
                                     for 0..5 imm_vertex(origin + cube_vertices[xx face + it], .{0,0,0,1});
                                 }
                             }
@@ -544,7 +558,7 @@ game_update : Game_Update : (
                 glUseProgram(texture_and_color_shader);
 
                 glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, block_bitmap);
+                glBindTexture(GL_TEXTURE_2D, gridlike_bitmap);
                 set_uniform("bitmap", cast(s32, 0));
 
                 for * _Block {

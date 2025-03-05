@@ -52,7 +52,6 @@ Input :: struct {
 
 Input_Event :: struct {
     key: Key; // Do we want to pack the "down" into these bits?
-    modifiers: Modifiers;
     down: bool; // Up or down?
 }
 
@@ -78,14 +77,6 @@ Key :: enum {
     CTRL;
     TILDE;
     COUNT;
-}
-
-
-// At Thekla, having these modifier flags proved to be kind of annoying for key remapping.
-// Maybe we want to do something else?
-Modifiers :: enum_flags {
-    SHIFT;
-    CTRL;
 }
 
 
