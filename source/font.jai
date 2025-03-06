@@ -18,6 +18,8 @@ make_font :: () -> Font {
     assert(FT_Init_FreeType(*ft) == 0);
 
     face: FT_Face;
+
+    // @TODO: Load this from memory
     assert(FT_New_Face(ft, "consolas.ttf", 0, *face) == 0);
     
     FONT_HEIGHT :: 64;
@@ -47,6 +49,10 @@ make_font :: () -> Font {
             y += FONT_HEIGHT;
             assert(y + FONT_HEIGHT < FONT_BITMAP_HEIGHT);
         }
+
+        // @TODO @Speed @Memory: Is there a way to give FreeType a pointer
+        // to where we want it to load out of along with a stride instead of
+        // copying it?
 
         for 0..glyph_height-1 {
             src := it * glyph_width;

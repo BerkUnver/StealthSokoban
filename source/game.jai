@@ -85,6 +85,7 @@ LEVELS :: string.[
     "levels/test4.level",
     "levels/intro.level",
     "levels/comb.level",
+    "levels/comb2.level",
 ];
 
 #program_export "game_init"
@@ -695,21 +696,67 @@ game_update : Game_Update : (
 
                     imm_flush();
                 }
+                
 
+                //
+                // Detect the overlapping blocks in each level and draw where they are.
+                // @Speed This is at worst (size_of_the_level * block_count time). This could get slow.
+                // We could instead update this every time a Block is moved.
+                //
+                
+                mark := get_mark(*frame_arena);
+                defer restore_mark(*frame_arena, mark);
 
+                position, size := get_block_extents(_Block);
+                
+                overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
+
+                for * block: _Block {
+                    offset := block.position - position;
+                    for :iterate_vector3i block.size {
+                        filled := block.filled[it_index];
+                        if !filled continue;
+
+                        success, index := get_3d_index(it + offset, size);
+                        assert(success);
+                        
+                        overlapping[index] += 1;
+                    }
+                }
+
+               
+                glDisable(GL_DEPTH_TEST);
+                glEnable(GL_BLEND);
+
+                glUseProgram(imm_color_shader);
+                set_uniform("projection", world_to_camera);
+
+                OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+
+                for :iterate_vector3i size {
+                    count := overlapping[it_index];
+                    if count > 1 {
+                        start := position + it;
+                        end := start + Vector3i.{1,1,1};
+                        imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                    }
+                }
+
+                imm_flush();
+                
+                /*
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
                 glUseProgram(imm_color_shader);
                 set_uniform("projection", imgui_to_camera);
                 
-                /*
                 imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
                 imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
                 imm_flush();
-                */
 
                 glEnable(GL_BLEND);
                 draw_text(*consolas, imgui_to_camera);
+                */
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
