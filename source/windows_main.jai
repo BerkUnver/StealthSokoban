@@ -2,6 +2,7 @@
 // @TODO: Switch to the wide character version of everything.
 
 #load "windows_winapi.jai";
+#load "windows_xaudio2.jai";
 #load "shared.jai";
 
 
@@ -336,25 +337,80 @@ main :: () {
     //
     // Init sound
     //
-    
+
+
+    // This code all does stuff, I just commented it out so the game doesn't make an annoying sound while I am
+    // in these initial phases of getting audio to work among other things.
+
     /*
-    hr := CoInitialize(null);
-    assert(hr >= 0);
+    xaudio: *IXAudio2;
+    assert(XAudio2Create(*xaudio, 0, XAUDIO2_DEFAULT_PROCESSOR) == 0);
+  
+    mastering_voice: *IXAudio2MasteringVoice;
+    assert(xaudio.CreateMasteringVoice(xaudio, *mastering_voice) == 0);
+
+    CHANNEL_COUNT :: 1;
+    SAMPLES_PER_SECOND :: 44100;
+    BYTES_PER_SAMPLE :: 2;
+
+    format := WAVEFORMATEX.{
+        wFormatTag = WAVE_FORMAT_PCM,
+        nChannels = CHANNEL_COUNT,
+        nSamplesPerSec = SAMPLES_PER_SECOND,
+        nBlockAlign = CHANNEL_COUNT * BYTES_PER_SAMPLE, // 2 bytes per sample
+        nAvgBytesPerSec = SAMPLES_PER_SECOND * CHANNEL_COUNT * BYTES_PER_SAMPLE,
+        wBitsPerSample = 16,
+        cbSize = 0
+    };
     
-    device: *IMMDevice;
-    device_enumerator: *IMMDeviceEnumerator;
+    source_voice: *IXAudio2SourceVoice;
+    assert(xaudio.CreateSourceVoice(xaudio, *source_voice, *format) == 0);
+
+    CYCLES_PER_SECOND :: 220;
+    SAMPLES_PER_CYCLE :: SAMPLES_PER_SECOND / CYCLES_PER_SECOND;
+    BUFFER_CYCLE_COUNT :: 10;
+    BUFFER_SIZE_IN_SAMPLES :: SAMPLES_PER_CYCLE * BUFFER_CYCLE_COUNT;
+    BUFFER_SIZE_IN_BYTES :: BUFFER_SIZE_IN_SAMPLES * BYTES_PER_SAMPLE;
+
+    audio_buffer: [BUFFER_SIZE_IN_SAMPLES] s16;
+
+    VOLUME :: 0.5;
+    phase := 0.0;
+    for * audio_buffer {
+        // I don't want to import the Math module in the OS startup code...
+        S16_MAX : s16 : 0x8fff;
+        TAU :: 6.283185;
+        value := ifx phase >= TAU / 2.0 then 1.0 else -1.0;
+        it.* = xx (value * S16_MAX * VOLUME);
+        phase += TAU / 200.0;
+        if phase > TAU phase -= TAU;
+    }
+
+    xaudio_audio_buffer := XAUDIO2_BUFFER.{
+        Flags = XAUDIO2_END_OF_STREAM,
+        AudioBytes = BYTES_PER_SAMPLE * audio_buffer.count,
+        pAudioData = xx audio_buffer.data,
+        LoopCount = XAUDIO2_LOOP_INFINITE
+    };
+    source_voice.SubmitSourceBuffer(source_voice, *xaudio_audio_buffer);
+    source_voice.Start(source_voice);
     */
 
-
-
-
     
+    //
+    // Init QueryPerformanceCounter stuff
+    //
+
     ticks_per_second_s64: s64;
     assert(QueryPerformanceFrequency(xx *ticks_per_second_s64) != 0);
     ticks_per_second := cast(float64, ticks_per_second_s64);
     
 
-    { // Set working directory to exe directory
+    //
+    // Set working directory to exe directory
+    //
+
+    { 
         // @TODO: Get rid of MAX_PATH
         exe_path: [MAX_PATH] u8;
         GetModuleFileNameA(null, exe_path.data, exe_path.count);
@@ -419,7 +475,7 @@ main :: () {
     };
 
     game_init(*data);
-
+    
     game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
     assert(game_update != null);
     
