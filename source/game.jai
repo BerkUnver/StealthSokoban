@@ -21,11 +21,13 @@ Game_Context :: struct {
     
     using os_procs: OS_Procedures;
 
-    imm_state: Imm_State;
-    imgui_state: Imgui_State;
-
     frame_arena: Memory_Arena;
     permanent_arena: Memory_Arena;
+
+    // The above has to be initialized before anything else is intialized.
+
+    imm_state: Imm_State;
+    imgui_state: Imgui_State;
 
     imm_color_shader: GLuint;
     imm_text_shader: GLuint;
@@ -143,6 +145,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
 
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
@@ -170,12 +174,12 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         texture_and_color_shader = load_shader("shaders/texture_and_color.gl");
         assert(texture_and_color_shader != 0);
        
+        consolas = make_font();
+
         //
         // Now that the game_context is initted, we can init the game.
         //
 
-        consolas = make_font();
-        
         using game_memory;
         using game_memory.game;
         level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
@@ -394,6 +398,11 @@ game_update : Game_Update : (
         
         if #complete mode == {
             case .GAME;
+                glEnable(GL_DEPTH_TEST);
+                glEnable(GL_CULL_FACE);
+                glDepthFunc(GL_LESS);
+                glDisable(GL_BLEND);
+
                 //
                 // Draw blocks.
                 //
@@ -496,11 +505,12 @@ game_update : Game_Update : (
                 for * _Entrance draw_unviewed_item(it.position, *entrance_mesh, Entrance.COLOR, Entrance.COLOR / 2);
                 for * _Exit draw_unviewed_item(it.position, *exit_mesh, Exit.COLOR, Exit.COLOR / 2);
 
-                glEnable(GL_CULL_FACE);
 
                 //
                 // Draw the player
                 //
+
+                glEnable(GL_CULL_FACE);
 
                 glUseProgram(color_shader);
                 set_uniform("color", Player.COLOR);
@@ -572,7 +582,6 @@ game_update : Game_Update : (
                 // @TODO: Depth sorting. Possibly for when we need a real renderer.
                 glDepthFunc(GL_GREATER);
                 glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
                 glUseProgram(occlusion_shader);
                 
@@ -594,10 +603,12 @@ game_update : Game_Update : (
                     bind_and_draw(*player_mesh);
                 }
 
-                glDisable(GL_BLEND); 
+            case .EDITOR;
+                glEnable(GL_DEPTH_TEST);
+                glEnable(GL_CULL_FACE);
+                glDisable(GL_BLEND);
                 glDepthFunc(GL_LESS);
 
-            case .EDITOR;
                 world_to_camera := get_editor_camera_matrix(*editor);
 
                 glUseProgram(texture_and_color_shader);
@@ -690,23 +701,15 @@ game_update : Game_Update : (
                 glDisable(GL_CULL_FACE);
                 glUseProgram(imm_color_shader);
                 set_uniform("projection", imgui_to_camera);
-
-                imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
                 
+                /*
+                imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
                 imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
                 imm_flush();
-
-
+                */
 
                 glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
                 draw_text(*consolas, imgui_to_camera);
-                glDisable(GL_BLEND);
-
-                glEnable(GL_CULL_FACE);
-                glEnable(GL_DEPTH_TEST);
-
-
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
