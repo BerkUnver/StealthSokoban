@@ -18,8 +18,6 @@ FRAME_ARENA_SIZE     :: 1 << 20;
 
 OS_Procedures :: struct {
     os_print: (string);
-    read_file: (string, [] u8) -> bool, string;
-    write_file: (string, string) -> bool;
     set_console_text_color: (Console_Text_Color);
 }
 

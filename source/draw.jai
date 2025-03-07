@@ -375,8 +375,7 @@ load_shader :: (file_name: string, prefix := "") -> GLuint {
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    buf: [10000] u8 = ---;
-    success, str := read_file(file_name, buf);
+    success, str := read_file(file_name, *frame_arena);
     if !success {
         log(.ERROR, "Failed to load the file for shader \"%\"\n", file_name);
         return 0;

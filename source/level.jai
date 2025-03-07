@@ -562,20 +562,20 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
 load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool {
     using context.game_context;
     
-    buf: [100000] u8 = ---;
-    success, level_text := read_file(level_name, buf);
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+
+    success, level_text := read_file(level_name, *frame_arena);
     if !success {
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
     }
 
-    mark := get_mark(arena);
     err := deserialize(level_text, level, arena);
     if !err.ok {
         log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
         restore_mark(arena, mark);
         return false;
     }
-
     return true;
 }
 

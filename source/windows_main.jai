@@ -441,8 +441,6 @@ main :: () {
         gl_extension_loader    = wglGetProcAddress,
         os_procs = .{
             os_print               = os_print,
-            read_file              = read_file,
-            write_file             = write_file,
             set_console_text_color = set_console_text_color,
         },
         level_arena_memory     = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
@@ -568,56 +566,6 @@ os_print :: (s: string) {
     // This function is for debug output. We don't care about performance, so we flush every time we call this.
 }
 
-
-jai_string_to_path :: (str: string) -> [MAX_PATH] u8 {
-    // @TODO: Maybe we can detect when name is a static string (it is zero-terminated) and skip translating it?
-
-    path: [MAX_PATH] u8;
-    assert(str.count <= MAX_PATH - 1);
-    memcpy(path.data, str.data, str.count);
-    path[str.count] = 0;
-    return path;
-}
-
-
-// @TODO: Switch to using the Jai allocator-passing method so we can pass an allocator to this without it knowing about memory arenas?
-read_file :: (name: string, buf: [] u8) -> bool, string {
-    
-    path := jai_string_to_path(name);
-
-    handle := CreateFileA(path.data, FILE_GENERIC_READ);
-    if handle == INVALID_HANDLE_VALUE return false, .{};
-    defer CloseHandle(handle);
-
-    size_l: LARGE_INTEGER;
-    assert(GetFileSizeEx(handle, *size_l) != 0);
-    assert(size_l.QuadPart < 0x7fffffff);
-    size := cast(u32, size_l.QuadPart);
-    assert(size <= buf.count);
-
-    read_size: u32;
-    ReadFile(handle, buf.data, size, *read_size);
-    assert(read_size == size);
-
-    return true, .{size, buf.data};
-}
-
-
-write_file :: (name: string, str: string) -> bool {
-    path := jai_string_to_path(name);
-
-    handle := CreateFileA(path.data, FILE_GENERIC_WRITE, creation = CREATE_ALWAYS);
-    if handle == INVALID_HANDLE_VALUE return false;
-    defer CloseHandle(handle);
-    
-    bytes_written: u32;
-    WriteFile(handle, str.data, xx str.count, *bytes_written, null);
-    if bytes_written < str.count return false;
-
-    return true;
-}
-
-
 set_console_text_color :: (color: Console_Text_Color) {
     if #complete color == {
         case .WHITE; SetConsoleTextAttribute(windows.stdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
@@ -625,3 +573,4 @@ set_console_text_color :: (color: Console_Text_Color) {
         case .GREEN; SetConsoleTextAttribute(windows.stdout, FOREGROUND_GREEN);
     }
 }
+

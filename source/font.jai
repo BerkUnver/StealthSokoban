@@ -17,20 +17,28 @@ VALID_ASCII_START :: 33;
 VALID_ASCII_END :: 126;
 
 
-make_font :: () -> Font {    
-    using context.game_context; // We might call this when the game_context isn't fully initialized. Be careful of this!
+load_font :: (file_name: string) -> Font {
+    using context.game_context;
+    
+    
+    // The font data pointer needs to remain valid for the lifetime of the face.
+    // We construct the bitmap for the face from data in the face.
+    // Therefore, both the font file allocation and the bitmap allocation need
+    // to remain valid at the same time, which is why we only call get_mark and
+    // restore_mark once.
 
-    // @Incomplete Make this use a simple bump allocator and then
-    // free everything when we are done.
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
 
-    ft: FT_Library;
-    assert(FT_Init_FreeType(*ft) == 0);
+    success, str := read_file(file_name, *frame_arena);
+    assert(success);
 
     face: FT_Face;
+    assert(FT_New_Memory_Face(freetype, str.data, xx str.count, 0, *face) == 0);
+    defer FT_Done_Face(face);
 
-    // @TODO: Load this from memory
-    assert(FT_New_Face(ft, "consolas.ttf", 0, *face) == 0);
-    
+
+
     FONT_HEIGHT :: 64;
     FT_Set_Pixel_Sizes(face, 0, FONT_HEIGHT);
 
@@ -39,10 +47,6 @@ make_font :: () -> Font {
     FONT_BITMAP_WIDTH :: 1024;
     FONT_BITMAP_HEIGHT :: 1024;
 
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    bitmap_data := alloc(*frame_arena, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT);
-    
     x := 0;
     y := 0;
 
@@ -51,6 +55,8 @@ make_font :: () -> Font {
     assert(face.glyph.bitmap.rows == 0);
     font.space_advance = xx face.glyph.advance.x / 64.0;
 
+
+    bitmap_data := alloc(*frame_arena, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT);
 
     // :BottomToTopText
     // FreeType wants you to use a y-down coordinate system. I don't know if I want to do this.
@@ -79,7 +85,7 @@ make_font :: () -> Font {
         y_start := y + glyph_height - 1;
         for 0..glyph_height-1 {
             src := it * glyph_width;
-            dest := (y_start - it) * FONT_BITMAP_WIDTH + x; // :BottomToTopText
+            dest := (y_start - it) * FONT_BITMAP_WIDTH + x;
             memcpy(bitmap_data + dest, face.glyph.bitmap.buffer + src, glyph_width);
         }
 
@@ -94,7 +100,7 @@ make_font :: () -> Font {
             },
             bearing = .{
                 xx face.glyph.bitmap_left,
-                xx -(xx glyph_height - face.glyph.bitmap_top), // :BottomToTopText
+                xx -(xx glyph_height - face.glyph.bitmap_top),
             },
             advance = xx face.glyph.advance.x / 64.0 // Advance is stored in 1/64ths pixels.
         };
@@ -117,15 +123,13 @@ make_font :: () -> Font {
         GL_UNSIGNED_BYTE,
         bitmap_data
     );
+
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     font.bitmap = bitmap;
-
-    FT_Done_Face(face);
-    FT_Done_FreeType(ft);
 
     return font;
 }

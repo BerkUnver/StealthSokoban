@@ -15,6 +15,13 @@
 #load "serialize.jai";
 #load "test.jai";
 
+#if OS == .WINDOWS {
+    #load "windows_game.jai";
+} else {
+    #assert false;
+}
+
+
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
@@ -23,34 +30,43 @@ Game_Context :: struct {
 
     frame_arena: Memory_Arena;
     permanent_arena: Memory_Arena;
+    
+    // @Incomplete:
+    // We might just want to init a new freetype library every time we instanciate a font
+    // and use the per-frame bump allocator as the allocator for FreeType.
+    freetype: FT_Library;
+
 
     // The above has to be initialized before anything else is intialized.
 
     imm_state: Imm_State;
     imgui_state: Imgui_State;
 
-    imm_color_shader: GLuint;
-    imm_text_shader: GLuint;
-
-    gridlike_shader: GLuint;
-    gridlike_bitmap: GLuint;
-    color_shader: GLuint;
-    wireframe_shader: GLuint;
-    color_and_bitmap_shader: GLuint;
-    item_shader: GLuint;
-    unviewed_color_item_shader: GLuint;
-    occlusion_shader: GLuint;
-    texture_and_color_shader: GLuint;
-
-    consolas: Font;
     
-    enemy_mesh: Mesh;
-    enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
-    enemy_annihilation_mesh: Mesh;
-    enemy_spawner_mesh: Mesh;
-    player_mesh: Mesh;
-    entrance_mesh: Mesh;
-    exit_mesh: Mesh;
+    using assets: struct {
+        imm_color_shader: GLuint;
+        imm_text_shader: GLuint;
+
+        gridlike_shader: GLuint;
+        gridlike_bitmap: GLuint;
+        color_shader: GLuint;
+        wireframe_shader: GLuint;
+        color_and_bitmap_shader: GLuint;
+        item_shader: GLuint;
+        unviewed_color_item_shader: GLuint;
+        occlusion_shader: GLuint;
+        texture_and_color_shader: GLuint;
+
+        consolas: Font;
+        
+        enemy_mesh: Mesh;
+        enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
+        enemy_annihilation_mesh: Mesh;
+        enemy_spawner_mesh: Mesh;
+        player_mesh: Mesh;
+        entrance_mesh: Mesh;
+        exit_mesh: Mesh;
+    };
 }
 
 #add_context game_context: *Game_Context;
@@ -144,12 +160,15 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
             print("glDebugMessageCallbackARB was not found\n.");
         }
 
-
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
+
+
+
+        assert(FT_Init_FreeType(*freetype) == 0);
 
         imm_init();
 
@@ -174,8 +193,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(occlusion_shader != 0);
         texture_and_color_shader = load_shader("shaders/texture_and_color.gl");
         assert(texture_and_color_shader != 0);
-       
-        consolas = make_font();
+
+        consolas = load_font("consolas.ttf");
 
         //
         // Now that the game_context is initted, we can init the game.
