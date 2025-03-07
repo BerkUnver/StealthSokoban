@@ -234,6 +234,7 @@ game_update : Game_Update : (
     game_memory_: *void, 
     input: Input,
     time_elapsed_: float64
+    // audio_buffer: [] s16
 ) #no_context {
     push_context {
         game_memory := cast(*Game_Memory, game_memory_);
@@ -266,15 +267,20 @@ game_update : Game_Update : (
         {
             GUI_SCALE :: 4;
 
+            // We do the " / 2" because we actually need to zoom in twice as much to account
+            // for the starting matrix ranging from [1, -1] on the x and y axis. We need the 
+            // final matrix to range from [0, INNER_WINDOW_W] on the x and [0, INNER_WINDOW_H]
+            // on the y.
+
             zoom_in_matrix := Matrix4_Identity;
-            zoom_in_matrix._11 /= INNER_WINDOW_W / GUI_SCALE;
-            zoom_in_matrix._22 /= -INNER_WINDOW_H / GUI_SCALE;
-            imgui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
+            zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
+            zoom_in_matrix._22 /= INNER_WINDOW_H / 2;
+            imgui_to_camera = make_translation_matrix4(.{-1, -1, 0}) * zoom_in_matrix;
 
             zoom_out_matrix := Matrix4_Identity;
-            zoom_out_matrix._11 *= INNER_WINDOW_W / GUI_SCALE;
-            zoom_out_matrix._22 *= -INNER_WINDOW_H / GUI_SCALE;
-            camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
+            zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
+            zoom_out_matrix._22 *= INNER_WINDOW_H / 2;
+            camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, 1, 0});
         }
 
 
@@ -744,19 +750,19 @@ game_update : Game_Update : (
 
                 imm_flush();
                 
-                /*
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
                 glUseProgram(imm_color_shader);
                 set_uniform("projection", imgui_to_camera);
                 
+                /*
                 imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
                 imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
                 imm_flush();
+                */
 
                 glEnable(GL_BLEND);
-                draw_text(*consolas, imgui_to_camera);
-                */
+                draw_text("(Test text)", .{100, 100}, *consolas, imgui_to_camera);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

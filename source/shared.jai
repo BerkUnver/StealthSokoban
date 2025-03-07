@@ -38,6 +38,7 @@ Game_Update :: #type (
     game_memory: *void,
     input: Input,
     time_elapsed: float64
+    // audio_buffer: [] s16
 ) #no_context;
 
 

@@ -73,7 +73,7 @@ IXAudio2_VTable :: struct {
 		InputChannels: u32,
 		InputSampleRate: u32,
 		Flags: u32 = 0,
-		ProcessingState: u32 = 0,
+		ProcessingStage: u32 = 0,
 		pSendList: *void = null,
 		pEffectChain: *void = null
 	) -> HRESULT #c_call;

@@ -337,12 +337,12 @@ main :: () {
     //
     // Init sound
     //
-
-
-    // This code all does stuff, I just commented it out so the game doesn't make an annoying sound while I am
-    // in these initial phases of getting audio to work among other things.
+    
+    // As far as I can tell, it would have been better to use WASAPI because I want to mix all our sounds ourself.
+    // We don't need any of the WASAPI added functionality. However, we'll just do this for now.
 
     /*
+
     xaudio: *IXAudio2;
     assert(XAudio2Create(*xaudio, 0, XAUDIO2_DEFAULT_PROCESSOR) == 0);
   
@@ -366,34 +366,10 @@ main :: () {
     source_voice: *IXAudio2SourceVoice;
     assert(xaudio.CreateSourceVoice(xaudio, *source_voice, *format) == 0);
 
-    CYCLES_PER_SECOND :: 220;
-    SAMPLES_PER_CYCLE :: SAMPLES_PER_SECOND / CYCLES_PER_SECOND;
-    BUFFER_CYCLE_COUNT :: 10;
-    BUFFER_SIZE_IN_SAMPLES :: SAMPLES_PER_CYCLE * BUFFER_CYCLE_COUNT;
-    BUFFER_SIZE_IN_BYTES :: BUFFER_SIZE_IN_SAMPLES * BYTES_PER_SAMPLE;
+    audio_buffers: [2][SAMPLES_PER_SECOND / 20] s16;
+    audio_buffer_inactive_index := 0;
 
-    audio_buffer: [BUFFER_SIZE_IN_SAMPLES] s16;
-
-    VOLUME :: 0.5;
-    phase := 0.0;
-    for * audio_buffer {
-        // I don't want to import the Math module in the OS startup code...
-        S16_MAX : s16 : 0x8fff;
-        TAU :: 6.283185;
-        value := ifx phase >= TAU / 2.0 then 1.0 else -1.0;
-        it.* = xx (value * S16_MAX * VOLUME);
-        phase += TAU / 200.0;
-        if phase > TAU phase -= TAU;
-    }
-
-    xaudio_audio_buffer := XAUDIO2_BUFFER.{
-        Flags = XAUDIO2_END_OF_STREAM,
-        AudioBytes = BYTES_PER_SAMPLE * audio_buffer.count,
-        pAudioData = xx audio_buffer.data,
-        LoopCount = XAUDIO2_LOOP_INFINITE
-    };
-    source_voice.SubmitSourceBuffer(source_voice, *xaudio_audio_buffer);
-    source_voice.Start(source_voice);
+    first_audio_buffer_submitted := false;
     */
 
     
@@ -478,7 +454,7 @@ main :: () {
     
     game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
     assert(game_update != null);
-    
+
     while main_loop := true {
         message: MSG;
 
@@ -549,8 +525,29 @@ main :: () {
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
-        game_update(game_memory, input, time_elapsed);
+
+
+        game_update(game_memory, input, time_elapsed, /* audio_buffers[audio_buffer_inactive_index] */);
         windows.input_event_count = 0;
+        
+        /*
+        
+        { // Submit audio data for this frame
+            if first_audio_buffer_submitted {
+                source_voice.Stop(source_voice);
+            } else {
+                first_audio_buffer_submitted = true;
+            }
+            xaudio_audio_buffer := XAUDIO2_BUFFER.{
+                Flags = XAUDIO2_END_OF_STREAM,
+                AudioBytes = BYTES_PER_SAMPLE * audio_buffers[0].count,
+                pAudioData = xx audio_buffers[audio_buffer_inactive_index].data
+            };
+            source_voice.SubmitSourceBuffer(source_voice, *xaudio_audio_buffer);
+            source_voice.Start(source_voice);
+            audio_buffer_inactive_index += 1;
+            audio_buffer_inactive_index %= audio_buffers.count;
+        }*/
 
         SwapBuffers(dc);
     }

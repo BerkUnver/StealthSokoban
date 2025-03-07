@@ -1,6 +1,15 @@
 Font :: struct {
     bitmap: GLuint;
-    glyph_uvs: [VALID_ASCII_END + 1 - VALID_ASCII_START] Rect;
+    space_advance: float;
+    glyphs: [VALID_ASCII_END + 1 - VALID_ASCII_START] Glyph;
+}
+
+
+Glyph :: struct {
+    uv_x0, uv_y0, uv_x1, uv_y1: float;
+    size: Vector2;
+    bearing: Vector2;
+    advance: float;
 }
 
 
@@ -36,6 +45,19 @@ make_font :: () -> Font {
     
     x := 0;
     y := 0;
+
+    assert(FT_Load_Char(face, #char " ", FT_LOAD_RENDER) == 0);
+    assert(face.glyph.bitmap.width == 0);
+    assert(face.glyph.bitmap.rows == 0);
+    font.space_advance = xx face.glyph.advance.x / 64.0;
+
+
+    // :BottomToTopText
+    // FreeType wants you to use a y-down coordinate system. I don't know if I want to do this.
+    // I've put some special code to fix this for now, though it may turn out we want it to be
+    // top-to-bottom.
+    //      -berk, 2025 - 3 - 7
+
     for VALID_ASCII_START..VALID_ASCII_END {
         assert(FT_Load_Char(face, xx it, FT_LOAD_RENDER) == 0);
         
@@ -53,16 +75,31 @@ make_font :: () -> Font {
         // @TODO @Speed @Memory: Is there a way to give FreeType a pointer
         // to where we want it to load out of along with a stride instead of
         // copying it?
-
+        
+        y_start := y + glyph_height - 1;
         for 0..glyph_height-1 {
             src := it * glyph_width;
-            dest := (y + it) * FONT_BITMAP_WIDTH + x;
+            dest := (y_start - it) * FONT_BITMAP_WIDTH + x; // :BottomToTopText
             memcpy(bitmap_data + dest, face.glyph.bitmap.buffer + src, glyph_width);
         }
 
-        x += glyph_width;
+        font.glyphs[it - VALID_ASCII_START] = .{
+            uv_x0 = cast(float, x) / FONT_BITMAP_WIDTH,
+            uv_y0 = cast(float, y) / FONT_BITMAP_HEIGHT,
+            uv_x1 = cast(float, x + glyph_width) / FONT_BITMAP_WIDTH,
+            uv_y1 = cast(float, y + glyph_height) / FONT_BITMAP_HEIGHT,
+            size = .{
+                xx glyph_width,
+                xx glyph_height,
+            },
+            bearing = .{
+                xx face.glyph.bitmap_left,
+                xx -(xx glyph_height - face.glyph.bitmap_top), // :BottomToTopText
+            },
+            advance = xx face.glyph.advance.x / 64.0 // Advance is stored in 1/64ths pixels.
+        };
 
-        font.glyph_uvs[it - VALID_ASCII_START] = .{xx x, xx y, xx glyph_width, xx glyph_height};
+        x += glyph_width;
     }
 
     bitmap: GLuint;
@@ -94,7 +131,7 @@ make_font :: () -> Font {
 }
 
 
-draw_text :: (font: * Font, projection: Matrix4) {
+draw_text :: (str: string, position: Vector2, font: * Font, projection: Matrix4) {
     using context.game_context;
 
     glUseProgram(imm_text_shader);
@@ -105,18 +142,33 @@ draw_text :: (font: * Font, projection: Matrix4) {
     set_uniform("projection", projection);
     set_uniform("bitmap", cast(s32, 0));
     
-    x0 := 0.0;
-    y0 := 0.0;
-    x1 := 1024.0;
-    y1 := 1024.0;
-    
+    x := position.x;
+    y := position.y;
+
     COLOR :: Vector4.{1,1,1,1};
-    imm_vertex(.{x0, y0, 0}, .{0, 0}, COLOR);
-    imm_vertex(.{x1, y0, 0}, .{1, 0}, COLOR);
-    imm_vertex(.{x1, y1, 0}, .{1, 1}, COLOR);
-    imm_vertex(.{x0, y0, 0}, .{0, 0}, COLOR);
-    imm_vertex(.{x1, y1, 0}, .{1, 1}, COLOR);
-    imm_vertex(.{x0, y1, 0}, .{0, 1}, COLOR);
+
+    for str {
+        if it == #char " " { // ASCII 32
+            x += font.space_advance;
+        } else {
+            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
+            using glyph := font.glyphs[it - VALID_ASCII_START];
+            x0 := x + bearing.x;
+            y0 := y + bearing.y;
+            x1 := x0 + size.x;
+            y1 := y0 + size.y;
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
+            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, COLOR);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
+            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, COLOR);
+
+            x += advance;
+        }
+    }
 
     imm_flush();
 }
