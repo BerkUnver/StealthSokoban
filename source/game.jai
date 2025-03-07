@@ -166,11 +166,10 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
-
-
         assert(FT_Init_FreeType(*freetype) == 0);
-
-        imm_init();
+        
+        imm_state = imm_init();
+        imgui_state = imgui_init();
 
         imm_color_shader = load_shader("shaders/imm_color.gl");
         assert(imm_color_shader != 0);
@@ -279,32 +278,9 @@ game_update : Game_Update : (
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
-        
-        
-        imgui_to_camera: Matrix4 = ---;
-        camera_to_imgui: Matrix4 = ---;
-        {
-            GUI_SCALE :: 4;
-
-            // We do the " / 2" because we actually need to zoom in twice as much to account
-            // for the starting matrix ranging from [1, -1] on the x and y axis. We need the 
-            // final matrix to range from [0, INNER_WINDOW_W] on the x and [0, INNER_WINDOW_H]
-            // on the y.
-
-            zoom_in_matrix := Matrix4_Identity;
-            zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
-            zoom_in_matrix._22 /= INNER_WINDOW_H / 2;
-            imgui_to_camera = make_translation_matrix4(.{-1, -1, 0}) * zoom_in_matrix;
-
-            zoom_out_matrix := Matrix4_Identity;
-            zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
-            zoom_out_matrix._22 *= INNER_WINDOW_H / 2;
-            camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, 1, 0});
-        }
-
 
         imgui_state.event_count = 0;
-        imgui_state.mouse = (camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
+        imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         IMGUI_RECT :: Rect.{0, 0, 100, 100};
         imgui_rect_capturing_input := inside(IMGUI_RECT, imgui_state.mouse);
 
@@ -769,19 +745,19 @@ game_update : Game_Update : (
 
                 imm_flush();
                 
+                /*
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
                 glUseProgram(imm_color_shader);
                 set_uniform("projection", imgui_to_camera);
                 
-                /*
                 imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
                 imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
                 imm_flush();
                 */
 
                 glEnable(GL_BLEND);
-                draw_text("(Test text)", .{100, 100}, *consolas, imgui_to_camera);
+                draw_text("(Test text)", .{100, 100}, *consolas);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

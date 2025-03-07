@@ -16,9 +16,10 @@ Imm_State :: struct {
     // for now.
 }
 
-imm_init :: () {
-    using context.game_context.imm_state;
-    using context.game_context;
+imm_init :: () -> Imm_State {
+    using context.game_context.gl_procs;
+    
+    using imm_state: Imm_State;
 
     glGenVertexArrays(1, *vao);
     glBindVertexArray(vao);
@@ -39,6 +40,8 @@ imm_init :: () {
 
     glEnableVertexAttribArray(xx COLOR);
     glVertexAttribPointer(xx COLOR, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.color);
+
+    return imm_state;
 }
 
 

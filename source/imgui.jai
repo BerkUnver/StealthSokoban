@@ -21,10 +21,34 @@ inside :: (rect: Rect, point: Vector2) -> bool {
 
 
 Imgui_State :: struct {
+    imgui_to_camera: Matrix4;
+    camera_to_imgui: Matrix4;
     test_selected: bool;
     events: [MAX_INPUT_EVENTS_PER_TICK] Key;
     event_count: int;
     mouse: Vector2;
+}
+
+
+imgui_init :: () -> Imgui_State {
+    using imgui_state: Imgui_State;
+
+    // We do the " / 2" because we actually need to zoom in twice as much to account
+    // for the starting matrix ranging from [1, -1] on the x and y axis. We need the 
+    // final matrix to range from [0, INNER_WINDOW_W] on the x and [0, INNER_WINDOW_H]
+    // on the y.
+
+    zoom_in_matrix := Matrix4_Identity;
+    zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
+    zoom_in_matrix._22 /= INNER_WINDOW_H / 2;
+    imgui_to_camera = make_translation_matrix4(.{-1, -1, 0}) * zoom_in_matrix;
+
+    zoom_out_matrix := Matrix4_Identity;
+    zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
+    zoom_out_matrix._22 *= INNER_WINDOW_H / 2;
+    camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, 1, 0});
+
+    return imgui_state;
 }
 
 

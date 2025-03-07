@@ -135,7 +135,7 @@ load_font :: (file_name: string) -> Font {
 }
 
 
-draw_text :: (str: string, position: Vector2, font: * Font, projection: Matrix4) {
+draw_text :: (str: string, position: Vector2, font: *Font) {
     using context.game_context;
 
     glUseProgram(imm_text_shader);
@@ -143,7 +143,7 @@ draw_text :: (str: string, position: Vector2, font: * Font, projection: Matrix4)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, font.bitmap);
     
-    set_uniform("projection", projection);
+    set_uniform("projection", imgui_state.imgui_to_camera);
     set_uniform("bitmap", cast(s32, 0));
     
     x := position.x;
