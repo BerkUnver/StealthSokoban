@@ -2,7 +2,7 @@
 // @TODO: Switch to the wide character version of everything.
 
 #load "windows_winapi.jai";
-#load "windows_xaudio2.jai";
+#load "windows_directsound.jai";
 #load "shared.jai";
 
 
@@ -338,8 +338,9 @@ main :: () {
     // Init sound
     //
     
-    // As far as I can tell, it would have been better to use WASAPI because I want to mix all our sounds ourself.
-    // We don't need any of the WASAPI added functionality. However, we'll just do this for now.
+    // This is the XAudio2 init code. I don't feel like I can implement sound on my own, and I 
+    // instead want to work off the modules/Sound_Player code to make a minimal, working
+    // version of it.
 
     /*
 
@@ -365,12 +366,55 @@ main :: () {
     
     source_voice: *IXAudio2SourceVoice;
     assert(xaudio.CreateSourceVoice(xaudio, *source_voice, *format) == 0);
-
-    audio_buffers: [2][SAMPLES_PER_SECOND / 20] s16;
-    audio_buffer_inactive_index := 0;
-
-    first_audio_buffer_submitted := false;
     */
+
+    dsound: *IDirectSound8;
+    assert(DirectSoundCreate8(null, *dsound, null) == 0);
+    
+    dsound.SetCooperativeLevel(dsound, window, DSSCL_PRIORITY);
+
+    primary_buffer_descriptor := DSBUFFERDESC.{
+        dwSize        = size_of(DSBUFFERDESC),
+        dwFlags       = DSBCAPS_PRIMARYBUFFER,
+        dwBufferBytes = 0,
+    };
+    
+    primary_buffer: *IDirectSoundBuffer8;
+    assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
+
+    CHANNEL_COUNT :: 1;
+    SAMPLES_PER_SECOND :: 48000;
+    BYTES_PER_SAMPLE :: 2;
+
+    AUDIO_BUFFER_SIZE :: SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT * BYTES_PER_SAMPLE;
+
+    wave_format := WAVEFORMATEX.{
+        wFormatTag = WAVE_FORMAT_PCM,
+        nChannels = CHANNEL_COUNT,
+        nSamplesPerSec = SAMPLES_PER_SECOND,
+        nBlockAlign = CHANNEL_COUNT * BYTES_PER_SAMPLE,
+        nAvgBytesPerSec = SAMPLES_PER_SECOND * CHANNEL_COUNT * BYTES_PER_SAMPLE,
+        wBitsPerSample = BYTES_PER_SAMPLE * 8,
+        cbSize = 0
+    };
+
+    assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
+
+    secondary_buffer_descriptor := DSBUFFERDESC.{
+        dwSize = size_of(DSBUFFERDESC),
+        dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
+        dwBufferBytes = AUDIO_BUFFER_SIZE,
+        lpwfxFormat = *wave_format
+    };
+
+    secondary_buffer: *IDirectSoundBuffer8;
+    dsound.CreateSoundBuffer(dsound, *secondary_buffer_descriptor, *secondary_buffer, null);
+    
+    assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
+
+
+
+
 
     
     //
@@ -525,27 +569,51 @@ main :: () {
 
 
 
-        game_update(game_memory, input, time_elapsed, /* audio_buffers[audio_buffer_inactive_index] */);
+        game_update(game_memory, input, time_elapsed);
         windows.input_event_count = 0;
+
+    
+        //
+        // Test filling the audio buffer
+        //
         
-        /*
+        write_cursor: s32;
+        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_cursor) == 0);
+
+        region_1_data: *void;
+        region_1_size: s32;
+        region_2_data: *void;
+        region_2_size: s32;
         
-        { // Submit audio data for this frame
-            if first_audio_buffer_submitted {
-                source_voice.Stop(source_voice);
-            } else {
-                first_audio_buffer_submitted = true;
+        SQUARE_WAVE_PERIOD :: 1.0 / 400.0;
+
+        secondary_buffer.Lock(
+            secondary_buffer, write_cursor, AUDIO_BUFFER_SIZE / 2,
+            *region_1_data, *region_1_size,
+            *region_2_data, *region_2_size,
+            0
+        );
+
+        region_1: [] s16 = .{region_1_size / BYTES_PER_SAMPLE, region_1_data};
+        region_2: [] s16 = .{region_2_size / BYTES_PER_SAMPLE, region_2_data};
+
+        square_wave_value := 0.0;
+        fill_region :: (region: [] s16) #expand {
+            for * region {
+                val := ifx square_wave_value > SQUARE_WAVE_PERIOD / 2 then cast(s16, 32000) else cast(s16, -32000);
+                it.* = val;
+                square_wave_value += 1.0 / cast(float, SAMPLES_PER_SECOND);
+                if square_wave_value > SQUARE_WAVE_PERIOD {
+                    square_wave_value -= SQUARE_WAVE_PERIOD;
+                }
             }
-            xaudio_audio_buffer := XAUDIO2_BUFFER.{
-                Flags = XAUDIO2_END_OF_STREAM,
-                AudioBytes = BYTES_PER_SAMPLE * audio_buffers[0].count,
-                pAudioData = xx audio_buffers[audio_buffer_inactive_index].data
-            };
-            source_voice.SubmitSourceBuffer(source_voice, *xaudio_audio_buffer);
-            source_voice.Start(source_voice);
-            audio_buffer_inactive_index += 1;
-            audio_buffer_inactive_index %= audio_buffers.count;
-        }*/
+        }
+
+        fill_region(region_1);
+        fill_region(region_2);
+        
+        secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size, region_2_data, region_2_size);
+
 
         SwapBuffers(dc);
     }
