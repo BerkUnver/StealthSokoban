@@ -104,6 +104,10 @@ LEVELS :: string.[
     "levels/comb2.level",
 ];
 
+
+NEAR_PLANE :: 0.1;
+FAR_PLANE :: 1000.0;
+
 #program_export "game_init"
 game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
     game_memory := cast(*Game_Memory, data.game_memory);
@@ -414,7 +418,7 @@ game_update : Game_Update : (
                 // determine which collision cell each vertex mapped to using just its
                 // position.
 
-                world_to_camera := camera_matrix;
+                world_to_camera := get_game_camera_matrix(*level);
 
                 glUseProgram(gridlike_shader);
 
@@ -755,9 +759,11 @@ game_update : Game_Update : (
                 imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
                 imm_flush();
                 */
-
+                
+                /*
                 glEnable(GL_BLEND);
                 draw_text("(Test text)", .{100, 100}, *consolas);
+                */
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
@@ -806,17 +812,6 @@ game_update : Game_Update : (
 
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
-}
-
-
-FRUSTUM :: #run -> Matrix4 {
-    FOV :: PI / 3;
-    NEAR :: 0.1;
-
-    right := cast(float, NEAR * tan(FOV / 2));
-    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
-     
-    return make_left_handed_frustum_matrix(-right, -top, NEAR, right, top, 1000);
 }
 
 

@@ -11,6 +11,7 @@ Editor_Mode :: enum {
     DRAG;
 }
 
+
 Editor :: struct {
     mode: Editor_Mode;
 
@@ -43,12 +44,22 @@ Editor :: struct {
 }
 
 
+EDITOR_FRUSTUM :: #run -> Matrix4 {
+    FOV :: PI / 3;
+
+    right := cast(float, NEAR_PLANE * tan(FOV / 2));
+    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
+
+    return make_left_handed_frustum_matrix(-right, -top, NEAR_PLANE, right, top, FAR_PLANE);
+}
+
+
 get_editor_camera_matrix :: (ed: *Editor) -> Matrix4 {
     position_matrix := make_translation_matrix4(-ed.camera_position);
     pitch_matrix := make_x_rotation_matrix(Matrix4, -ed.camera_pitch);
     yaw_matrix := make_y_rotation_matrix(Matrix4, -ed.camera_yaw);
 
-    return multiply(FRUSTUM, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
+    return multiply(EDITOR_FRUSTUM, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
 }
 
 
