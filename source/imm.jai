@@ -75,6 +75,13 @@ imm_vertex :: (position: Vector3, uv: Vector2, color: Vector4) {
 }
 
 
+imm_vertex :: (position: Vector3, uv: Vector2) {
+    v := imm_vertex_ptr();
+    v.position = position;
+    v.uv = uv;
+}
+
+
 imm_vertex :: (position: Vector3, color: Vector4) {
     v := imm_vertex_ptr();
     v.position = position;
@@ -100,6 +107,21 @@ imm_quad :: (position: Vector2, size: Vector2, color: Vector4) {
     imm_vertex(.{x0, y0, 0}, color);
     imm_vertex(.{x1, y1, 0}, color);
     imm_vertex(.{x0, y1, 0}, color);
+}
+
+
+imm_quad :: (position: Vector2, size: Vector2) {
+    x0 := position.x;
+    y0 := position.y;
+    x1 := position.x + size.x;
+    y1 := position.y + size.y;
+
+    imm_vertex(.{x0, y0, 0});
+    imm_vertex(.{x1, y0, 0});
+    imm_vertex(.{x1, y1, 0});
+    imm_vertex(.{x0, y0, 0});
+    imm_vertex(.{x1, y1, 0});
+    imm_vertex(.{x0, y1, 0});
 }
 
 

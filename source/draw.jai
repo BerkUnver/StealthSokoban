@@ -405,12 +405,12 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     vertex := glCreateShader(GL_VERTEX_SHADER);
     defer glDeleteShader(vertex);
 
-    // You need the "#line 0" directive or else the NVIDIA shader compiler will report the line number including the
+    // You need the "#line 1" directive or else the NVIDIA shader compiler will report the line number including the
     // prefix lines in its compilation errors.
     vertex_strings := string.[
         "#version 330 core\n#define VERTEX_SHADER\n#define OUTIN out\n",
         prefix,
-        "#line 0\n",
+        "#line 1\n",
         text
     ];
     vertex_lines, vertex_lengths := make_string_arrays(vertex_strings);
@@ -428,7 +428,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
         str := string.{data=*buffer[0], count=count};
 
         log(.ERROR, "Compilation error in vertex shader \"%\"\n%", name, str);
-        return 0;
+        assert(false);
     }
     
     fragment := glCreateShader(GL_FRAGMENT_SHADER);
@@ -437,7 +437,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     fragment_strings := string.[
         "#version 330 core\n#define OUTIN in\n",
         prefix,
-        "#line 0\n",
+        "#line 1\n",
         text
     ];
     fragment_lines, fragment_lengths := make_string_arrays(fragment_strings);
@@ -454,7 +454,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
 
         str := string.{data=*buffer[0], count=count};
         log(.ERROR, "Compilation error in fragment shader \"%\"\n%", name, str);
-        return 0;
+        assert(false);
     }
 
     program := glCreateProgram();
@@ -471,9 +471,8 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
 
         str := string.{data=*buffer[0], count=count};
         log(.ERROR, "Linking error in shader \"%\"\n%", name, str);
-        return 0;
+        assert(false);
     }
-
     return program;
 }
 
@@ -491,6 +490,8 @@ set_uniform :: (name: *u8, val: $T) {
 
     #if T == s32 {
         glUniform1i(loc, val);
+    } else #if T == float {
+        glUniform1f(loc, val);
     } else #if T == Vector3i {
         glUniform3i(loc, val.x, val.y, val.z);
     } else #if T == Vector3 {

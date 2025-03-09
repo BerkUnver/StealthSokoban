@@ -68,7 +68,7 @@ button :: (label: string, selected: *bool, font: *Font, position: Vector2, size:
     outline_inner_position := round(button_center - outline_inner_size / 2);
 
     glUseProgram(imm_color_shader);
-    set_uniform("projection", imgui_state.imgui_to_camera);
+    set_uniform("projection", imgui_to_camera);
 
     imm_quad(outline_outer_position, outline_outer_size, OUTLINE_COLOR);
     imm_quad(outline_inner_position, outline_inner_size, UNSELECTED_COLOR);
@@ -93,38 +93,56 @@ button :: (label: string, selected: *bool, font: *Font, position: Vector2, size:
 }
 
 
-/*
-imm_button :: (selected: *bool, rect: Rect) {
+color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float) {
+    using context.game_context;
     using context.game_context.imgui_state;
 
-    SIZE :: Vector2.{20, 20};
-    INNER_SIZE :: Vector2.{16, 16};
+    margin := bar_height * 0.2;
 
-    INMOST_SIZE :: Vector2.{12, 12};
-    
-    UNSELECTED_COLOR :: Vector4.{0, 0, 0, 1};
-    SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
-    
-    center := rect.position + rect.size / 2;
-    button_rect := make_rect(center - SIZE / 2, SIZE);
-    
-    if inside(button_rect, mouse) {
-        for 0..event_count-1 {    
-            event := events[it];
-            if event == .MOUSE_LEFT_BUTTON {
-                selected.* = !selected.*;
-            }
-        }
-    }
+    head := position;
+    head.x += margin;
 
-    imm_quad(button_rect.position, button_rect.size, SELECTED_COLOR);
-    imm_quad(center - INNER_SIZE / 2, INNER_SIZE, UNSELECTED_COLOR);
 
-    if selected.* {
-        imm_quad(center - INMOST_SIZE / 2, INMOST_SIZE, SELECTED_COLOR);
-    }
+
+    bar_width := size.x - 2 * margin;
+
+    sample_position := Vector2.{head.x, position.y + margin};
+    sample_size := Vector2.{bar_width, bar_height};
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad(sample_position, sample_size, color.*);
+    imm_flush();
+
+    head.y += bar_height + margin;
+     
+    saturation_value_size := Vector2.{bar_width, bar_width};
+    glUseProgram(imm_saturation_value_shader);
+    set_uniform("projection", imgui_to_camera);
+    set_uniform("hue", 0.0);
+
+    x0 := head.x;
+    y0 := head.y;
+    x1 := head.x + saturation_value_size.x;
+    y1 := head.y + saturation_value_size.y;
+
+    imm_vertex(.{x0, y0, 0}, .{0, 0});
+    imm_vertex(.{x1, y0, 0}, .{1, 0});
+    imm_vertex(.{x1, y1, 0}, .{1, 1});
+    imm_vertex(.{x0, y0, 0}, .{0, 0});
+    imm_vertex(.{x0, y1, 0}, .{0, 1});
+    imm_vertex(.{x1, y1, 0}, .{1, 1});
+    
+    imm_flush();
 }
-*/
+
+
+get_color_selector_height :: (width: float, bar_height: float) -> float {
+    margin := bar_height * 0.2;
+
+    saturation_value_selector_height := width - margin * 2;
+    return margin + bar_height + margin + saturation_value_selector_height + margin + bar_height + margin + bar_height + margin;
+}
 
 
 draw_text :: (str: string, position: Vector2, font: *Font) {

@@ -275,3 +275,14 @@ init_from_info :: (info: *Type_Info_Struct, ptr: *void) {
     if info.initializer info.initializer(ptr);
     else memset(ptr, 0, info.runtime_size);
 }
+
+/*
+rgb_to_hsv :: (r: float, g: float, b: float) -> h: float, s: float, v: float {
+
+}
+
+
+hsv_to_rgb :: (h: float, s: float, v: float) -> r: float, g: float, b: float {
+
+}
+*/

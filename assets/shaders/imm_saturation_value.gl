@@ -1,0 +1,49 @@
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=1) in vec2 vertex_uv;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+uniform float hue;
+
+OUTIN vec2 fragment_uv;
+
+#ifndef VERTEX_SHADER
+vec3 hsv_to_rgb(float h, float s, float v) {
+    float i = floor(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    float r, g, b;
+
+    if (i == 0) {
+        r = v; g = t; b = p;
+    } else if (i == 1) {
+        r = q; g = v; b = p;
+    } else if (i == 2) {
+        r = p; g = v; b = t;
+    } else if (i == 3) {
+        r = p; g = q; b = v;
+    } else if (i == 4) {
+        r = t; g = p; b = v;
+    } else if (i == 5) {
+        r = v; g = p; b = q;
+    }
+
+    return vec3(r, g, b);
+}
+#endif
+
+void main() {
+#ifdef VERTEX_SHADER
+    fragment_uv = vertex_uv;
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    vec3 rgb = hsv_to_rgb(hue, fragment_uv.x, fragment_uv.y);
+    fragment_color = vec4(rgb, 1.0);
+#endif
+}

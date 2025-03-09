@@ -47,9 +47,8 @@ Game_Context :: struct {
     using assets: struct {
         imm_color_shader: GLuint;
         imm_text_shader: GLuint;
-
+        imm_saturation_value_shader: GLuint;
         gridlike_shader: GLuint;
-        gridlike_bitmap: GLuint;
         color_shader: GLuint;
         wireframe_shader: GLuint;
         color_and_bitmap_shader: GLuint;
@@ -57,6 +56,7 @@ Game_Context :: struct {
         unviewed_color_item_shader: GLuint;
         occlusion_shader: GLuint;
         texture_and_color_shader: GLuint;
+        gridlike_bitmap: GLuint;
 
         consolas: Font;
         
@@ -182,26 +182,16 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         imgui_state = imgui_init();
 
         imm_color_shader = load_shader("shaders/imm_color.gl");
-        assert(imm_color_shader != 0);
         imm_text_shader = load_shader("shaders/imm_text.gl");
-        assert(imm_text_shader != 0);
-
+        imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
         gridlike_shader = load_shader("shaders/gridlike.gl");
-        assert(gridlike_shader != 0);
         color_shader = load_shader("shaders/color.gl");
-        assert(color_shader != 0);
         wireframe_shader = load_shader("shaders/wireframe.gl");
-        assert(wireframe_shader != 0);
         color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
-        assert(color_and_bitmap_shader != 0);
         item_shader = load_shader("shaders/item.gl");
-        assert(item_shader != 0);
         unviewed_color_item_shader = load_shader("shaders/item.gl", "#define UNVIEWED_COLOR\n");
-        assert(unviewed_color_item_shader != 0);
         occlusion_shader = load_shader("shaders/occlusion.gl");
-        assert(occlusion_shader != 0);
         texture_and_color_shader = load_shader("shaders/texture_and_color.gl");
-        assert(texture_and_color_shader != 0);
 
         consolas = load_font("consolas.ttf");
         
@@ -777,11 +767,14 @@ game_update : Game_Update : (
                 position := imgui_position;
                 position.y += imgui_size.y;
                 button_height := font.ascender * 2;
-                print("%\n", button_height);
                 position.y -= button_height;
                 size := Vector2.{imgui_size.x, button_height};
 
                 button("Test Button", *imgui_state.test_selected, font, position, size);
+            
+                position.y -= get_color_selector_height(imgui_size.x, button_height);
+                color := Vector4.{1, 0, 0, 1};
+                color_selector(*color, position, size, button_height);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
