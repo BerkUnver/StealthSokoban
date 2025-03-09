@@ -59,8 +59,10 @@ Game_Context :: struct {
         texture_and_color_shader: GLuint;
 
         consolas: Font;
-        sound_test: Wav_File;
+        
+        /* sound_test: Wav_File;
         playing_sound: Playing_Sound;
+        */
         
         enemy_mesh: Mesh;
         enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
@@ -202,9 +204,11 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(texture_and_color_shader != 0);
 
         consolas = load_font("consolas.ttf");
-
+        
+        /*
         sound_test = load_wav("sound_test.wav", *permanent_arena);
         playing_sound = .{wav = *sound_test, current_sample = 0};
+        */
 
         //
         // Now that the game_context is initted, we can init the game.
@@ -291,8 +295,9 @@ game_update : Game_Update : (
 
         imgui_state.event_count = 0;
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
-        IMGUI_RECT :: Rect.{0, 0, 100, 100};
-        imgui_rect_capturing_input := inside(IMGUI_RECT, imgui_state.mouse);
+        imgui_position := Vector2.{0, INNER_WINDOW_H - 800};
+        imgui_size := Vector2.{400, 800};
+        imgui_rect_capturing_input := inside(imgui_position, imgui_size, imgui_state.mouse);
 
 
         for input.events {
@@ -715,61 +720,68 @@ game_update : Game_Update : (
                 // We could instead update this every time a Block is moved.
                 //
                 
-                mark := get_mark(*frame_arena);
-                defer restore_mark(*frame_arena, mark);
+                {
+                    mark := get_mark(*frame_arena);
+                    defer restore_mark(*frame_arena, mark);
 
-                position, size := get_block_extents(_Block);
-                
-                overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
+                    position, size := get_block_extents(_Block);
+                    
+                    overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
 
-                for * block: _Block {
-                    offset := block.position - position;
-                    for :iterate_vector3i block.size {
-                        filled := block.filled[it_index];
-                        if !filled continue;
+                    for * block: _Block {
+                        offset := block.position - position;
+                        for :iterate_vector3i block.size {
+                            filled := block.filled[it_index];
+                            if !filled continue;
 
-                        success, index := get_3d_index(it + offset, size);
-                        assert(success);
-                        
-                        overlapping[index] += 1;
+                            success, index := get_3d_index(it + offset, size);
+                            assert(success);
+                            
+                            overlapping[index] += 1;
+                        }
                     }
+
+                   
+                    glDisable(GL_DEPTH_TEST);
+                    glEnable(GL_BLEND);
+
+                    glUseProgram(imm_color_shader);
+                    set_uniform("projection", world_to_camera);
+
+                    OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+
+                    for :iterate_vector3i size {
+                        count := overlapping[it_index];
+                        if count > 1 {
+                            start := position + it;
+                            end := start + Vector3i.{1,1,1};
+                            imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                        }
+                    }
+
+                    imm_flush();
                 }
 
-               
-                glDisable(GL_DEPTH_TEST);
-                glEnable(GL_BLEND);
-
-                glUseProgram(imm_color_shader);
-                set_uniform("projection", world_to_camera);
-
-                OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
-
-                for :iterate_vector3i size {
-                    count := overlapping[it_index];
-                    if count > 1 {
-                        start := position + it;
-                        end := start + Vector3i.{1,1,1};
-                        imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
-                    }
-                }
-
-                imm_flush();
                 
-                /*
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
+
                 glUseProgram(imm_color_shader);
-                set_uniform("projection", imgui_to_camera);
-                
-                imm_quad(IMGUI_RECT, .{0, 0, 0, 1});
-                imm_button(*imgui_state.test_selected, .{0, 0, 100, 100});
+                set_uniform("projection", imgui_state.imgui_to_camera);
+                imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
                 imm_flush();
-                */
+
                 
-                /*
-                glEnable(GL_BLEND);
-                draw_text("(Test text)", .{100, 100}, *consolas);
-                */
+                font := *consolas;
+                
+                position := imgui_position;
+                position.y += imgui_size.y;
+                button_height := font.ascender * 2;
+                print("%\n", button_height);
+                position.y -= button_height;
+                size := Vector2.{imgui_size.x, button_height};
+
+                button("Test Button", *imgui_state.test_selected, font, position, size);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
@@ -933,7 +945,8 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         context.game_context = *game_memory.game_context;
         using game_memory.game;
         using game_memory.game_context;
-
+        
+        /*
         playing_sound.current_sample += samples_played;
 
         end: int;
@@ -948,5 +961,6 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         }
 
         playing_sound.current_sample = end;
+        */
     }
 }

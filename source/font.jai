@@ -2,6 +2,8 @@ Font :: struct {
     bitmap: GLuint;
     space_advance: float;
     glyphs: [VALID_ASCII_END + 1 - VALID_ASCII_START] Glyph;
+    ascender: float;
+    em: float;
 }
 
 
@@ -38,12 +40,14 @@ load_font :: (file_name: string) -> Font {
     defer FT_Done_Face(face);
 
 
-
-    FONT_HEIGHT :: 64;
+    FONT_HEIGHT :: 32;
     FT_Set_Pixel_Sizes(face, 0, FONT_HEIGHT);
 
     font: Font;
-
+    font.ascender = cast(float, face.size.metrics.ascender) / 64;
+    font.em = xx face.size.metrics.x_ppem;
+    
+    // @TODO: Make the font texture the exact size we need
     FONT_BITMAP_WIDTH :: 1024;
     FONT_BITMAP_HEIGHT :: 1024;
 
@@ -132,47 +136,4 @@ load_font :: (file_name: string) -> Font {
     font.bitmap = bitmap;
 
     return font;
-}
-
-
-draw_text :: (str: string, position: Vector2, font: *Font) {
-    using context.game_context;
-
-    glUseProgram(imm_text_shader);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, font.bitmap);
-    
-    set_uniform("projection", imgui_state.imgui_to_camera);
-    set_uniform("bitmap", cast(s32, 0));
-    
-    x := position.x;
-    y := position.y;
-
-    COLOR :: Vector4.{1,1,1,1};
-
-    for str {
-        if it == #char " " { // ASCII 32
-            x += font.space_advance;
-        } else {
-            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
-            using glyph := font.glyphs[it - VALID_ASCII_START];
-            x0 := x + bearing.x;
-            y0 := y + bearing.y;
-            x1 := x0 + size.x;
-            y1 := y0 + size.y;
-
-            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
-            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, COLOR);
-            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
-
-            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
-            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
-            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, COLOR);
-
-            x += advance;
-        }
-    }
-
-    imm_flush();
 }

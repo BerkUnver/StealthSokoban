@@ -1,22 +1,8 @@
-Rect :: struct {
-    x, y, w, h: float;
-    #place x;
-    position: Vector2;
-    #place w;
-    size: Vector2;
-}
-
-
-make_rect :: inline (position: Vector2, size: Vector2) -> Rect {
-    return .{position=position, size=size};
-}
-
-
-inside :: (rect: Rect, point: Vector2) -> bool {
-    return point.x >= rect.x
-        && point.y >= rect.y
-        && point.x <= rect.x + rect.w
-        && point.y <= rect.y + rect.h;
+inside :: (position: Vector2, size: Vector2, point: Vector2) -> bool {
+    return point.x >= position.x
+        && point.y >= position.y
+        && point.x <= position.x + size.x
+        && point.y <= position.y + size.y;
 }
 
 
@@ -52,6 +38,62 @@ imgui_init :: () -> Imgui_State {
 }
 
 
+button :: (label: string, selected: *bool, font: *Font, position: Vector2, size: Vector2) {
+    using context.game_context;
+    using context.game_context.imgui_state;
+
+    glUseProgram(imm_text_shader);
+
+    OUTLINE_COLOR :: Vector4.{1, 1, 1, 1};
+    SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
+    UNSELECTED_COLOR :: Vector4.{0, 0, 0, 1};
+
+    font := *consolas;
+
+    text_x: float = round(position.x + font.ascender / 2);
+    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+    draw_text(label, .{text_x, text_y}, font);
+
+    outline_outer_width := round(font.ascender * 1.5);
+    outline_outer_size := Vector2.{outline_outer_width, outline_outer_width};
+
+    outline_inner_width := round(font.ascender * 1.2);
+    outline_inner_size := Vector2.{outline_inner_width, outline_inner_width};
+
+    button_center_x := position.x + size.x - size.y / 2 - font.ascender / 2;
+    button_center_y := position.y + size.y / 2;
+    button_center := Vector2.{button_center_x, button_center_y};
+
+    outline_outer_position := round(button_center - outline_outer_size / 2);
+    outline_inner_position := round(button_center - outline_inner_size / 2);
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_state.imgui_to_camera);
+
+    imm_quad(outline_outer_position, outline_outer_size, OUTLINE_COLOR);
+    imm_quad(outline_inner_position, outline_inner_size, UNSELECTED_COLOR);
+
+
+    if inside(outline_outer_position, outline_outer_size, mouse) {
+        for 0..event_count-1 {    
+            event := events[it];
+            if event == .MOUSE_LEFT_BUTTON {
+                selected.* = !selected.*;
+            }
+        }
+    }
+
+    if selected.* {
+        selected_width := round(font.ascender * 0.9);
+        selected_size := Vector2.{selected_width, selected_width};
+        selected_position := round(button_center - selected_size / 2);
+        imm_quad(selected_position, selected_size, SELECTED_COLOR);
+    }
+    imm_flush();
+}
+
+
+/*
 imm_button :: (selected: *bool, rect: Rect) {
     using context.game_context.imgui_state;
 
@@ -75,10 +117,55 @@ imm_button :: (selected: *bool, rect: Rect) {
         }
     }
 
-    imm_quad(button_rect, SELECTED_COLOR);
-    imm_quad(make_rect(center - INNER_SIZE / 2, INNER_SIZE), UNSELECTED_COLOR);
+    imm_quad(button_rect.position, button_rect.size, SELECTED_COLOR);
+    imm_quad(center - INNER_SIZE / 2, INNER_SIZE, UNSELECTED_COLOR);
 
     if selected.* {
-        imm_quad(make_rect(center - INMOST_SIZE / 2, INMOST_SIZE), SELECTED_COLOR);
+        imm_quad(center - INMOST_SIZE / 2, INMOST_SIZE, SELECTED_COLOR);
     }
 }
+*/
+
+
+draw_text :: (str: string, position: Vector2, font: *Font) {
+    using context.game_context;
+
+    glUseProgram(imm_text_shader);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, font.bitmap);
+    
+    set_uniform("projection", imgui_state.imgui_to_camera);
+    set_uniform("bitmap", cast(s32, 0));
+    
+    x := position.x;
+    y := position.y;
+
+    COLOR :: Vector4.{1,1,1,1};
+
+    for str {
+        if it == #char " " { // ASCII 32
+            x += font.space_advance;
+        } else {
+            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
+            using glyph := font.glyphs[it - VALID_ASCII_START];
+            x0 := x + bearing.x;
+            y0 := y + bearing.y;
+            x1 := x0 + size.x;
+            y1 := y0 + size.y;
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
+            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, COLOR);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
+            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, COLOR);
+
+            x += advance;
+        }
+    }
+
+    imm_flush();
+}
+

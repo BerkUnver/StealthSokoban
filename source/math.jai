@@ -140,8 +140,12 @@ clamp :: (value: *$T, min: T, max: T) {
     value.* = clamp(value.*, min, max);
 }
 
-round :: (v: $T) -> s64 {
-    return xx floor(v + 0.5);
+round :: (v: Vector2) -> Vector2 {
+    return .{round(v.x), round(v.y)};
+}
+
+round :: (v: $T) -> T {
+    return floor(v + 0.5);
 }
 
 

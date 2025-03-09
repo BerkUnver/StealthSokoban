@@ -88,11 +88,11 @@ imm_vertex :: (position: Vector3) {
 }
 
 
-imm_quad :: (using rect: Rect, color: Vector4) {
-    x0 := x;
-    y0 := y;
-    x1 := x + w;
-    y1 := y + h;
+imm_quad :: (position: Vector2, size: Vector2, color: Vector4) {
+    x0 := position.x;
+    y0 := position.y;
+    x1 := position.x + size.x;
+    y1 := position.y + size.y;
 
     imm_vertex(.{x0, y0, 0}, color);
     imm_vertex(.{x1, y0, 0}, color);
