@@ -8,6 +8,7 @@
 #load "font.jai";
 #load "draw.jai";
 #load "helpers.jai";
+#load "audio.jai";
 #load "math.jai";
 #load "entities.jai";
 #load "level.jai";
@@ -58,6 +59,8 @@ Game_Context :: struct {
         texture_and_color_shader: GLuint;
 
         consolas: Font;
+        sound_test: Wav_File;
+        playing_sound: Playing_Sound;
         
         enemy_mesh: Mesh;
         enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
@@ -199,6 +202,9 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         assert(texture_and_color_shader != 0);
 
         consolas = load_font("consolas.ttf");
+
+        sound_test = load_wav("sound_test.wav", *permanent_arena);
+        playing_sound = .{wav = *sound_test, current_sample = 0};
 
         //
         // Now that the game_context is initted, we can init the game.
@@ -912,5 +918,35 @@ gl_debug_callback :: (
             severity_str,
             message_str
         );
+    }
+}
+
+
+#program_export "game_get_audio_samples"
+game_get_audio_samples : Game_Get_Audio_Samples : (
+    game_memory_void_ptr: *void,
+    samples_played: int,
+    buffer: [] s16 // This is set to zero in the OS layer.
+) #no_context {
+    push_context {
+        game_memory := cast(*Game_Memory, game_memory_void_ptr);
+        context.game_context = *game_memory.game_context;
+        using game_memory.game;
+        using game_memory.game_context;
+
+        playing_sound.current_sample += samples_played;
+
+        end: int;
+        if playing_sound.current_sample + buffer.count > playing_sound.wav.data.count {
+            end = playing_sound.wav.data.count;
+        } else {
+            end = playing_sound.current_sample + buffer.count;
+        }
+
+        for playing_sound.current_sample..end-1 { // Gotta go fast!
+            buffer[it - playing_sound.current_sample] = playing_sound.wav.data[it];
+        }
+
+        playing_sound.current_sample = end;
     }
 }

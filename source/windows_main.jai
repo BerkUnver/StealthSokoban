@@ -2,7 +2,6 @@
 // @TODO: Switch to the wide character version of everything.
 
 #load "windows_winapi.jai";
-#load "windows_directsound.jai";
 #load "shared.jai";
 
 
@@ -383,36 +382,35 @@ main :: () {
     assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
 
     CHANNEL_COUNT :: 1;
-    SAMPLES_PER_SECOND :: 48000;
-    BYTES_PER_SAMPLE :: 2;
-
-    AUDIO_BUFFER_SIZE :: SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT * BYTES_PER_SAMPLE;
 
     wave_format := WAVEFORMATEX.{
         wFormatTag = WAVE_FORMAT_PCM,
         nChannels = CHANNEL_COUNT,
-        nSamplesPerSec = SAMPLES_PER_SECOND,
-        nBlockAlign = CHANNEL_COUNT * BYTES_PER_SAMPLE,
-        nAvgBytesPerSec = SAMPLES_PER_SECOND * CHANNEL_COUNT * BYTES_PER_SAMPLE,
-        wBitsPerSample = BYTES_PER_SAMPLE * 8,
+        nSamplesPerSec = AUDIO_SAMPLES_PER_SECOND,
+        nBlockAlign = CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
+        nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
+        wBitsPerSample = AUDIO_BYTES_PER_SAMPLE * 8,
         cbSize = 0
     };
 
     assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
 
+    AUDIO_BUFFER_SIZE_IN_BYTES :: AUDIO_SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE; // 0.5 sec of audio data
+
     secondary_buffer_descriptor := DSBUFFERDESC.{
         dwSize = size_of(DSBUFFERDESC),
         dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
-        dwBufferBytes = AUDIO_BUFFER_SIZE,
+        dwBufferBytes = AUDIO_BUFFER_SIZE_IN_BYTES,
         lpwfxFormat = *wave_format
     };
 
     secondary_buffer: *IDirectSoundBuffer8;
     dsound.CreateSoundBuffer(dsound, *secondary_buffer_descriptor, *secondary_buffer, null);
     
-    assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
-
-
+    // We can only start the audio after we have at least one frame of audio data
+    // to use.
+    audio_started := false;
+    previous_write_byte: int; // Don't access this until the audio has been started.
 
 
 
@@ -493,10 +491,16 @@ main :: () {
     };
 
     game_init(*data);
-    
-    game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
-    assert(game_update != null);
 
+    get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_Get_Audio_Samples {
+        game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
+        assert(game_update != null);
+        game_get_audio_samples := cast(Game_Get_Audio_Samples, GetProcAddress(game_dll, "game_get_audio_samples"));
+        return game_update, game_get_audio_samples;
+    }
+
+    game_update, game_get_audio_samples := get_game_calls(game_dll);
+    
     while main_loop := true {
         message: MSG;
 
@@ -523,8 +527,7 @@ main :: () {
                 assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
                 game_dll = LoadLibraryA(GAME_DLL_NAME);
                 assert(game_dll != null);
-                game_update = GetProcAddress(game_dll, "game_update");
-                assert(game_update != null);
+                game_update, game_get_audio_samples = get_game_calls(game_dll);
                 print("Game DLL has been hotloaded.\n");
             }
         }
@@ -568,53 +571,59 @@ main :: () {
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
 
+        
+        AUDIO_BYTES_TO_WRITE :: AUDIO_BUFFER_SIZE_IN_BYTES / 20; // 1.5 frames of audio data
 
         game_update(game_memory, input, time_elapsed);
         windows.input_event_count = 0;
 
-    
-        //
-        // Test filling the audio buffer
-        //
-        
-        write_cursor: s32;
-        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_cursor) == 0);
+        // @TODO: All this audio stuff should be done on a separate thread.
+        // That prevents audio stuttering if you run over the end of the buffer
+        // due to weird OS lag or missing a frame or something like that.
+
+        write_byte: s32;
+        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_byte) == 0);
 
         region_1_data: *void;
         region_1_size: s32;
         region_2_data: *void;
         region_2_size: s32;
-        
-        SQUARE_WAVE_PERIOD :: 1.0 / 400.0;
-
+            
         secondary_buffer.Lock(
-            secondary_buffer, write_cursor, AUDIO_BUFFER_SIZE / 2,
+            secondary_buffer, write_byte, AUDIO_BYTES_TO_WRITE,
             *region_1_data, *region_1_size,
             *region_2_data, *region_2_size,
             0
         );
 
-        region_1: [] s16 = .{region_1_size / BYTES_PER_SAMPLE, region_1_data};
-        region_2: [] s16 = .{region_2_size / BYTES_PER_SAMPLE, region_2_data};
-
-        square_wave_value := 0.0;
-        fill_region :: (region: [] s16) #expand {
-            for * region {
-                val := ifx square_wave_value > SQUARE_WAVE_PERIOD / 2 then cast(s16, 32000) else cast(s16, -32000);
-                it.* = val;
-                square_wave_value += 1.0 / cast(float, SAMPLES_PER_SECOND);
-                if square_wave_value > SQUARE_WAVE_PERIOD {
-                    square_wave_value -= SQUARE_WAVE_PERIOD;
-                }
+        
+        samples_played: int;
+        if audio_started {
+            if write_byte < previous_write_byte { // We looped around
+                new_write_cursor := write_byte + AUDIO_BUFFER_SIZE_IN_BYTES;
+                samples_played = new_write_cursor - previous_write_byte;
+            } else {
+                samples_played = write_byte - previous_write_byte;
             }
+            samples_played /= AUDIO_BYTES_PER_SAMPLE;
         }
 
-        fill_region(region_1);
-        fill_region(region_2);
-        
+
+        buffer: [AUDIO_BYTES_TO_WRITE / AUDIO_BYTES_PER_SAMPLE] s16;
+        game_get_audio_samples(game_memory, samples_played, buffer);
+
+        buffer_bytes := cast(*u8, buffer.data);
+        memcpy(region_1_data, buffer_bytes, region_1_size);
+        memcpy(region_2_data, buffer_bytes + region_1_size, region_2_size);
+
         secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size, region_2_data, region_2_size);
 
+        if !audio_started {
+            audio_started = true;
+            assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
+        }
 
+        previous_write_byte = write_byte;
         SwapBuffers(dc);
     }
 }

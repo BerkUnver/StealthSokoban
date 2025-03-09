@@ -16,6 +16,11 @@ LEVEL_ARENA_SIZE     :: 1 << 24;
 PERMANENT_ARENA_SIZE :: 1 << 22;
 FRAME_ARENA_SIZE     :: 1 << 20;
 
+
+AUDIO_SAMPLES_PER_SECOND :: 48000;
+AUDIO_BYTES_PER_SAMPLE :: 2;
+
+
 OS_Procedures :: struct {
     os_print: (string);
     set_console_text_color: (Console_Text_Color);
@@ -36,9 +41,13 @@ Game_Update :: #type (
     game_memory: *void,
     input: Input,
     time_elapsed: float64
-    // audio_buffer: [] s16
 ) #no_context;
 
+Game_Get_Audio_Samples :: #type (
+    game_memory_void_ptr: *void,
+    samples_played: int, // How many samples we played since the previous update
+    buffer: [] s16
+) #no_context;
 
 Input :: struct {
     keys_down: *[Key.COUNT] bool; // :BitArray
