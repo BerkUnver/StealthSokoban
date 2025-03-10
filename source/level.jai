@@ -564,6 +564,7 @@ load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena
     success, level_text := read_file(level_name, *frame_arena);
     if !success {
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
+        return false;
     }
     
     level_arena_mark := get_mark(arena);
@@ -982,7 +983,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
 
 GAME_FRUSTUM :: #run -> Matrix4 {
-    FOV :: PI / 6;
+    FOV :: PI / 5;
 
     right := cast(float, NEAR_PLANE * tan(FOV / 2));
     top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);

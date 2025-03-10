@@ -107,7 +107,8 @@ LEVELS :: string.[
     "levels/intro.level",
     "levels/comb.level",
     "levels/comb2.level",
-    "levels/test5.level",
+    "levels/chocolate_bar.level",
+    "levels/bridge.level"
 ];
 
 
@@ -752,7 +753,7 @@ game_update : Game_Update : (
                     imm_flush();
                 }
 
-                
+                /*
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
 
@@ -775,6 +776,7 @@ game_update : Game_Update : (
                 position.y -= get_color_selector_height(imgui_size.x, button_height);
                 color := Vector4.{1, 0, 0, 1};
                 color_selector(*color, position, size, button_height);
+                */
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.
