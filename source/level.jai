@@ -10,6 +10,7 @@ Level :: struct {
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
+
     
     level_position: Vector3i; @Ignore
     level_size: Vector3i; @Ignore
@@ -51,6 +52,11 @@ Level :: struct {
     // Consider coming back to this.
 
     view_texture: View_Texture; @Ignore
+    
+
+    // @Temporary This is very basic, just to get sound to work for now.
+    playing_sound_count: int; @Ignore
+    playing_sounds: [1024] Playing_Sound; @Ignore
 }
 
 
@@ -71,6 +77,7 @@ Camera_Mode :: enum {
 
 Player :: struct {
     using #as e: Entity;
+    falling_interp: float;
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -785,7 +792,26 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
 }
 
 
+play_sound :: (using level: *Level, wav: *Wav) {
+    if playing_sound_count == playing_sounds.count return;
+    playing_sounds[playing_sound_count] = .{wav=wav};
+    playing_sound_count += 1;
+}
+
+
+is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
+    // @TODO: Figure out what happens when the player moves out of bounds. They should probably be killed.
+    below := position; 
+    below.y -= 1;
+    in_bounds, index := get_3d_index(below, level_position, level_size);
+    if !in_bounds return true;
+    return collision[index] != 0;
+}
+
+
 level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
+    using context.game_context;
+
     if event.key == #char " " {
         if event.down flags |= .PULLING;
         else          flags &= ~.PULLING;
@@ -846,6 +872,15 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     }
 
     if !event.down return;
+
+    
+    //
+    // Player movement code
+    //
+
+    player := *_Player[0];
+    if !is_colliding_below(level, player.position) return;
+
     push_direction: Vector3i;
 
     move :: (direction: Vector2) #expand {
@@ -865,11 +900,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         case xx #char "Q"; push_direction.y += 1;
         case xx #char "E"; push_direction.y -= 1;
         case; return;
-
     }
-
-    player := *_Player[0];
-    
+ 
     // This code took a while to put together and likely is only going to get more complex.
 
     // When the player moves, either the entire move needs to succeed at once or fail at once.
@@ -967,6 +999,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     }
 
     player.position = new_player_position;
+    play_sound(level, *footstep);
     /*
         for * _Exit {
             if player.position == it.position {
@@ -1176,57 +1209,6 @@ level_update :: (using level: *Level, dt: float) {
     }
     */
     
-    player := *_Player[0];
-
-    for :iterate_vector3i level_size {
-        viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
-    }
-
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    // Should this instead be stashed in the data structure for the level so we know how much memory is being used?
-    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
-    position_count := 1;
-
-    player_success, player_index := get_3d_index(player.position, level_position, level_size);
-    assert(player_success);
-    positions[0] = player.position;
-    viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
-
-    while position_count {
-        position_count -= 1;
-        position := positions[position_count];
-
-        check_axis :: (i: int) #expand {
-            check_position :: (position: Vector3i) -> bool #expand {
-                success, index := get_3d_index(position, level_position, level_size);
-                if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
-                    eid := collision[index];
-                    door_eid := doors[index];
-                    if (!eid || get_entity(level, eid).type != .Block) && !door_eid {
-                        viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
-                        positions[position_count] = position;
-                        position_count += 1;
-                    }
-                }
-            }
-
-            p := position;
-            p.component[i] += 1;
-            check_position(p);
-
-            n := position;
-            n.component[i] -= 1;
-            check_position(n);
-        }
-
-        check_axis(0);
-        check_axis(1);
-        check_axis(2);
-    }
-
-
-
     ENEMY_TICK_TIME :: 1;
     enemy_timer += dt;
     if enemy_timer >= ENEMY_TICK_TIME {
@@ -1402,6 +1384,79 @@ level_update :: (using level: *Level, dt: float) {
     if enemy_timer >= Enemy.ANNIHILATION_TIME {
         enemy_annihilations.count = 0;
     }
+
     
+    player := *_Player[0];
+    if !is_colliding_below(level, player.position) {
+        FALLING_SPEED :: 2;
+        player.falling_interp += dt * FALLING_SPEED;
+        while player.falling_interp >= 1 {
+            player.falling_interp -= 1;
+
+            if is_colliding_below(level, player.position) break;
+
+            player.position.y -= 1;
+
+            // @Incomplete MAKE SURE THE PLAYER DOES NOT GO OUT OF BOUNDS
+        }
+    }
+
+
+
+    
+    //
+    // Update floodfill view
+    //
+
+
+    for :iterate_vector3i level_size {
+        viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
+    }
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    // Should this instead be stashed in the data structure for the level so we know how much memory is being used?
+    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
+    position_count := 1;
+
+    player_success, player_index := get_3d_index(player.position, level_position, level_size);
+    assert(player_success);
+    positions[0] = player.position;
+    viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
+
+    while position_count {
+        position_count -= 1;
+        position := positions[position_count];
+
+        check_axis :: (i: int) #expand {
+            check_position :: (position: Vector3i) -> bool #expand {
+                success, index := get_3d_index(position, level_position, level_size);
+                if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
+                    eid := collision[index];
+                    door_eid := doors[index];
+                    if (!eid || get_entity(level, eid).type != .Block) && !door_eid {
+                        viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
+                        positions[position_count] = position;
+                        position_count += 1;
+                    }
+                }
+            }
+
+            p := position;
+            p.component[i] += 1;
+            check_position(p);
+
+            n := position;
+            n.component[i] -= 1;
+            check_position(n);
+        }
+
+        check_axis(0);
+        check_axis(1);
+        check_axis(2);
+    }
+
+
+
     update_view_texture(*view_texture, level_size, viewed);
 }

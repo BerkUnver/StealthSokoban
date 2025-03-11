@@ -75,5 +75,25 @@ types
 			;
 		;
 	]
+	_Entrance 1[
+		e
+			position
+				x 2
+				y 1
+				z -3
+				;
+			;
+		;
+	]
+	_Exit 1[
+		e
+			position
+				x 2
+				y 1
+				z 13
+				;
+			;
+		;
+	]
 	;
 ;

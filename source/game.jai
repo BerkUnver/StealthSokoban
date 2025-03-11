@@ -59,11 +59,9 @@ Game_Context :: struct {
         gridlike_bitmap: GLuint;
 
         consolas: Font;
-        
-        sound_test: Wav_File;
-        playing_sound: Playing_Sound;
-        
-        
+
+        footstep: Wav;
+
         enemy_mesh: Mesh;
         enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
         enemy_annihilation_mesh: Mesh;
@@ -195,9 +193,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         texture_and_color_shader = load_shader("shaders/texture_and_color.gl");
 
         consolas = load_font("consolas.ttf");
-        
-        sound_test = load_wav("sound_test.wav", *permanent_arena);
-        playing_sound = .{wav = *sound_test, current_sample = 0};
+
+        footstep = load_wav("footstep.wav", *permanent_arena);
 
         //
         // Now that the game_context is initted, we can init the game.
@@ -936,20 +933,28 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
     push_context {
         game_memory := cast(*Game_Memory, game_memory_void_ptr);
         context.game_context = *game_memory.game_context;
-        using game_memory.game;
+        using game_memory.game.level;
         using game_memory.game_context;
-        
-        playing_sound.current_sample += samples_played;
 
-        end: int;
-        if playing_sound.current_sample + buffer.count > playing_sound.wav.data.count {
-            end = playing_sound.wav.data.count;
-        } else {
-            end = playing_sound.current_sample + buffer.count;
-        }
+        for 0..playing_sound_count-1 {
+            sound := *playing_sounds[it];
+            sound.current_sample += samples_played;
 
-        for playing_sound.current_sample..end-1 {
-            buffer[it - playing_sound.current_sample] += playing_sound.wav.data[it];
+            end: int;
+            if sound.current_sample + buffer.count > sound.wav.data.count {
+                end = sound.wav.data.count;
+            } else {
+                end = sound.current_sample + buffer.count;
+            }
+
+            for sound.current_sample..end-1 {
+                sample := sound.wav.data[it];
+                output := *buffer[it - sound.current_sample];
+                result := cast(s32, sample) + cast(s32, output.*);
+                if      result < S16_MIN output.* = S16_MIN;
+                else if result > S16_MAX output.* = S16_MAX;
+                else                     output.* = xx result;
+            }
         }
     }
 }
