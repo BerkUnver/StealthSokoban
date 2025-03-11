@@ -60,9 +60,9 @@ Game_Context :: struct {
 
         consolas: Font;
         
-        /* sound_test: Wav_File;
+        sound_test: Wav_File;
         playing_sound: Playing_Sound;
-        */
+        
         
         enemy_mesh: Mesh;
         enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
@@ -196,10 +196,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
         consolas = load_font("consolas.ttf");
         
-        /*
         sound_test = load_wav("sound_test.wav", *permanent_arena);
         playing_sound = .{wav = *sound_test, current_sample = 0};
-        */
 
         //
         // Now that the game_context is initted, we can init the game.
@@ -941,7 +939,6 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         using game_memory.game;
         using game_memory.game_context;
         
-        /*
         playing_sound.current_sample += samples_played;
 
         end: int;
@@ -951,11 +948,8 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
             end = playing_sound.current_sample + buffer.count;
         }
 
-        for playing_sound.current_sample..end-1 { // Gotta go fast!
-            buffer[it - playing_sound.current_sample] = playing_sound.wav.data[it];
+        for playing_sound.current_sample..end-1 {
+            buffer[it - playing_sound.current_sample] += playing_sound.wav.data[it];
         }
-
-        playing_sound.current_sample = end;
-        */
     }
 }

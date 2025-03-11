@@ -600,8 +600,8 @@ main :: () {
         samples_played: int;
         if audio_started {
             if write_byte < previous_write_byte { // We looped around
-                new_write_cursor := write_byte + AUDIO_BUFFER_SIZE_IN_BYTES;
-                samples_played = new_write_cursor - previous_write_byte;
+                new_write_byte := write_byte + AUDIO_BUFFER_SIZE_IN_BYTES;
+                samples_played = new_write_byte - previous_write_byte;
             } else {
                 samples_played = write_byte - previous_write_byte;
             }
