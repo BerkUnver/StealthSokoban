@@ -1,0 +1,24 @@
+#ifdef VERTEX_SHADER
+layout(location=0) in vec3 vertex_position;
+layout(location=1) in vec2 vertex_uv;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform mat4 projection;
+
+OUTIN vec2 fragment_uv;
+
+#ifndef VERTEX_SHADER 
+vec3 h_to_rgb(float h) {
+    float i = floor(h * 6);
+}
+void main() {
+#ifdef VERTEX_SHADER
+    fragment_uv = vertex_uv;
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#else
+    vec3 rgb = hsv_to_rgb(hue, fragment_uv.x, fragment_uv.y);
+    fragment_color = vec4(rgb, 1.0);
+#endif
+}

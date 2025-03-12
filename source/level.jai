@@ -76,7 +76,7 @@ Camera_Mode :: enum {
 
 
 Player_State :: enum {
-    FLOOR;
+    GROUND;
     FALLING;
 }
 
@@ -84,19 +84,16 @@ Player_State :: enum {
 Player :: struct {
     using #as e: Entity;
     state: Player_State;
-    /*
     union {
         falling: struct {
             interp: float;
-            last_floor_y: float;
-        };
-        floor: struct {
+            last_floor_y: s32;
+        }
+        ground: struct {
             landing_interp: float;
         }
     }
-    */
-    falling_interp: float;
-    falling_last_floor_y: s32;
+    ground.landing_interp = 1.0;
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -832,10 +829,15 @@ play_sound :: (using level: *Level, wav: *Wav) {
 
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
-        case .FLOOR;
+        case .GROUND;
+            if player.state == .FALLING {
+                player.ground.landing_interp = player.falling.interp;
+            }
         case .FALLING;
-            player.falling_last_floor_y = player.position.y;
-            player.falling_interp = 0;
+            if player.state == .GROUND {
+                player.falling.last_floor_y = player.position.y;
+                player.falling.interp = 0;
+            }
     }
     player.state = state;
 }
@@ -862,21 +864,23 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
     position := to_vector3(player.position);
 
     x, y, z: float;
+
     x = lerp(camera_focus_old_x, position.x, camera_focus_interp);
     z = lerp(camera_focus_old_z, position.z, camera_focus_interp);
     
     // @TODO: We may want to have different code depending on whether the player
     // is moving upwards or downwards on a ladder vs falling. Handle those once
     // ladders are in the game.
-
-    if player.state == .FALLING {
-        if player.position.y <= player.falling_last_floor_y - 1 {
-            y = position.y + 1.0 - player.falling_interp;
-        } else {
-            y = xx player.falling_last_floor_y;
-        }
-    } else {
-        y = position.y;
+    
+    if #complete player.state == {
+        case .GROUND;
+            y = position.y + 1.0 - player.ground.landing_interp;
+        case .FALLING;
+            if player.position.y <= player.falling.last_floor_y - 1 {
+                y = position.y + 1.0 - player.falling.interp;
+            } else {
+                y = xx player.falling.last_floor_y;
+            }
     }
 
     return .{x, y, z};
@@ -936,13 +940,13 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             flags &= ~.DEBUG_MOVEMENT;
 
             if is_colliding_below(level, player.position) {
-                set_state(player, .FLOOR);
+                set_state(player, .GROUND);
             } else {
                 set_state(player, .FALLING);
             }
         } else {
             flags |=  .DEBUG_MOVEMENT;
-            set_state(player, .FLOOR);
+            set_state(player, .GROUND);
         }
         return;
     }
@@ -1010,12 +1014,12 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     new_player_position := player.position + push_direction;
 
     if flags & .DEBUG_MOVEMENT {
-        assert(player.state == .FLOOR);
+        assert(player.state == .GROUND);
         if inside_bounding_box(new_player_position, level_position, level_size) {
             set_player_position(level, new_player_position);
             play_sound(level, *footstep);
         }
-    } else if player.state == .FLOOR {
+    } else if player.state == .GROUND {
         pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
         if !pushed_in_bounds return;
 
@@ -1082,7 +1086,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
 
         if is_colliding_below(level, new_player_position) {
-            set_state(player, .FLOOR);
+            set_state(player, .GROUND);
         } else {
             set_state(player, .FALLING);
         }
@@ -1478,24 +1482,25 @@ level_update :: (using level: *Level, dt: float) {
 
     
     player := *_Player[0];
-    if player.state == .FALLING {
-        assert(!(flags & .DEBUG_MOVEMENT));
-        FALLING_SPEED :: 3;
-        player.falling_interp += dt * FALLING_SPEED;
-        while player.falling_interp >= 1 {
-            player.falling_interp -= 1;
-            new_position := player.position;
-            new_position.y -= 1;
-            set_player_position(level, new_position);
+    FALLING_SPEED :: 3.0;
+    if #complete player.state == {
+        case .GROUND;
+            player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt * FALLING_SPEED);
+        case .FALLING;
+            assert(!(flags & .DEBUG_MOVEMENT));
+            player.falling.interp += dt * FALLING_SPEED;
+            while player.falling.interp >= 1 {
+                player.falling.interp -= 1;
+                new_position := player.position;
+                new_position.y -= 1;
+                set_player_position(level, new_position);
 
-            if is_colliding_below(level, player.position) {
-                set_state(player, .FLOOR);
-                break;
+                if is_colliding_below(level, player.position) {
+                    set_state(player, .GROUND);
+                    break;
+                }
             }
-        }
     }
-
-
 
     
     //

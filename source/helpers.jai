@@ -345,3 +345,18 @@ rgb_to_hsv :: (r: float, g: float, b: float) -> h: float, s: float, v: float {
 
     return hue, saturation, value;
 }
+
+
+begins_with :: (s: string, begin: string) -> bool {
+    if s.count < begin.count return false;
+    for begin #no_abc {
+        if it != s[it_index] return false;
+    }
+    return true;
+}
+
+
+advance :: (s: string, count: int) -> string {
+    assert(s.count >= count);
+    return .{s.count - count, s.data + count};
+}

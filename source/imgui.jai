@@ -113,9 +113,9 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     head.x += margin;
 
     bar_width := size.x - 2 * margin;
-
-    sample_position := Vector2.{head.x, position.y + margin};
-    sample_size := Vector2.{bar_width, bar_height};
+    
+    hue_position := head;
+    hue_size := Vector2.{bar_width, bar_height};
 
     head.y += bar_height + margin;
      
@@ -127,6 +127,11 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     y0 := head.y;
     x1 := head.x + sv_size.x;
     y1 := head.y + sv_size.y;
+
+    head.y += sv_size.y + margin;
+
+    sample_position := head;
+    sample_size := Vector2.{bar_width, bar_height};
 
     
     cursor: Vector2;
@@ -228,6 +233,7 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
+    imm_quad(hue_position, hue_size, color.*);
     imm_quad(sample_position, sample_size, color.*);
     imm_quad(cursor_hbar_position, cursor_hbar_size, .{1, 1, 1, 1});
     imm_quad(cursor_vbar_position, cursor_vbar_size, .{1, 1, 1, 1});

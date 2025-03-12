@@ -389,6 +389,18 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     using context.game_context;
 
     LOG_SIZE :: 1024;
+    
+    // @TODO: Finish shader includes
+    /*
+    if begins_with(text, "include") {
+        include := advance(text, "include".count);
+        index := 0;
+        while index < include.count {
+            if include[index] == " " continue;
+            if include[index] == "\n" break;
+        }
+    }
+    */
 
     make_string_arrays :: (strings: [$N] string) -> [N] *u8, [N] GLint #expand {
         lines: [N] *u8;

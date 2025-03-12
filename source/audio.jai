@@ -62,8 +62,7 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
                 } else {
                     assert(false); // These WAV files are poorly-formed.
                 }
-                str.data += format_size;
-                str.count -= format_size;
+                str = advance(str, format_size);
                 
                 // We only accept single-channel PCM data for now.
 
@@ -85,8 +84,7 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
                 padded_data_size := data_size;
                 if padded_data_size % 2 == 1 padded_data_size += 1;
                 assert(str.count >= padded_data_size);
-                str.data += padded_data_size;
-                str.count -= padded_data_size;
+                str = advance(str, padded_data_size);
             case;
                 assert(false);
         }
@@ -102,7 +100,7 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
 }
 
 get_u32 :: (str: string) -> u32, string {
-    assert(str.count >= 4);
-    number := cast(*u32, str.data).*; // @TODO: Check for little-endian
-    return number, .{str.count - 4, str.data + 4};
+    number := str.data; // @TODO: Check for big-endian
+    new_str := advance(str, 4);
+    return cast(*u32, number).*, new_str;
 }
