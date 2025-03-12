@@ -748,7 +748,6 @@ game_update : Game_Update : (
                     imm_flush();
                 }
 
-                /*
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
 
@@ -769,9 +768,8 @@ game_update : Game_Update : (
                 button("Test Button", *imgui_state.test_selected, font, position, size);
             
                 position.y -= get_color_selector_height(imgui_size.x, button_height);
-                color := Vector4.{1, 0, 0, 1};
+                color := Vector4.{0.8, 0.5, 0.2, 1};
                 color_selector(*color, position, size, button_height);
-                */
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

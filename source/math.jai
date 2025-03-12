@@ -38,8 +38,20 @@ to_vector3i :: (v: Vector3) -> Vector3i {
     return .{xx v.x, xx v.y, xx v.z};
 }
 
-floor :: (v: Vector3) -> Vector3 {
-    return .{floor(v.x), floor(v.y), floor(v.z)};
+floor :: (using v: Vector3) -> Vector3 {
+    return .{floor(x), floor(y), floor(z)};
+}
+
+ceil :: (using v: Vector3) -> Vector3 {
+    return .{ceil(x), ceil(y), ceil(z)};
+}
+
+floor :: (using v: Vector2) -> Vector2 {
+    return .{floor(x), floor(y)};
+}
+
+ceil :: (using v: Vector2) -> Vector2 {
+    return .{ceil(x), ceil(y)};
 }
 
 make_y_rotation_matrix :: ($T: Type, r: float) -> T {

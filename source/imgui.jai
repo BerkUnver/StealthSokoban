@@ -97,12 +97,12 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     using context.game_context;
     using context.game_context.imgui_state;
 
+    hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
+
     margin := bar_height * 0.2;
 
     head := position;
     head.x += margin;
-
-
 
     bar_width := size.x - 2 * margin;
 
@@ -114,12 +114,15 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_quad(sample_position, sample_size, color.*);
     imm_flush();
 
+
+
+
     head.y += bar_height + margin;
      
     saturation_value_size := Vector2.{bar_width, bar_width};
     glUseProgram(imm_saturation_value_shader);
     set_uniform("projection", imgui_to_camera);
-    set_uniform("hue", 0.0);
+    set_uniform("hue", hue);
 
     x0 := head.x;
     y0 := head.y;
@@ -132,7 +135,47 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_vertex(.{x0, y0, 0}, .{0, 0});
     imm_vertex(.{x0, y1, 0}, .{0, 1});
     imm_vertex(.{x1, y1, 0}, .{1, 1});
+
+    imm_flush();
+
+
+
+    cursor_x := lerp(x0, x1, saturation);
+    cursor_y := lerp(y0, y1, value);
+
+    cursor_offset_big := bar_width * 0.02;
+    cursor_offset_small := bar_width * 0.005;
+
+    cursor_hbar_position := Vector2.{
+        cursor_x - cursor_offset_small,
+        cursor_y - cursor_offset_big,
+    };
+    cursor_hbar_position = floor(cursor_hbar_position);
+
+    cursor_hbar_size := Vector2.{
+        cursor_offset_small * 2,
+        cursor_offset_big * 2,
+    };
+    cursor_hbar_size = ceil(cursor_hbar_size);
+
     
+    cursor_vbar_position := Vector2.{
+        cursor_x - cursor_offset_big,
+        cursor_y - cursor_offset_small,
+    };
+    cursor_vbar_position = floor(cursor_vbar_position);
+
+    cursor_vbar_size := Vector2.{
+        cursor_offset_big * 2,
+        cursor_offset_small * 2,
+    };
+    cursor_vbar_size = ceil(cursor_vbar_size);
+
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad(cursor_hbar_position, cursor_hbar_size, .{1, 1, 1, 1});
+    imm_quad(cursor_vbar_position, cursor_vbar_size, .{1, 1, 1, 1});
     imm_flush();
 }
 

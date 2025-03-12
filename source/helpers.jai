@@ -284,6 +284,9 @@ init_from_info :: (info: *Type_Info_Struct, ptr: *void) {
 }
 
 
+// Code for hsv_to_rgb and rgb_to_hsv taken from here:
+// https://axonflux.com/handy-rgb-to-hsl-and-rgb-to-hsv-color-model-c
+
 hsv_to_rgb :: (h: float, s: float, v: float) -> r: float, g: float, b: float {
     i := floor(h * 6);
     f := h * 6 - i;
@@ -310,10 +313,28 @@ hsv_to_rgb :: (h: float, s: float, v: float) -> r: float, g: float, b: float {
     return r, g, b;
 }
 
-/*
+
 rgb_to_hsv :: (r: float, g: float, b: float) -> h: float, s: float, v: float {
+    rgb_max := max(r, max(g, b));
+    rgb_min := min(r, min(g, b));
+    
+    value := rgb_max; 
+    range := rgb_max - rgb_min;
+    saturation := ifx rgb_max == 0 then 0 else range / rgb_max;
+    
+    hue: float;
+    if rgb_max == rgb_min {
+        hue = 0; 
+    } else {
+        if rgb_max == r {
+            hue = (g - b) / range + (ifx g < b then 6 else 0);
+        } else if rgb_max == g {
+            hue = (b - r) / range + 2;
+        } else if rgb_max == b {
+            hue = (r - g) / range + 4;
+        }
+        hue /= 6;
+    }
 
+    return hue, saturation, value;
 }
-*/
-
-
