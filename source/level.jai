@@ -22,11 +22,6 @@ Level :: struct {
     
     camera_mode: Camera_Mode; @Ignore
 
-    camera_last_player_floor: s32; @Ignore
-    // This is only used by the NEAR and FAR camera states but should have its
-    // value set correctly no matter what because we need it to have the right
-    // value when we go back into those states.
-
     // These members are only used by the NEAR and FAR camera states.
     camera_focus_old_x: float; @Ignore
     camera_focus_old_z: float; @Ignore
@@ -80,10 +75,28 @@ Camera_Mode :: enum {
 }
 
 
+Player_State :: enum {
+    FLOOR;
+    FALLING;
+}
+
+
 Player :: struct {
     using #as e: Entity;
-    state: enum {FLOOR; FALLING;};
+    state: Player_State;
+    /*
+    union {
+        falling: struct {
+            interp: float;
+            last_floor_y: float;
+        };
+        floor: struct {
+            landing_interp: float;
+        }
+    }
+    */
     falling_interp: float;
+    falling_last_floor_y: s32;
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -456,6 +469,14 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
+is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
+    below := position;
+    below.y -= 1;
+    in_bounds, index := get_3d_index(below, level_position, level_size);
+    return !in_bounds || collision[index] != 0;
+}
+
+
 load_level_part_1_new :: (using level: *Level, arena: *Memory_Arena) {
     level.* = .{};
 }
@@ -732,9 +753,6 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 
             player := make_entity(level, Player, arena);
             player.position = _Entrance[0].position;
-            camera_last_player_floor = player.position.y;
-            // We need this to be something reasonable regardless or not of the player actually starting on the floor
-            // so the camera knows where to go on the y-axis.
 
             return true;
     }
@@ -749,7 +767,11 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
 
     free(*view_texture);
 
-    for _Block {
+    for * _Block {
+        free(*it.mesh);
+    }
+
+    for * _Door {
         free(*it.mesh);
     }
 
@@ -808,24 +830,19 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
-is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
-    // @TODO: Figure out what happens when the player moves out of bounds. They should probably be killed.
-    below := position; 
-    below.y -= 1;
-    in_bounds, index := get_3d_index(below, level_position, level_size);
-    if !in_bounds return true;
-    return collision[index] != 0;
+set_state :: (player: *Player, state: Player_State) {
+    if #complete state == {
+        case .FLOOR;
+        case .FALLING;
+            player.falling_last_floor_y = player.position.y;
+            player.falling_interp = 0;
+    }
+    player.state = state;
 }
 
 
 set_player_position :: (using level: *Level, position: Vector3i) {
-    in_bounds, index := get_3d_index(position, level_position, level_size);
-    assert(in_bounds);
     player := *_Player[0];
-    
-    if is_colliding_below(level, position) || flags & .DEBUG_MOVEMENT { 
-        camera_last_player_floor = position.y;
-    }
 
     if camera_mode == .NEAR || camera_mode == .FAR {
         camera_position := get_camera_position_when_near_or_far(level);
@@ -852,8 +869,12 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
     // is moving upwards or downwards on a ladder vs falling. Handle those once
     // ladders are in the game.
 
-    if camera_last_player_floor - player.position.y >= 1 {
-        y = position.y + 1.0 - player.falling_interp;
+    if player.state == .FALLING {
+        if player.position.y <= player.falling_last_floor_y - 1 {
+            y = position.y + 1.0 - player.falling_interp;
+        } else {
+            y = xx player.falling_last_floor_y;
+        }
     } else {
         y = position.y;
     }
@@ -910,8 +931,19 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     }
 
     if event.key == #char "M" && event.down {
-        if flags & .DEBUG_MOVEMENT flags &= ~.DEBUG_MOVEMENT;
-        else                       flags |=  .DEBUG_MOVEMENT;
+        player := *_Player[0];
+        if flags & .DEBUG_MOVEMENT {
+            flags &= ~.DEBUG_MOVEMENT;
+
+            if is_colliding_below(level, player.position) {
+                set_state(player, .FLOOR);
+            } else {
+                set_state(player, .FALLING);
+            }
+        } else {
+            flags |=  .DEBUG_MOVEMENT;
+            set_state(player, .FLOOR);
+        }
         return;
     }
 
@@ -927,7 +959,6 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
     if !event.down return;
 
-    
     //
     // Player movement code
     //
@@ -948,8 +979,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         case xx #char "A"; move(.{-1, 0});
         case xx #char "S"; move(.{0, -1});
         case xx #char "D"; move(.{1, 0});
-        case xx #char "Q"; if flags & .DEBUG_MOVEMENT push_direction.y += 1;
-        case xx #char "E"; if flags & .DEBUG_MOVEMENT push_direction.y -= 1;
+        case xx #char "Q"; if flags & .DEBUG_MOVEMENT push_direction.y += 1; else return;
+        case xx #char "E"; if flags & .DEBUG_MOVEMENT push_direction.y -= 1; else return;
         case; return;
     }
  
@@ -978,12 +1009,17 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     player := *_Player[0];
     new_player_position := player.position + push_direction;
 
+    if flags & .DEBUG_MOVEMENT {
+        assert(player.state == .FLOOR);
+        if inside_bounding_box(new_player_position, level_position, level_size) {
+            set_player_position(level, new_player_position);
+            play_sound(level, *footstep);
+        }
+    } else if player.state == .FLOOR {
+        pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
+        if !pushed_in_bounds return;
 
-    pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
-    if !pushed_in_bounds return;
 
-    if !(flags & .DEBUG_MOVEMENT) {
-        if !is_colliding_below(level, player.position) return;
         moving_block_data: [2] *Block;
         moving_blocks: [..] *Block;
         moving_blocks.allocated = 2;
@@ -1043,10 +1079,18 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
                 return;
             }
         }
+
+
+        if is_colliding_below(level, new_player_position) {
+            set_state(player, .FLOOR);
+        } else {
+            set_state(player, .FALLING);
+        }
+
+        set_player_position(level, new_player_position);
+        play_sound(level, *footstep);
     }
     
-    set_player_position(level, new_player_position);
-    play_sound(level, *footstep);
     // @TODO: Add a fade effect when you exit the level.
     /*
         for * _Exit {
@@ -1434,20 +1478,20 @@ level_update :: (using level: *Level, dt: float) {
 
     
     player := *_Player[0];
-    if !is_colliding_below(level, player.position) && !(flags & .DEBUG_MOVEMENT) {
+    if player.state == .FALLING {
+        assert(!(flags & .DEBUG_MOVEMENT));
         FALLING_SPEED :: 3;
         player.falling_interp += dt * FALLING_SPEED;
         while player.falling_interp >= 1 {
             player.falling_interp -= 1;
-
-            if is_colliding_below(level, player.position) break;
-            
             new_position := player.position;
             new_position.y -= 1;
-
             set_player_position(level, new_position);
 
-            // @Incomplete MAKE SURE THE PLAYER DOES NOT GO OUT OF BOUNDS
+            if is_colliding_below(level, player.position) {
+                set_state(player, .FLOOR);
+                break;
+            }
         }
     }
 

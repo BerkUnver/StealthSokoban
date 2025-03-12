@@ -33,10 +33,17 @@ get_3d_index_unchecked :: (coord: Vector3i, size: Vector3i) -> s64 {
 
 
 inside_positive_bounding_box :: (v: Vector3i, bbox: Vector3i) -> bool {
-    return
-        0 <= v.x && v.x < bbox.x &&
-        0 <= v.y && v.y < bbox.y &&
-        0 <= v.z && v.z < bbox.z;
+    return 0 <= v.x && v.x < bbox.x
+        && 0 <= v.y && v.y < bbox.y
+        && 0 <= v.z && v.z < bbox.z;
+}
+
+
+inside_bounding_box :: (v: Vector3i, position: Vector3i, size: Vector3i) -> bool {
+    end := position + size;
+    return position.x <= v.x && v.x < end.x
+        && position.y <= v.y && v.y < end.y
+        && position.z <= v.z && v.z < end.z;
 }
 
 
