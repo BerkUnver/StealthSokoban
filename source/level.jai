@@ -18,14 +18,19 @@ Level :: struct {
     enemy_annihilations: [..] Vector3i; @Ignore
     unused_eids: [..] Entity_Id; @Ignore
 
-    flags: enum {PULLING :: 1;}; @Ignore
-    player_can_move_through_blocks: bool; @Ignore
+    flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; @Ignore
     
     camera_mode: Camera_Mode; @Ignore
 
-    // These two members are only used by the FOCUS_ON_PLAYER_NEAR and FOCUS_ON_PLAYER_FAR camera states.
+    camera_last_player_floor: s32; @Ignore
+    // This is only used by the NEAR and FAR camera states but should have its
+    // value set correctly no matter what because we need it to have the right
+    // value when we go back into those states.
+
+    // These members are only used by the NEAR and FAR camera states.
+    camera_focus_old_x: float; @Ignore
+    camera_focus_old_z: float; @Ignore
     camera_focus_interp := 1.0; @Ignore
-    camera_focus_old: Vector3; @Ignore
 
     camera_pitch_ticks: s8 = 1; @Ignore
     camera_pitch_interp := 1.0; @Ignore
@@ -68,15 +73,16 @@ CAMERA_YAW_TICK_COUNT :: 12;
 
 
 Camera_Mode :: enum {
-    FOCUS_ON_PLAYER_NEAR;
-    FOCUS_ON_PLAYER_FAR;
-    FOCUS_ON_LEVEL;
+    NEAR;
+    FAR;
+    LEVEL;
     COUNT;
 }
 
 
 Player :: struct {
     using #as e: Entity;
+    state: enum {FLOOR; FALLING;};
     falling_interp: float;
     COLOR :: Vector4.{1, 1, 1, 1};
 }
@@ -726,6 +732,9 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 
             player := make_entity(level, Player, arena);
             player.position = _Entrance[0].position;
+            camera_last_player_floor = player.position.y;
+            // We need this to be something reasonable regardless or not of the player actually starting on the floor
+            // so the camera knows where to go on the y-axis.
 
             return true;
     }
@@ -809,6 +818,50 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
 }
 
 
+set_player_position :: (using level: *Level, position: Vector3i) {
+    in_bounds, index := get_3d_index(position, level_position, level_size);
+    assert(in_bounds);
+    player := *_Player[0];
+    
+    if is_colliding_below(level, position) || flags & .DEBUG_MOVEMENT { 
+        camera_last_player_floor = position.y;
+    }
+
+    if camera_mode == .NEAR || camera_mode == .FAR {
+        camera_position := get_camera_position_when_near_or_far(level);
+        camera_focus_old_x = camera_position.x;
+        camera_focus_old_z = camera_position.z;
+        camera_focus_interp = 0;
+    }
+
+    player.position = position;
+}
+
+
+// @TODO This will be Vector3.{0.5, 0.5, 0.5} off, fix this!
+get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
+    assert(camera_mode == .NEAR || camera_mode == .FAR);
+    player := *_Player[0];
+    position := to_vector3(player.position);
+
+    x, y, z: float;
+    x = lerp(camera_focus_old_x, position.x, camera_focus_interp);
+    z = lerp(camera_focus_old_z, position.z, camera_focus_interp);
+    
+    // @TODO: We may want to have different code depending on whether the player
+    // is moving upwards or downwards on a ladder vs falling. Handle those once
+    // ladders are in the game.
+
+    if camera_last_player_floor - player.position.y >= 1 {
+        y = position.y + 1.0 - player.falling_interp;
+    } else {
+        y = position.y;
+    }
+
+    return .{x, y, z};
+}
+
+
 level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
     using context.game_context;
 
@@ -857,15 +910,16 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     }
 
     if event.key == #char "M" && event.down {
-        player_can_move_through_blocks = !player_can_move_through_blocks;
+        if flags & .DEBUG_MOVEMENT flags &= ~.DEBUG_MOVEMENT;
+        else                       flags |=  .DEBUG_MOVEMENT;
         return;
     }
 
     if event.key == #char "U" && event.down {
        camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
         if camera_mode == {
-            case .FOCUS_ON_PLAYER_NEAR; #through;
-            case .FOCUS_ON_PLAYER_FAR;
+            case .NEAR; #through;
+            case .FAR;
                 camera_focus_interp = 1;
         }
         return;
@@ -877,9 +931,6 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     //
     // Player movement code
     //
-
-    player := *_Player[0];
-    if !is_colliding_below(level, player.position) return;
 
     push_direction: Vector3i;
 
@@ -897,8 +948,8 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         case xx #char "A"; move(.{-1, 0});
         case xx #char "S"; move(.{0, -1});
         case xx #char "D"; move(.{1, 0});
-        case xx #char "Q"; push_direction.y += 1;
-        case xx #char "E"; push_direction.y -= 1;
+        case xx #char "Q"; if flags & .DEBUG_MOVEMENT push_direction.y += 1;
+        case xx #char "E"; if flags & .DEBUG_MOVEMENT push_direction.y -= 1;
         case; return;
     }
  
@@ -924,13 +975,15 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     // you are moving (I'm pretty sure we want this)
 
 
+    player := *_Player[0];
     new_player_position := player.position + push_direction;
 
 
     pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
     if !pushed_in_bounds return;
 
-    if !player_can_move_through_blocks {
+    if !(flags & .DEBUG_MOVEMENT) {
+        if !is_colliding_below(level, player.position) return;
         moving_block_data: [2] *Block;
         moving_blocks: [..] *Block;
         moving_blocks.allocated = 2;
@@ -992,14 +1045,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         }
     }
     
-    // @TODO: Add a fade effect when you exit the level.
-    if camera_mode == .FOCUS_ON_PLAYER_NEAR || camera_mode == .FOCUS_ON_PLAYER_FAR {
-        camera_focus_old = lerp(camera_focus_old, to_vector3(player.position), camera_focus_interp);
-        camera_focus_interp = 0;
-    }
-
-    player.position = new_player_position;
+    set_player_position(level, new_player_position);
     play_sound(level, *footstep);
+    // @TODO: Add a fade effect when you exit the level.
     /*
         for * _Exit {
             if player.position == it.position {
@@ -1033,24 +1081,23 @@ get_game_camera_matrix :: (using level: *Level) -> Matrix4 {
     FAR_DISTANCE :: 60.0;
 
     get_player_camera :: (distance: float) #expand {
-        assert(camera_mode == .FOCUS_ON_PLAYER_NEAR || camera_mode == .FOCUS_ON_PLAYER_FAR);
+        assert(camera_mode == .NEAR || camera_mode == .FAR);
         offset := Vector3.{0, 0, distance};
         offset_matrix = make_translation_matrix4(offset);
 
-        player := *_Player[0];
-        focus := lerp(camera_focus_old, to_vector3(player.position), camera_focus_interp);
+        focus := get_camera_position_when_near_or_far(level);
         position_matrix = make_translation_matrix4(-focus - Vector3.{0.5, 0.5, 0.5});
     }
 
 
     if camera_mode == {
-        case .FOCUS_ON_PLAYER_NEAR;
+        case .NEAR;
             get_player_camera(NEAR_DISTANCE);
 
-        case .FOCUS_ON_PLAYER_FAR;
+        case .FAR;
             get_player_camera(FAR_DISTANCE);
 
-        case .FOCUS_ON_LEVEL;
+        case .LEVEL;
             RADIUS_MULTIPLIER :: 2.5;
             radius := max(level_size.x, max(level_size.y, level_size.z));
             camera_distance := radius * RADIUS_MULTIPLIER;
@@ -1083,7 +1130,7 @@ level_update :: (using level: *Level, dt: float) {
     camera_pitch_interp = min(camera_pitch_interp + dt / CAMERA_PITCH_TIME, 1);
 
     CAMERA_FOCUS_TIME :: 1.0 / 8.0;
-    if camera_mode == .FOCUS_ON_PLAYER_NEAR || camera_mode == .FOCUS_ON_PLAYER_FAR {
+    if camera_mode == .NEAR || camera_mode == .FAR {
         camera_focus_interp = min(camera_focus_interp + dt / CAMERA_FOCUS_TIME, 1);
     }
     
@@ -1387,15 +1434,18 @@ level_update :: (using level: *Level, dt: float) {
 
     
     player := *_Player[0];
-    if !is_colliding_below(level, player.position) {
-        FALLING_SPEED :: 2;
+    if !is_colliding_below(level, player.position) && !(flags & .DEBUG_MOVEMENT) {
+        FALLING_SPEED :: 3;
         player.falling_interp += dt * FALLING_SPEED;
         while player.falling_interp >= 1 {
             player.falling_interp -= 1;
 
             if is_colliding_below(level, player.position) break;
+            
+            new_position := player.position;
+            new_position.y -= 1;
 
-            player.position.y -= 1;
+            set_player_position(level, new_position);
 
             // @Incomplete MAKE SURE THE PLAYER DOES NOT GO OUT OF BOUNDS
         }

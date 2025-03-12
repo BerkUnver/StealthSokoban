@@ -242,7 +242,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
 
 
-        set_mode(*game, .EDITOR);
+        set_mode(*game, .GAME);
         
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -362,7 +362,7 @@ game_update : Game_Update : (
         
         dt: float;
         if time_elapsed == 0 { // We're on the first tick. Set dt to something reasonable.
-            dt = 1 / 60;
+            dt = 1.0 / 60.0;
         } else {
             dt = cast(float, time_elapsed_ - time_elapsed);
         }
