@@ -242,7 +242,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
 
 
-        set_mode(*game, .GAME);
+        set_mode(*game, .EDITOR);
         
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
@@ -283,7 +283,7 @@ game_update : Game_Update : (
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         imgui_position := Vector2.{0, INNER_WINDOW_H - 800};
         imgui_size := Vector2.{400, 800};
-        imgui_rect_capturing_input := inside(imgui_position, imgui_size, imgui_state.mouse);
+        imgui_capturing_input := imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse);
 
 
         for input.events {
@@ -335,9 +335,9 @@ game_update : Game_Update : (
 
                     level_handle_input(*level, *level_arena, it);
                 case .EDITOR;
-                    if imgui_rect_capturing_input && it.down {
+                    if imgui_capturing_input {
                         assert(imgui_state.event_count < imgui_state.events.count);
-                        imgui_state.events[imgui_state.event_count] = it.key;
+                        imgui_state.events[imgui_state.event_count] = it;
                         imgui_state.event_count += 1;
                         continue;
                     }
@@ -768,8 +768,7 @@ game_update : Game_Update : (
                 button("Test Button", *imgui_state.test_selected, font, position, size);
             
                 position.y -= get_color_selector_height(imgui_size.x, button_height);
-                color := Vector4.{0.8, 0.5, 0.2, 1};
-                color_selector(*color, position, size, button_height);
+                color_selector(*imgui_state.test_color, position, size, button_height);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

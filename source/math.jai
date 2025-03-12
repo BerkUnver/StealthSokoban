@@ -142,9 +142,9 @@ min_max :: (a: $T, b: T) -> min: T, max: T {
     return b, a;
 }
 
-clamp :: (value: $T, minimum: T, maximum: T) -> T {
+clamp :: (value: $T, minimum: T, maximum: T) -> T #must {
     v := min(value, maximum);
-    v = max(value, minimum);
+    v = max(v, minimum);
     return v;
 }
 

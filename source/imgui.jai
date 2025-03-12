@@ -10,9 +10,19 @@ Imgui_State :: struct {
     imgui_to_camera: Matrix4;
     camera_to_imgui: Matrix4;
     test_selected: bool;
-    events: [MAX_INPUT_EVENTS_PER_TICK] Key;
+    test_color := Vector4.{0.8, 0.5, 0.2, 1};
+    events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
     event_count: int;
     mouse: Vector2;
+    
+    active_widget_exists: bool; 
+    active_widget_loc: Source_Code_Location;
+    active_widget_state: Active_Widget_State;
+}
+
+
+Active_Widget_State :: struct {
+    mouse_offset: Vector2;
 }
 
 
@@ -74,10 +84,9 @@ button :: (label: string, selected: *bool, font: *Font, position: Vector2, size:
     imm_quad(outline_inner_position, outline_inner_size, UNSELECTED_COLOR);
 
 
-    if inside(outline_outer_position, outline_outer_size, mouse) {
-        for 0..event_count-1 {    
-            event := events[it];
-            if event == .MOUSE_LEFT_BUTTON {
+    if !active_widget_exists && inside(outline_outer_position, outline_outer_size, mouse) {
+        for [] Input_Event.{event_count, events.data} {
+            if it.key == .MOUSE_LEFT_BUTTON && it.down {
                 selected.* = !selected.*;
             }
         }
@@ -93,11 +102,10 @@ button :: (label: string, selected: *bool, font: *Font, position: Vector2, size:
 }
 
 
-color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float) {
+color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location) {
     using context.game_context;
     using context.game_context.imgui_state;
 
-    hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
 
     margin := bar_height * 0.2;
 
@@ -109,71 +117,118 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     sample_position := Vector2.{head.x, position.y + margin};
     sample_size := Vector2.{bar_width, bar_height};
 
-    glUseProgram(imm_color_shader);
-    set_uniform("projection", imgui_to_camera);
-    imm_quad(sample_position, sample_size, color.*);
-    imm_flush();
-
-
-
-
     head.y += bar_height + margin;
      
-    saturation_value_size := Vector2.{bar_width, bar_width};
-    glUseProgram(imm_saturation_value_shader);
-    set_uniform("projection", imgui_to_camera);
-    set_uniform("hue", hue);
+    // sv: saturation and value
+
+    sv_size := Vector2.{bar_width, bar_width};
 
     x0 := head.x;
     y0 := head.y;
-    x1 := head.x + saturation_value_size.x;
-    y1 := head.y + saturation_value_size.y;
+    x1 := head.x + sv_size.x;
+    y1 := head.y + sv_size.y;
 
+    
+    cursor: Vector2;
+    hue: float;
+
+    if active_widget_exists && loc == active_widget_loc {
+        if loc == active_widget_loc {
+            cursor = mouse + active_widget_state.mouse_offset;
+            clamp(*cursor.x, x0, x1);
+            clamp(*cursor.y, y0, y1);
+
+            saturation := (cursor.x - x0) / (x1 - x0);
+            value := (cursor.y - y0) / (y1 - y0);
+            
+            hue = rgb_to_hsv(color.x, color.y, color.z);
+            r, g, b := hsv_to_rgb(hue, saturation, value);
+
+            color.x = r;
+            color.y = g;
+            color.z = b;
+
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                    active_widget_exists = false;
+                    break;
+                }
+            }
+        }
+    } else {
+        saturation, value: float;
+        hue, saturation, value = rgb_to_hsv(color.x, color.y, color.z);
+
+        cursor_x := lerp(x0, x1, saturation);
+        cursor_y := lerp(y0, y1, value);
+        cursor = Vector2.{cursor_x, cursor_y};
+        
+        cursor_selection_radius := bar_width * 0.045;
+        cursor_selection_position := Vector2.{
+            cursor.x - cursor_selection_radius,
+            cursor.y - cursor_selection_radius
+        };
+        cursor_selection_size := Vector2.{
+            cursor_selection_radius * 2,
+            cursor_selection_radius * 2
+        };
+
+        if inside(cursor_selection_position, cursor_selection_size, mouse) {
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                    active_widget_exists = true;
+                    active_widget_loc = loc;
+                    active_widget_state = .{
+                        mouse_offset = cursor - mouse
+                    };
+                    break;
+                }
+            }
+        }
+    }
+
+
+    cursor_offset_big := bar_width * 0.02;
+    cursor_offset_small := bar_width * 0.005;
+
+    cursor_hbar_position := Vector2.{
+        cursor.x - cursor_offset_small,
+        cursor.y - cursor_offset_big,
+    };
+
+    cursor_hbar_size := Vector2.{
+        cursor_offset_small * 2,
+        cursor_offset_big * 2,
+    };
+
+    
+    cursor_vbar_position := Vector2.{
+        cursor.x - cursor_offset_big,
+        cursor.y - cursor_offset_small,
+    };
+
+    cursor_vbar_size := Vector2.{
+        cursor_offset_big * 2,
+        cursor_offset_small * 2,
+    };
+
+
+
+    glUseProgram(imm_saturation_value_shader);
+    set_uniform("projection", imgui_to_camera);
+    set_uniform("hue", hue);
     imm_vertex(.{x0, y0, 0}, .{0, 0});
     imm_vertex(.{x1, y0, 0}, .{1, 0});
     imm_vertex(.{x1, y1, 0}, .{1, 1});
     imm_vertex(.{x0, y0, 0}, .{0, 0});
     imm_vertex(.{x0, y1, 0}, .{0, 1});
     imm_vertex(.{x1, y1, 0}, .{1, 1});
-
     imm_flush();
-
-
-
-    cursor_x := lerp(x0, x1, saturation);
-    cursor_y := lerp(y0, y1, value);
-
-    cursor_offset_big := bar_width * 0.02;
-    cursor_offset_small := bar_width * 0.005;
-
-    cursor_hbar_position := Vector2.{
-        cursor_x - cursor_offset_small,
-        cursor_y - cursor_offset_big,
-    };
-    cursor_hbar_position = floor(cursor_hbar_position);
-
-    cursor_hbar_size := Vector2.{
-        cursor_offset_small * 2,
-        cursor_offset_big * 2,
-    };
-    cursor_hbar_size = ceil(cursor_hbar_size);
-
-    
-    cursor_vbar_position := Vector2.{
-        cursor_x - cursor_offset_big,
-        cursor_y - cursor_offset_small,
-    };
-    cursor_vbar_position = floor(cursor_vbar_position);
-
-    cursor_vbar_size := Vector2.{
-        cursor_offset_big * 2,
-        cursor_offset_small * 2,
-    };
-    cursor_vbar_size = ceil(cursor_vbar_size);
 
 
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
+    imm_quad(sample_position, sample_size, color.*);
     imm_quad(cursor_hbar_position, cursor_hbar_size, .{1, 1, 1, 1});
     imm_quad(cursor_vbar_position, cursor_vbar_size, .{1, 1, 1, 1});
     imm_flush();
