@@ -23,6 +23,7 @@ Level :: struct {
     camera_mode: Camera_Mode; @Ignore
 
     // These members are only used by the NEAR and FAR camera states.
+    // Maybe they should be in the Player struct?
     camera_focus_old_x: float; @Ignore
     camera_focus_old_z: float; @Ignore
     camera_focus_interp := 1.0; @Ignore
@@ -78,13 +79,14 @@ Camera_Mode :: enum {
 Player_State :: enum {
     GROUND;
     FALLING;
+    DEAD;
 }
 
 
 Player :: struct {
     using #as e: Entity;
     state: Player_State;
-    union {
+    using vars: union {
         falling: struct {
             interp: float;
             last_floor_y: s32;
@@ -92,7 +94,11 @@ Player :: struct {
         ground: struct {
             landing_interp: float;
         }
-    }
+        dead: struct {
+            interp: float;
+        }
+    }; @Ignore
+    // You need "using vars: ...", otherwise the compiler won't let you put a note here.
     ground.landing_interp = 1.0;
     COLOR :: Vector4.{1, 1, 1, 1};
 }
@@ -470,6 +476,7 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
     below := position;
     below.y -= 1;
     in_bounds, index := get_3d_index(below, level_position, level_size);
+    // return in_bounds && collision[index] != 0;
     return !in_bounds || collision[index] != 0;
 }
 
@@ -838,6 +845,8 @@ set_state :: (player: *Player, state: Player_State) {
                 player.falling.last_floor_y = player.position.y;
                 player.falling.interp = 0;
             }
+        case .DEAD;
+            player.dead.interp = 0;
     }
     player.state = state;
 }
@@ -881,6 +890,8 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
             } else {
                 y = xx player.falling.last_floor_y;
             }
+        case .DEAD;
+            y = position.y;
     }
 
     return .{x, y, z};
@@ -1493,6 +1504,14 @@ level_update :: (using level: *Level, dt: float) {
                 player.falling.interp -= 1;
                 new_position := player.position;
                 new_position.y -= 1;
+               
+                /*
+                if new_position.y < level_position.y {
+                    set_state(player, .DEAD);
+                    break;
+                }
+                */
+
                 set_player_position(level, new_position);
 
                 if is_colliding_below(level, player.position) {
@@ -1500,6 +1519,9 @@ level_update :: (using level: *Level, dt: float) {
                     break;
                 }
             }
+        case .DEAD;
+            DEAD_TIME :: 0.5;
+            player.dead.interp = min(1.0, player.dead.interp + dt / DEAD_TIME);
     }
 
     

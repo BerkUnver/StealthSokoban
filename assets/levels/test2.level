@@ -27,10 +27,10 @@ types
 			;
 		size
 			x 1
-			y 3
+			y 2
 			z 4
 			;
-		filled 12[ 1 1 0 1 0 1 1 1 0 0 0 0 ]
+		filled 8[ 1 1 0 1 0 1 1 1 ]
 		color
 			z 1
 			w 1
