@@ -1227,6 +1227,8 @@ get_game_camera_matrix :: (using level: *Level) -> Matrix4 {
 level_update :: (using level: *Level, dt: float) {
     using context.game_context;
 
+    player := *_Player[0];
+
     dt *= dt_modifier;
     
     CAMERA_YAW_TIME :: 1.0 / 12.0;
@@ -1361,9 +1363,10 @@ level_update :: (using level: *Level, dt: float) {
         check_axis(2);
     }
     */
-    
+
     ENEMY_TICK_TIME :: 1;
     enemy_timer += dt;
+
     if enemy_timer >= ENEMY_TICK_TIME {
         enemy_timer = fmod_cycling(enemy_timer, ENEMY_TICK_TIME);
 
@@ -1409,6 +1412,7 @@ level_update :: (using level: *Level, dt: float) {
                         in_bounds, index = get_3d_index(it.position + new_desired_direction, level_position, level_size);
                         
                         if !in_bounds || collision[index] && get_entity(level, collision[index]).type == .Block {
+                            // Everywhere is blocked. No one move.
                             it.desired_position = it.position;
                         } else {
                             it.desired_position = it.position + new_desired_direction;
@@ -1429,26 +1433,6 @@ level_update :: (using level: *Level, dt: float) {
             in_bounds, index = get_3d_index(it.desired_position, level_position, level_size);
             assert(in_bounds);
             
-            if #complete desired_enemy_moves[index] == {
-                case .EMPTY;
-                    desired_enemy_moves[index] = .WILL_BE_FILLED;
-                case .WILL_BE_FILLED;
-                    desired_enemy_moves[index] = .MUTUAL_ANNIHILATION;
-                case .MUTUAL_ANNIHILATION;
-                    // Do nothing because this enemy will be destroyed too.
-            }
-        }
-
-        for * _Enemy_Spawner {
-            in_bounds, index := get_3d_index(it.position, level_position, level_size);
-            assert(in_bounds);
-            
-            // Flip the favored direction every tick
-            it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
-
-            if collision[index] && get_entity(level, collision[index]).type == .Block continue;
- 
-            // @Copypasta from above
             if #complete desired_enemy_moves[index] == {
                 case .EMPTY;
                     desired_enemy_moves[index] = .WILL_BE_FILLED;
@@ -1498,27 +1482,43 @@ level_update :: (using level: *Level, dt: float) {
             }
         }
 
+
+        // Now that Enemies have moved, we can run enemy spawner code.
+
         for * _Enemy_Spawner {
             in_bounds, index := get_3d_index(it.position, level_position, level_size);
-            assert(in_bounds); 
-            if #complete desired_enemy_moves[index] == {
-                case .EMPTY;
-                    assert(collision[index] && get_entity(level, collision[index]).type == .Block);
+            assert(in_bounds);
+            
+            should_spawn_enemy := false;
 
-                case .WILL_BE_FILLED;
-                    e := make_entity(level, Enemy);
-                    e.position = it.position;
-                    e.state = .SPAWNING;
-                    e.favored_direction = it.favored_direction;
-                    e.facing = it.facing;
-                    assert(collision[index] == 0);
-                    collision[index] = e.eid;
-
-                case .MUTUAL_ANNIHILATION;
-                    // @TODO: If two enemy spawners end up on the same square
-                    // (The player pushed a block with an enemy spawner attached
-                    // into it), we need a special effect for this situation.
+            if collision[index] == 0 {
+                should_spawn_enemy = true;
+            } else {
+                e := get_entity(level, collision[index]);
+                if e.type == .Enemy {
+                    enemy_in_bounds, enemy_index := get_3d_index(e.position, level_position, level_size);
+                    assert(enemy_in_bounds);
+                    collision[enemy_index] = 0;
+                    delete_entity(level, e.eid);
+                    append_no_resize(*enemy_annihilations).* = it.position;
+                } else if e.type != .Block {
+                    should_spawn_enemy = true;
+                }
             }
+
+            if should_spawn_enemy {
+                e := make_entity(level, Enemy);
+                e.position = it.position;
+                e.state = .SPAWNING;
+                e.favored_direction = it.favored_direction;
+                e.facing = it.facing;
+                assert(collision[index] == 0);
+                collision[index] = e.eid;
+            }
+
+            // Flip the favored direction every tick
+
+            it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
         }
     }
     
@@ -1539,7 +1539,6 @@ level_update :: (using level: *Level, dt: float) {
     }
 
     
-    player := *_Player[0];
     FALLING_SPEED :: 4.0;
     if #complete player.state == {
         case .SPAWNING;
@@ -1616,8 +1615,8 @@ level_update :: (using level: *Level, dt: float) {
     positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
     position_count := 1;
 
-    player_success, player_index := get_3d_index(player.position, level_position, level_size);
-    assert(player_success);
+    player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
+    assert(player_in_bounds);
     positions[0] = player.position;
     viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
 
