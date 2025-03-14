@@ -997,7 +997,12 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
         if flags & .DEBUG_MOVEMENT {
             flags &= ~.DEBUG_MOVEMENT;
 
-            if is_colliding_below(level, player.position) {
+            in_bounds, index := get_3d_index(player.position, level_position, level_size);
+            assert(in_bounds);
+
+            if collision[index] && get_entity(level, collision[index]).type == .Enemy {
+                set_state(player, .DEAD);
+            } else if is_colliding_below(level, player.position) {
                 set_state(player, .GROUND);
             } else {
                 set_state(player, .FALLING);
@@ -1519,6 +1524,33 @@ level_update :: (using level: *Level, dt: float) {
             // Flip the favored direction every tick
 
             it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
+        }
+
+        if !(flags & .DEBUG_MOVEMENT) {
+            if #complete player.state == {
+                case .SPAWNING; #through;
+                case .GROUND; #through;
+                case .FALLING; #through;
+                case .RESPAWN_PAUSE;
+                    player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
+                    assert(player_in_bounds);
+                    if collision[player_index] {
+                        e := get_entity(level, collision[player_index]);
+                        assert(e.type == .Enemy);
+                        collision[player_index] = 0;
+                        delete_entity(level, e.eid);
+                        append_no_resize(*enemy_annihilations).* = player.position;
+
+
+                        // Is it bad that we're killing the player here, then doing the player update later in this procedure?
+                        // My general policy is only one state update per frame to prevent bugs.
+                        set_state(player, .DEAD);
+                    }
+
+                case .DEAD; #through;
+                case .DEAD_PAUSE;
+                    // Don't do anything because the player has already died.
+            }
         }
     }
     
