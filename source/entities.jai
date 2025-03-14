@@ -211,6 +211,9 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
         return matrix;
     }
 
+    player := as(e, Player);
+    if player return get_player_draw_info(player);
+
     return make_translation_matrix4(to_vector3(e.position));
 }
 

@@ -234,13 +234,13 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-        enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, 0.2, -0.3}, .{0.3, 0.8, 0.3}, *permanent_arena);
-        enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0.5, 0.0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0.5, 0.0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);
+        enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
+        enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0, 0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0, 0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        player_mesh = make_cuboid_vertex_mesh(.{0.2, 0.2, 0.2}, .{0.8, 0.8, 0.8}, *permanent_arena);
+        player_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
 
 
         set_mode(*game, .EDITOR);
@@ -483,10 +483,10 @@ game_update : Game_Update : (
                     bind_and_draw(*enemy_annihilation_mesh);
                 }
 
-                draw_entities :: (e: [] $T/Entity, mesh: *Mesh) {
+                draw_entities :: (e: [] $T/Entity, mesh: *Mesh) #expand {
                     set_uniform("color", T.COLOR);
                     for * e {
-                        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+                        set_uniform("model_to_world", entity_mesh_to_world_matrix(*level, it));
                         bind_and_draw(mesh);
                     }
                 }
@@ -522,7 +522,8 @@ game_update : Game_Update : (
                 glUseProgram(color_shader);
                 set_uniform("color", Player.COLOR);
                 for * _Player {
-                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    matrix := world_to_camera * get_player_draw_info(it);
+                    set_uniform("projection", matrix);
                     bind_and_draw(*player_mesh);
                 }
 
@@ -606,7 +607,8 @@ game_update : Game_Update : (
 
                 set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
                 for * _Player {
-                    set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                    matrix := world_to_camera * get_player_draw_info(it);
+                    set_uniform("projection", matrix);
                     bind_and_draw(*player_mesh);
                 }
 
@@ -655,9 +657,10 @@ game_update : Game_Update : (
 
 
                 draw_entities :: (e: [] $T/Entity, mesh: *Mesh) #expand {
-                set_uniform("color", T.COLOR);
+                    set_uniform("color", T.COLOR);
                     for * e {
-                        set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+                        matrix := world_to_camera * entity_mesh_to_world_matrix(*level, it);
+                        set_uniform("projection", matrix);
                         bind_and_draw(mesh);
                     }
                 }

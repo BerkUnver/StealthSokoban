@@ -67,6 +67,7 @@ CAMERA_MAX_PITCH :: PI / 2;
 
 CAMERA_YAW_TICK_COUNT :: 12;
 
+    SPAWNING_TIME :: 0.2; @Ignore
 
 Camera_Mode :: enum {
     NEAR;
@@ -77,9 +78,12 @@ Camera_Mode :: enum {
 
 
 Player_State :: enum {
+    SPAWNING;
     GROUND;
     FALLING;
     DEAD;
+    DEAD_PAUSE;
+    RESPAWN_PAUSE; 
 }
 
 
@@ -87,6 +91,9 @@ Player :: struct {
     using #as e: Entity;
     state: Player_State;
     using vars: union {
+        spawning: struct {
+            interp: float;
+        }
         falling: struct {
             interp: float;
             last_floor_y: s32;
@@ -97,9 +104,15 @@ Player :: struct {
         dead: struct {
             interp: float;
         }
+        dead_pause: struct {
+            interp: float;
+        }
+        respawn_pause: struct {
+            interp: float;
+        }
     }; @Ignore
     // You need "using vars: ...", otherwise the compiler won't let you put a note here.
-    ground.landing_interp = 1.0;
+
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -172,7 +185,6 @@ Enemy :: struct {
 
     desired_position: Vector3i; @Ignore // Only used when we are updating all the enemies.
     MOVING_TIME :: 0.1; @Ignore
-    SPAWNING_TIME :: 0.2; @Ignore
     ANNIHILATION_TIME :: 0.15; @Ignore
     moving_from: Vector3; @Ignore
     state: Enemy_State; @Ignore
@@ -476,8 +488,7 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
     below := position;
     below.y -= 1;
     in_bounds, index := get_3d_index(below, level_position, level_size);
-    // return in_bounds && collision[index] != 0;
-    return !in_bounds || collision[index] != 0;
+    return in_bounds && collision[index] != 0;
 }
 
 
@@ -798,7 +809,7 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
             color_weight = 1;
 
         case .SPAWNING;
-            weight := level.enemy_timer / Enemy.SPAWNING_TIME;
+            weight := level.enemy_timer / SPAWNING_TIME;
             matrix = make_scale_matrix4(.{weight, weight, weight});
             color_weight = weight;
     }
@@ -812,7 +823,7 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     }
     
     matrix = matrix * make_y_rotation_matrix(Matrix4, -rotation);
-    matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0, 0.5}) * matrix;
+    matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0.5, 0.5}) * matrix;
 
 
     color: Vector4;
@@ -824,6 +835,26 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     };
 
     return matrix, color;
+}
+
+
+get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
+    scale: Matrix4;
+    if #complete player.state == {
+        case .SPAWNING;
+            weight := player.spawning.interp;
+            scale = make_scale_matrix4(.{weight, weight, weight});
+        case .GROUND; #through;
+        case .FALLING;
+            scale = Matrix4_Identity;
+        case .DEAD;
+            weight := 1 - player.dead.interp;
+            scale = make_scale_matrix4(.{weight, weight, weight});
+        case .DEAD_PAUSE; #through;
+        case .RESPAWN_PAUSE;
+            scale = Matrix4.{_44 = 1}; // @Temporary Add a way to prevent the player from drawing
+    }
+    return make_translation_matrix4(to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5}) * scale;
 }
 
 
@@ -839,14 +870,27 @@ set_state :: (player: *Player, state: Player_State) {
         case .GROUND;
             if player.state == .FALLING {
                 player.ground.landing_interp = player.falling.interp;
+            } else {
+                player.ground.landing_interp = 1;
             }
         case .FALLING;
             if player.state == .GROUND {
                 player.falling.last_floor_y = player.position.y;
                 player.falling.interp = 0;
+            } else {
+                player.falling.last_floor_y = -100000;
+                // This is set to -100000 in case something weird happens.
+                // This value shouldn't matter when player.falling.interp == 1.
+                player.falling.interp = 1;
             }
         case .DEAD;
             player.dead.interp = 0;
+        case .SPAWNING;
+            player.spawning.interp = 0;
+        case .DEAD_PAUSE;
+            player.dead_pause.interp = 0;
+        case .RESPAWN_PAUSE;
+            player.respawn_pause.interp = 0;
     }
     player.state = state;
 }
@@ -890,7 +934,10 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
             } else {
                 y = xx player.falling.last_floor_y;
             }
-        case .DEAD;
+        case .DEAD; #through;
+        case .SPAWNING; #through;
+        case .DEAD_PAUSE; #through;
+        case .RESPAWN_PAUSE;
             y = position.y;
     }
 
@@ -1481,7 +1528,7 @@ level_update :: (using level: *Level, dt: float) {
         }
     }
 
-    if enemy_timer >= Enemy.SPAWNING_TIME {
+    if enemy_timer >= SPAWNING_TIME {
         for * _Enemy {
             if it.state == .SPAWNING it.state = .IDLE;
         }
@@ -1493,10 +1540,22 @@ level_update :: (using level: *Level, dt: float) {
 
     
     player := *_Player[0];
-    FALLING_SPEED :: 3.0;
+    FALLING_SPEED :: 4.0;
     if #complete player.state == {
+        case .SPAWNING;
+            player.spawning.interp += dt / SPAWNING_TIME;
+            if player.spawning.interp >= 1 {
+                if is_colliding_below(level, player.position) {
+                    set_state(player, .GROUND);
+                } else {
+                    // This one should never happen
+                    set_state(player, .FALLING); 
+                }
+            }
+
         case .GROUND;
             player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt * FALLING_SPEED);
+
         case .FALLING;
             assert(!(flags & .DEBUG_MOVEMENT));
             player.falling.interp += dt * FALLING_SPEED;
@@ -1505,12 +1564,10 @@ level_update :: (using level: *Level, dt: float) {
                 new_position := player.position;
                 new_position.y -= 1;
                
-                /*
                 if new_position.y < level_position.y {
                     set_state(player, .DEAD);
                     break;
                 }
-                */
 
                 set_player_position(level, new_position);
 
@@ -1519,9 +1576,28 @@ level_update :: (using level: *Level, dt: float) {
                     break;
                 }
             }
+
         case .DEAD;
-            DEAD_TIME :: 0.5;
-            player.dead.interp = min(1.0, player.dead.interp + dt / DEAD_TIME);
+            DEAD_TIME :: SPAWNING_TIME;
+            player.dead.interp += dt / DEAD_TIME;
+            if player.dead.interp >= 1 {    
+                set_state(player, .DEAD_PAUSE);
+            }
+
+        case .DEAD_PAUSE;
+            TIME :: 0.2;
+            player.dead_pause.interp += dt / TIME;
+            if player.dead_pause.interp >= 1 {
+                entrance := *_Entrance[0];
+                player.position = entrance.position;
+                set_state(player, .RESPAWN_PAUSE);
+            }
+        case .RESPAWN_PAUSE;
+            TIME :: 0.2;
+            player.respawn_pause.interp += dt / TIME;
+            if player.respawn_pause.interp >= 1 {
+                set_state(player, .SPAWNING);
+            }
     }
 
     
