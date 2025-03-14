@@ -204,6 +204,17 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 }
 
 
+entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
+    enemy := as(e, Enemy);
+    if enemy {
+        matrix, _ := get_enemy_draw_info(level, enemy);
+        return matrix;
+    }
+
+    return make_translation_matrix4(to_vector3(e.position));
+}
+
+
 iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand {
     `it_index := -1; // It doesn't make sense to use this here
     `it: *Entity = null;

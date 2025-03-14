@@ -294,7 +294,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
 
             if event.key == .MOUSE_LEFT_BUTTON && event.down {
-                success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_direction);
+                success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
                 
                 if success {
                     editor.selected = selected;
@@ -340,7 +340,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.down {
-                success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_direction);
+                success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
                 position: Vector3i;
                 if success {
                     // The 0.001 go-back is in case the intersection is on an integer boundary (like colliding with Blocks),
@@ -459,30 +459,39 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 }
 
 
-get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_position: Vector3, line_direction: Vector3) -> bool, Entity_Id, intersection: Vector3 { 
+get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_start: Vector3, line_end: Vector3) -> bool, Entity_Id, intersection: Vector3 { 
+    line_direction := line_end - line_start;
     smallest_t := FLOAT32_INFINITY;
     selected_found := false;
     selected: Entity_Id;
     selected_intersection: Vector3;
     
     for :iterate_entities e: types {
-        position := to_vector3(e.position);
         mesh := entity_mesh(e);
+        matrix := inverse(entity_mesh_to_world_matrix(level, e));
+
+        local_line_start := multiply_homogeneous(matrix, line_start);
+        local_line_end   := multiply_homogeneous(matrix, line_end);
+        local_line_direction := local_line_end - local_line_start;
 
         assert(mesh.vertex_positions.count % 3 == 0);
         tri_count := mesh.vertex_positions.count / 3;
 
         for i: 0..tri_count-1 {
             start := i * 3;
-            v0 := mesh.vertex_positions[start]   + position;
-            v1 := mesh.vertex_positions[start+1] + position;
-            v2 := mesh.vertex_positions[start+2] + position;
+            v0 := mesh.vertex_positions[start];
+            v1 := mesh.vertex_positions[start+1];
+            v2 := mesh.vertex_positions[start+2];
 
             normal := cross(v1-v0, v2-v0);
 
-            parallel, intersection, t := get_intersection_between_line_and_plane(
-                line_point = line_position,
-                line_direction = line_direction,
+            // Because t is a ratio of how much of the line_direction to add to the 
+            // line_point to get the intersection, we can use t on the untransformed
+            // versions of line_point and line_direction.
+
+            parallel, local_intersection, t := get_intersection_between_line_and_plane(
+                line_point = local_line_start,
+                line_direction = local_line_direction,
                 plane_point = v0,
                 plane_normal = normal
             );
@@ -491,14 +500,15 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
           
             if t <= 0 || smallest_t < t continue;
 
-            if dot(normal, cross(v1-v0, intersection-v0)) <= 0 continue;
-            if dot(normal, cross(v2-v1, intersection-v1)) <= 0 continue;
-            if dot(normal, cross(v0-v2, intersection-v2)) <= 0 continue;
+            // Make sure the intersection point is within the triangle
+            if dot(normal, cross(v1-v0, local_intersection-v0)) <= 0 continue;
+            if dot(normal, cross(v2-v1, local_intersection-v1)) <= 0 continue;
+            if dot(normal, cross(v0-v2, local_intersection-v2)) <= 0 continue;
             
             smallest_t = t;
             selected_found = true;
             selected = e.eid;
-            selected_intersection = intersection;
+            selected_intersection = line_start + line_direction * t;
         }
     }
 

@@ -673,9 +673,15 @@ game_update : Game_Update : (
                     
                     e := get_entity(*level, editor.selected);
                     mesh := entity_mesh(e);
-                    position := to_vector3(e.position);
+                    mesh_to_world := entity_mesh_to_world_matrix(*level, e);
                     
-                    draw_wireframe_mesh(mesh, translate(world_to_camera, position), color);
+                    glUseProgram(wireframe_shader);
+                    set_uniform("projection", world_to_camera * mesh_to_world);
+                    set_uniform("color", color);
+
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
+                    bind_and_draw(mesh);
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                 }
 
                 if editor.mode == .EXTRUDE {
