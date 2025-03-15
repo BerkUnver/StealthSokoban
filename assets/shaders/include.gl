@@ -1,0 +1,60 @@
+// The way I am doing shader includes right now is just to have
+// one big file that gets included with all the shaders. This will
+// get slow over time, and I don't trust OpenGL drivers to be fast.
+
+// The thing to do would be to have a special manifest line in each
+// shader (maybe that specifies how the pipeline has to be configured
+// before using that shader) that has the includes in it. This could 
+// get complicated (recursive include checking?) so I am not doing
+// this right now. Consider coming back to this in the future.
+
+//          -berk, 2025 - 3 - 14
+
+
+
+
+// @Volatile :ViewState
+#define VIEW_STATE_SEEN 1u
+#define VIEW_STATE_VISIBLE 2u
+#define SEEN_BRIGHTNESS 0.25
+
+
+bool get_3d_index(in ivec3 position, in ivec3 size, out int index) {
+    if ((position.x < 0 || size.x <= position.x)
+     || (position.y < 0 || size.y <= position.y)
+     || (position.z < 0 || size.z <= position.z)) {
+        return false;
+    } else {
+        index = 
+            position.y * size.x * size.z +
+            position.z * size.x +
+            position.x;
+        return true;
+    }
+}
+
+vec3 hsv_to_rgb(float h, float s, float v) {
+    float i = floor(h * 6);
+    float f = h * 6 - i;
+    float p = v * (1 - s);
+    float q = v * (1 - f * s);
+    float t = v * (1 - (1 - f) * s);
+
+    float r, g, b;
+
+    if (i == 0) {
+        r = v; g = t; b = p;
+    } else if (i == 1) {
+        r = q; g = v; b = p;
+    } else if (i == 2) {
+        r = p; g = v; b = t;
+    } else if (i == 3) {
+        r = p; g = q; b = v;
+    } else if (i == 4) {
+        r = t; g = p; b = v;
+    } else if (i == 5) {
+        r = v; g = p; b = q;
+    }
+
+    return vec3(r, g, b);
+}

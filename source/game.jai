@@ -36,7 +36,7 @@ Game_Context :: struct {
     // We might just want to init a new freetype library every time we instanciate a font
     // and use the per-frame bump allocator as the allocator for FreeType.
     freetype: FT_Library;
-
+    shader_include: string;
 
     // The above has to be initialized before anything else is intialized.
 
@@ -48,6 +48,7 @@ Game_Context :: struct {
         imm_color_shader: GLuint;
         imm_text_shader: GLuint;
         imm_saturation_value_shader: GLuint;
+        imm_hue_shader: GLuint;
         gridlike_shader: GLuint;
         color_shader: GLuint;
         wireframe_shader: GLuint;
@@ -177,6 +178,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         glEnable(GL_CULL_FACE);
 
         assert(FT_Init_FreeType(*freetype) == 0);
+        success:, shader_include = read_file("shaders/include.gl", *permanent_arena);
+        assert(success);
         
         imm_state = imm_init();
         imgui_state = imgui_init();
@@ -184,6 +187,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         imm_color_shader = load_shader("shaders/imm_color.gl");
         imm_text_shader = load_shader("shaders/imm_text.gl");
         imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
+        imm_hue_shader = load_shader("shaders/imm_hue.gl");
         gridlike_shader = load_shader("shaders/gridlike.gl");
         color_shader = load_shader("shaders/color.gl");
         wireframe_shader = load_shader("shaders/wireframe.gl");
@@ -280,14 +284,11 @@ game_update : Game_Update : (
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
-        /*
         imgui_state.event_count = 0;
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         imgui_position := Vector2.{0, INNER_WINDOW_H - 800};
         imgui_size := Vector2.{400, 800};
         imgui_capturing_input := imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse);
-        */
-        imgui_capturing_input := false;
 
 
         for input.events {
@@ -761,7 +762,6 @@ game_update : Game_Update : (
                     imm_flush();
                 }
 
-                /*
 
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_CULL_FACE);
@@ -784,7 +784,6 @@ game_update : Game_Update : (
             
                 position.y -= get_color_selector_height(imgui_size.x, button_height);
                 color_selector(*imgui_state.test_color, position, size, button_height);
-                */
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

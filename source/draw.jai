@@ -390,17 +390,62 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
 
     LOG_SIZE :: 1024;
     
-    // @TODO: Finish shader includes
+
+    // I started to do the complicated version of shader includes but then I realized it would probably
+    // be best just to load everything from one file for now.
+
     /*
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    include_paths: [..] string;
+    
+    shader_text := text;
+    // Parse include strings
     if begins_with(text, "include") {
         include := advance(text, "include".count);
         index := 0;
-        while index < include.count {
-            if include[index] == " " continue;
-            if include[index] == "\n" break;
+        while include_parse := index < include.count {
+            if include[index] == #char " " continue;
+            if include[index] == #char "\n" break;
+            
+            start := index;
+
+            while true {
+                index += 1;
+
+                if index >= include.count {
+                    assert(false);
+                    // There should be more than just an include line in a shader!
+                }
+
+                if index[include] == #char "\n" {
+                    length := index - start;
+                    append(*include_paths, .{length, include.data + start}, *frame_arena);
+                    break include_parse;
+                }
+
+                if include[index] == #char " " {
+                    length := index - start;
+                    append(*include_paths, .{length, include.data + start}, *frame_arena);
+                    break;
+                }
+            }
         }
+
+        index += 1; // Advance past the newline
+        shader_text = advance(include, index);
+    }
+    
+    // @TODO @Speed: Cache the shader include text!
+    includes := alloc_view(*frame_arena, string, include_paths.count);
+    for include_paths {
+        success, str := read_file(it, *frame_arena);
+        assert(success);
+        includes[it_index] = str;
     }
     */
+
+
 
     make_string_arrays :: (strings: [$N] string) -> [N] *u8, [N] GLint #expand {
         lines: [N] *u8;
@@ -420,7 +465,9 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     // You need the "#line 1" directive or else the NVIDIA shader compiler will report the line number including the
     // prefix lines in its compilation errors.
     vertex_strings := string.[
-        "#version 330 core\n#define VERTEX_SHADER\n#define OUTIN out\n",
+        "#version 330 core\n",
+        shader_include,
+        "#define VERTEX_SHADER\n#define OUTIN out\n",
         prefix,
         "#line 1\n",
         text
@@ -447,7 +494,9 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     defer glDeleteShader(fragment);
     
     fragment_strings := string.[
-        "#version 330 core\n#define OUTIN in\n",
+        "#version 330 core\n",
+        shader_include,
+        "#define OUTIN in\n",
         prefix,
         "#line 1\n",
         text

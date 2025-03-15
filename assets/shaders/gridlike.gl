@@ -17,32 +17,6 @@ OUTIN vec2 fragment_uv;
 OUTIN float fragment_brightness;
 
 
-#ifdef VERTEX_SHADER
-// :ShaderInclude we should have a way to use #includes in shaders.
-// There is an extension called ARB_shading_language_include, can we use that?
-// Or should we just do a preprocessing pass on the shader and have a first
-// line with the includes?
-
-// @Volatile :ViewState :ShaderInclude
-#define VIEW_STATE_SEEN 1u
-#define VIEW_STATE_VISIBLE 2u
-#define SEEN_BRIGHTNESS 0.25
-
-bool get_3d_index(in ivec3 position, in ivec3 size, out int index) {
-    if ((position.x < 0 || size.x <= position.x)
-     || (position.y < 0 || size.y <= position.y)
-     || (position.z < 0 || size.z <= position.z)) {
-        return false;
-    } else {
-        index = 
-            position.y * size.x * size.z +
-            position.z * size.x +
-            position.x;
-        return true;
-    }
-}
-#endif
-
 // @Speed figure out how to optimize branching
 void main() {
 #ifdef VERTEX_SHADER

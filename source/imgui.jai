@@ -120,13 +120,14 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     head.y += bar_height + margin;
      
     // sv: saturation and value
-
+    
+    sv_position := head;
     sv_size := Vector2.{bar_width, bar_width};
 
-    x0 := head.x;
-    y0 := head.y;
-    x1 := head.x + sv_size.x;
-    y1 := head.y + sv_size.y;
+    x0 := sv_position.x;
+    y0 := sv_position.y;
+    x1 := sv_position.x + sv_size.x;
+    y1 := sv_position.y + sv_size.y;
 
     head.y += sv_size.y + margin;
 
@@ -222,12 +223,7 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     glUseProgram(imm_saturation_value_shader);
     set_uniform("projection", imgui_to_camera);
     set_uniform("hue", hue);
-    imm_vertex(.{x0, y0, 0}, .{0, 0});
-    imm_vertex(.{x1, y0, 0}, .{1, 0});
-    imm_vertex(.{x1, y1, 0}, .{1, 1});
-    imm_vertex(.{x0, y0, 0}, .{0, 0});
-    imm_vertex(.{x0, y1, 0}, .{0, 1});
-    imm_vertex(.{x1, y1, 0}, .{1, 1});
+    imm_quad_with_uvs(sv_position, sv_size);
     imm_flush();
 
 
@@ -237,6 +233,12 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_quad(sample_position, sample_size, color.*);
     imm_quad(cursor_hbar_position, cursor_hbar_size, .{1, 1, 1, 1});
     imm_quad(cursor_vbar_position, cursor_vbar_size, .{1, 1, 1, 1});
+    imm_flush();
+
+    
+    glUseProgram(imm_hue_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad_with_uvs(hue_position, hue_size);
     imm_flush();
 }
 

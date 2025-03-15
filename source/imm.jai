@@ -125,6 +125,21 @@ imm_quad :: (position: Vector2, size: Vector2) {
 }
 
 
+imm_quad_with_uvs :: (position: Vector2, size: Vector2) {
+    x0 := position.x;
+    y0 := position.y;
+    x1 := position.x + size.x;
+    y1 := position.y + size.y;
+
+    imm_vertex(.{x0, y0, 0}, .{0, 0});
+    imm_vertex(.{x1, y0, 0}, .{1, 0});
+    imm_vertex(.{x1, y1, 0}, .{1, 1});
+    imm_vertex(.{x0, y0, 0}, .{0, 0});
+    imm_vertex(.{x0, y1, 0}, .{0, 1});
+    imm_vertex(.{x1, y1, 0}, .{1, 1});
+}
+
+
 imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
     size := end - begin;
     for 0..35 {

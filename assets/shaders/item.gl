@@ -18,10 +18,6 @@ uniform vec4 unviewed_color;
 
 OUTIN vec3 fragment_position;
 
-// @Volatile :ViewState :ShaderInclude @Copypasta from block.gl
-#define VIEW_STATE_SEEN 1u
-#define VIEW_STATE_VISIBLE 2u
-#define SEEN_BRIGHTNESS 0.25
 
 void main() {
 #ifdef VERTEX_SHADER
@@ -29,19 +25,10 @@ void main() {
     fragment_position = world_position.xyz;
     gl_Position = world_to_camera * world_position;
 #else
-    ivec3 position = ivec3(floor(fragment_position)) - viewed_position;
-
-    // :ShaderInclude @Copypasta from block.gl
-    if ((position.x < 0 || viewed_size.x < position.x)
-     || (position.y < 0 || viewed_size.y < position.y)
-     || (position.z < 0 || viewed_size.z < position.z)) {
-        discard;
-    }
+    int index;
+    bool success = get_3d_index(ivec3(floor(fragment_position)) - viewed_position, viewed_size, index);
+    if (!success) discard;
     
-    int index = 
-        position.y * viewed_size.x * viewed_size.z +
-        position.z * viewed_size.x +
-        position.x;
     
     uint filled = texelFetch(viewed, index).r;
     
