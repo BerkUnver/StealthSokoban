@@ -9,8 +9,9 @@ inside :: (position: Vector2, size: Vector2, point: Vector2) -> bool {
 Imgui_State :: struct {
     imgui_to_camera: Matrix4;
     camera_to_imgui: Matrix4;
-    test_selected: bool;
+    test_toggle: bool;
     test_color := Vector4.{0.8, 0.5, 0.2, 1};
+    test_enum: enum { ZERO; ONE; TWO; }
     events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
     event_count: int;
     mouse: Vector2;
@@ -22,11 +23,9 @@ Imgui_State :: struct {
 }
 
 
-Active_Widget_Location :: struct {
-    loc: Source_Code_Location;
-    id: int;
-}
-
+HIGHLIGHT_COLOR :: Vector4.{1, 1, 1, 1};
+DULL_COLOR :: Vector4.{0.6, 0.6, 0.6, 1};
+BACKGROUND_COLOR :: Vector4.{0, 0, 0, 1};
 
 is_active :: (loc: Source_Code_Location, id: int) -> bool {
     using context.game_context.imgui_state;
@@ -42,6 +41,7 @@ Active_Widget_State :: struct {
     selected: enum {
         SV;
         SLIDER;
+        BUTTON;
     }
     union {
         sv: struct {
@@ -82,40 +82,34 @@ imgui_init :: () -> Imgui_State {
 }
 
 
-button :: (label: string, selected: *bool, font: *Font, position: Vector2, size: Vector2) {
+toggle :: (label: string, selected: *bool, position: Vector2, size: Vector2) {
     using context.game_context;
     using context.game_context.imgui_state;
-
-    glUseProgram(imm_text_shader);
-
-    OUTLINE_COLOR :: Vector4.{1, 1, 1, 1};
-    SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
-    UNSELECTED_COLOR :: Vector4.{0, 0, 0, 1};
-
+    
     font := *consolas;
 
     text_x: float = round(position.x + font.ascender / 2);
     text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
-    draw_text(label, .{text_x, text_y}, font);
+    draw_text(label, .{text_x, text_y}, font, HIGHLIGHT_COLOR);
 
     outline_outer_width := round(font.ascender * 1.5);
     outline_outer_size := Vector2.{outline_outer_width, outline_outer_width};
 
-    outline_inner_width := round(font.ascender * 1.2);
+    outline_inner_width := round(font.ascender * 1.3);
     outline_inner_size := Vector2.{outline_inner_width, outline_inner_width};
 
-    button_center_x := position.x + size.x - size.y / 2 - font.ascender / 2;
-    button_center_y := position.y + size.y / 2;
-    button_center := Vector2.{button_center_x, button_center_y};
+    toggle_center_x := position.x + size.x - size.y / 2 - font.ascender / 2;
+    toggle_center_y := position.y + size.y / 2;
+    toggle_center := Vector2.{toggle_center_x, toggle_center_y};
 
-    outline_outer_position := round(button_center - outline_outer_size / 2);
-    outline_inner_position := round(button_center - outline_inner_size / 2);
+    outline_outer_position := round(toggle_center - outline_outer_size / 2);
+    outline_inner_position := round(toggle_center - outline_inner_size / 2);
 
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
 
-    imm_quad(outline_outer_position, outline_outer_size, OUTLINE_COLOR);
-    imm_quad(outline_inner_position, outline_inner_size, UNSELECTED_COLOR);
+    imm_quad(outline_outer_position, outline_outer_size, HIGHLIGHT_COLOR);
+    imm_quad(outline_inner_position, outline_inner_size, BACKGROUND_COLOR);
 
 
     if !active_widget_exists && inside(outline_outer_position, outline_outer_size, mouse) {
@@ -129,9 +123,10 @@ button :: (label: string, selected: *bool, font: *Font, position: Vector2, size:
     if selected.* {
         selected_width := round(font.ascender * 0.9);
         selected_size := Vector2.{selected_width, selected_width};
-        selected_position := round(button_center - selected_size / 2);
-        imm_quad(selected_position, selected_size, SELECTED_COLOR);
+        selected_position := round(toggle_center - selected_size / 2);
+        imm_quad(selected_position, selected_size, HIGHLIGHT_COLOR);
     }
+
     imm_flush();
 }
 
@@ -204,7 +199,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
-    imm_quad(bar_position, bar_size, .{1, 1, 1, 1});
+    imm_quad(bar_position, bar_size, HIGHLIGHT_COLOR);
     imm_flush();
 }
 
@@ -375,9 +370,79 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
     imm_quad(sample_position, sample_size, color.*);
-    imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, .{1, 1, 1, 1});
-    imm_quad(sv_cursor_vbar_position, sv_cursor_vbar_size, .{1, 1, 1, 1});
+    imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, HIGHLIGHT_COLOR);
+    imm_quad(sv_cursor_vbar_position, sv_cursor_vbar_size, HIGHLIGHT_COLOR);
     imm_flush();
+}
+
+
+enum_selector :: (label: string, val: *$T, position: Vector2, size: Vector2, loc := #caller_location) {
+    INFO :: type_info(T);
+    #assert type_of(INFO) == *Type_Info_Enum;
+
+    using context.game_context;
+    using context.game_context.imgui_state;
+    
+    // @Copypaste from toggle
+    font := *consolas;
+    text_x: float = round(position.x + font.ascender / 2);
+    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+    draw_text(label, .{text_x, text_y}, font, HIGHLIGHT_COLOR);
+}
+
+
+button :: (label: string, position: Vector2, size: Vector2, loc := #caller_location, id := 0) -> bool {
+    using context.game_context;
+    using context.game_context.imgui_state;
+    
+    clicked := false;
+    color := HIGHLIGHT_COLOR;
+
+    if active_widget_exists {
+        if is_active(loc, id) {
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                    active_widget_exists = false;
+                    event_count = 0;
+                    break;
+                }
+            }
+            color = DULL_COLOR;
+        }
+    } else {
+        if inside(position, size, mouse) {
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                    active_widget_exists = true;
+                    active_widget_loc = loc;
+                    active_widget_id = id;
+                    active_widget_state = .{
+                        selected = .BUTTON
+                    };
+                    clicked = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    width := floor(size.y * 0.05);
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad(position, size, color);
+    
+    inner_position := Vector2.{position.x + width, position.y + width};
+    inner_size     := Vector2.{size.x - width * 2, size.y - width * 2};
+    imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
+    imm_flush();
+
+    font := *consolas;
+    text_x: float = round(position.x + size.x / 2 - text_length(label, font) / 2);
+    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+    draw_text(label, .{text_x, text_y}, font, color);
+
+    return clicked;
 }
 
 

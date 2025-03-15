@@ -409,7 +409,6 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 // The user has released all keys.
                 // :AltTab this might not be true on Windows.
                 editor.mode = .IDLE;
-
             }
             
         case .EXTRUDE;

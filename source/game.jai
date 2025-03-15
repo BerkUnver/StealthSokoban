@@ -288,7 +288,14 @@ game_update : Game_Update : (
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         imgui_position := Vector2.{0, INNER_WINDOW_H - 800};
         imgui_size := Vector2.{400, 800};
-        imgui_capturing_input := imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse);
+        imgui_capturing_input := editor.mode == .IDLE && (imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse));
+        
+        // Instead of using different focusing systems for the editor and imgui,
+        // we could have a #caller_location-based focusing system for everything,
+        // and not have to check both the 3d editor and the imgui like we do here.
+        // However, I don't know if this is the clearly better option yet, so I am
+        // going to leave it.
+        //          -berk, 2025 - 3 - 15
 
 
         for input.events {
@@ -339,6 +346,7 @@ game_update : Game_Update : (
                     }
 
                     level_handle_input(*level, *level_arena, it);
+
                 case .EDITOR;
                     if imgui_capturing_input {
                         assert(imgui_state.event_count < imgui_state.events.count);
@@ -773,17 +781,22 @@ game_update : Game_Update : (
 
                 
                 font := *consolas;
-                
                 position := imgui_position;
                 position.y += imgui_size.y;
-                button_height := font.ascender * 2;
-                position.y -= button_height;
-                size := Vector2.{imgui_size.x, button_height};
+                toggle_height := font.ascender * 2;
+                position.y -= toggle_height;
+                size := Vector2.{imgui_size.x, toggle_height};
 
-                button("Test Button", *imgui_state.test_selected, font, position, size);
+                toggle("Test Toggle", *imgui_state.test_toggle, position, size);
             
-                position.y -= get_color_selector_height(imgui_size.x, button_height);
-                color_selector(*imgui_state.test_color, position, size, button_height);
+                position.y -= get_color_selector_height(imgui_size.x, toggle_height);
+                color_selector(*imgui_state.test_color, position, size, toggle_height);
+
+                position.y -= toggle_height;
+                enum_selector("Test Enum", *imgui_state.test_enum, position, size);
+                
+                position.y -= toggle_height;
+                button("Test Button", position, size);
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

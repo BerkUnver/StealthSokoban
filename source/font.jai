@@ -137,3 +137,19 @@ load_font :: (file_name: string) -> Font {
 
     return font;
 }
+
+
+text_length :: (str: string, font: *Font) -> float {
+    length := 0.0;
+    for str {
+        if it == #char " " {
+            length += font.space_advance;
+        } else {
+            glyph := *font.glyphs[it - VALID_ASCII_START];
+            length += glyph.advance;
+        }
+    }
+
+    return length;
+}
+
