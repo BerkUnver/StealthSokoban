@@ -22,7 +22,24 @@ Imgui_State :: struct {
 
 
 Active_Widget_State :: struct {
-    mouse_offset: Vector2;
+    selected: enum {
+        SV;
+        HUE;
+    }
+    union {
+        sv: struct {
+            mouse_offset: Vector2;
+            hue: float;
+            // When we're dragging the cursor around,
+            // if we drag it such that s or v become
+            // 0, the hue also becomes 0 because that's
+            // how the conversion function works.
+            // So we preserve it here.
+        }
+        hue: struct {
+            mouse_offset_x: float;
+        }
+    }
 }
 
 
@@ -135,89 +152,144 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     sample_size := Vector2.{bar_width, bar_height};
 
     
-    cursor: Vector2;
-    hue: float;
+    // Store what we expect the values to be, then reassign them
+    // when we check input if they change.
+    hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
+    sv_cursor: Vector2;
+    hue_cursor_x := hue_position.x + hue_size.x * hue;
+    sv_cursor = Vector2.{
+        lerp(x0, x1, saturation),
+        lerp(y0, y1, value)
+    };
+        
 
     if active_widget_exists && loc == active_widget_loc {
         if loc == active_widget_loc {
-            cursor = mouse + active_widget_state.mouse_offset;
-            clamp(*cursor.x, x0, x1);
-            clamp(*cursor.y, y0, y1);
+            if #complete active_widget_state.selected == {
+                case .SV;
+                    sv_cursor = mouse + active_widget_state.sv.mouse_offset;
+                    clamp(*sv_cursor.x, x0, x1);
+                    clamp(*sv_cursor.y, y0, y1);
 
-            saturation := (cursor.x - x0) / (x1 - x0);
-            value := (cursor.y - y0) / (y1 - y0);
-            
-            hue = rgb_to_hsv(color.x, color.y, color.z);
-            r, g, b := hsv_to_rgb(hue, saturation, value);
+                    saturation = (sv_cursor.x - x0) / (x1 - x0);
+                    value = (sv_cursor.y - y0) / (y1 - y0);
+                    hue = active_widget_state.sv.hue;
+                    hue_cursor_x = hue_position.x + hue_size.x * hue;
+                    
+                    color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
 
-            color.x = r;
-            color.y = g;
-            color.z = b;
+                    for [] Input_Event.{event_count, events.data} {
+                        if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                            active_widget_exists = false;
+                            break;
+                        }
+                    }
 
-            for [] Input_Event.{event_count, events.data} {
-                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
-                    active_widget_exists = false;
-                    break;
-                }
-            }
+                case .HUE;
+                    hue_cursor_x = mouse.x + active_widget_state.hue.mouse_offset_x;
+                    // Hue cannot be equal to 1 so we clamp the cursor slightly lower.
+                    clamp(*hue_cursor_x, hue_position.x, hue_position.x + hue_size.x - 0.0001);
+                    hue = (hue_cursor_x - hue_position.x) / hue_size.x;
+
+                    color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
+                    
+                    for [] Input_Event.{event_count, events.data} {
+                        if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                            active_widget_exists = false;
+                            break;
+                        }
+                    }
+            };
         }
     } else {
-        saturation, value: float;
-        hue, saturation, value = rgb_to_hsv(color.x, color.y, color.z);
-
-        cursor_x := lerp(x0, x1, saturation);
-        cursor_y := lerp(y0, y1, value);
-        cursor = Vector2.{cursor_x, cursor_y};
-        
-        cursor_selection_radius := bar_width * 0.045;
-        cursor_selection_position := Vector2.{
-            cursor.x - cursor_selection_radius,
-            cursor.y - cursor_selection_radius
+        sv_cursor_size := bar_width * 0.045;
+        sv_cursor_position := Vector2.{
+            sv_cursor.x - sv_cursor_size,
+            sv_cursor.y - sv_cursor_size
         };
+
         cursor_selection_size := Vector2.{
-            cursor_selection_radius * 2,
-            cursor_selection_radius * 2
+            sv_cursor_size * 2,
+            sv_cursor_size * 2
         };
 
-        if inside(cursor_selection_position, cursor_selection_size, mouse) {
+        if inside(sv_cursor_position, cursor_selection_size, mouse) {
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && it.down {
                     active_widget_exists = true;
                     active_widget_loc = loc;
                     active_widget_state = .{
-                        mouse_offset = cursor - mouse
+                        selected = .SV,
+                        sv = .{
+                            mouse_offset = sv_cursor - mouse,
+                            hue = hue
+                        }
                     };
                     break;
+                }
+            }
+        } else {
+            hue_cursor_width := bar_width * 0.03;
+            hue_cursor_position := Vector2.{
+                hue_cursor_x - hue_cursor_width / 2,
+                hue_position.y
+            };
+            hue_cursor_size := Vector2.{
+                hue_cursor_width,
+                hue_size.y
+            };
+            
+            if inside(hue_cursor_position, hue_cursor_size, mouse) {
+                for [] Input_Event.{event_count, events.data} {
+                    if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                        active_widget_exists = true;
+                        active_widget_loc = loc;
+                        active_widget_state = .{
+                            selected = .HUE,
+                            hue = .{mouse_offset_x = hue_cursor_x - mouse.x}
+                        };
+                        break;
+                    }
                 }
             }
         }
     }
 
 
-    cursor_offset_big := bar_width * 0.02;
-    cursor_offset_small := bar_width * 0.005;
+    sv_cursor_offset_big := bar_width * 0.02;
+    sv_cursor_offset_small := bar_width * 0.005;
 
-    cursor_hbar_position := Vector2.{
-        cursor.x - cursor_offset_small,
-        cursor.y - cursor_offset_big,
+    sv_cursor_hbar_position := Vector2.{
+        sv_cursor.x - sv_cursor_offset_small,
+        sv_cursor.y - sv_cursor_offset_big,
     };
 
-    cursor_hbar_size := Vector2.{
-        cursor_offset_small * 2,
-        cursor_offset_big * 2,
+    sv_cursor_hbar_size := Vector2.{
+        sv_cursor_offset_small * 2,
+        sv_cursor_offset_big * 2,
     };
 
     
-    cursor_vbar_position := Vector2.{
-        cursor.x - cursor_offset_big,
-        cursor.y - cursor_offset_small,
+    sv_cursor_vbar_position := Vector2.{
+        sv_cursor.x - sv_cursor_offset_big,
+        sv_cursor.y - sv_cursor_offset_small,
     };
 
-    cursor_vbar_size := Vector2.{
-        cursor_offset_big * 2,
-        cursor_offset_small * 2,
+    sv_cursor_vbar_size := Vector2.{
+        sv_cursor_offset_big * 2,
+        sv_cursor_offset_small * 2,
     };
 
+    hue_cursor_bar_width := bar_width * 0.01;
+    hue_cursor_bar_position := Vector2.{
+        hue_cursor_x - hue_cursor_bar_width / 2,
+        hue_position.y
+    };
+
+    hue_cursor_bar_size := Vector2.{
+        hue_cursor_bar_width,
+        hue_size.y
+    };
 
 
     glUseProgram(imm_saturation_value_shader);
@@ -226,19 +298,17 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_quad_with_uvs(sv_position, sv_size);
     imm_flush();
 
-
-    glUseProgram(imm_color_shader);
-    set_uniform("projection", imgui_to_camera);
-    imm_quad(hue_position, hue_size, color.*);
-    imm_quad(sample_position, sample_size, color.*);
-    imm_quad(cursor_hbar_position, cursor_hbar_size, .{1, 1, 1, 1});
-    imm_quad(cursor_vbar_position, cursor_vbar_size, .{1, 1, 1, 1});
-    imm_flush();
-
-    
     glUseProgram(imm_hue_shader);
     set_uniform("projection", imgui_to_camera);
     imm_quad_with_uvs(hue_position, hue_size);
+    imm_flush();
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad(sample_position, sample_size, color.*);
+    imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, .{1, 1, 1, 1});
+    imm_quad(sv_cursor_vbar_position, sv_cursor_vbar_size, .{1, 1, 1, 1});
+    imm_quad(hue_cursor_bar_position, hue_cursor_bar_size, .{1, 1, 1, 1});
     imm_flush();
 }
 
