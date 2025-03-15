@@ -1,10 +1,10 @@
 Level :: struct {
     using types: Entity_Types;
     
-    name: string; @Ignore // The file name
+    name: string; @NoSerialize // The file name
 
     // @TODO: This should be a hash table... probably.
-    entities: [..] *Entity; @Ignore
+    entities: [..] *Entity; @NoSerialize
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
@@ -12,38 +12,38 @@ Level :: struct {
     // metaprogramming to do this but it seems like overkill right now.
 
     
-    level_position: Vector3i; @Ignore
-    level_size: Vector3i; @Ignore
+    level_position: Vector3i; @NoSerialize
+    level_size: Vector3i; @NoSerialize
 
-    enemy_annihilations: [..] Vector3i; @Ignore
-    unused_eids: [..] Entity_Id; @Ignore
+    enemy_annihilations: [..] Vector3i; @NoSerialize
+    unused_eids: [..] Entity_Id; @NoSerialize
 
-    flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; @Ignore
+    flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; @NoSerialize
     
-    camera_mode: Camera_Mode; @Ignore
+    camera_mode: Camera_Mode; @NoSerialize
 
     // These members are only used by the NEAR and FAR camera states.
     // Maybe they should be in the Player struct?
-    camera_focus_old_x: float; @Ignore
-    camera_focus_old_z: float; @Ignore
-    camera_focus_interp := 1.0; @Ignore
+    camera_focus_old_x: float; @NoSerialize
+    camera_focus_old_z: float; @NoSerialize
+    camera_focus_interp := 1.0; @NoSerialize
 
-    camera_pitch_ticks: s8 = 1; @Ignore
-    camera_pitch_interp := 1.0; @Ignore
-    camera_pitch_old: float64; @Ignore
+    camera_pitch_ticks: s8 = 1; @NoSerialize
+    camera_pitch_interp := 1.0; @NoSerialize
+    camera_pitch_old: float64; @NoSerialize
 
-    camera_yaw_target: float64; @Ignore
-    camera_yaw_old: float64; @Ignore
-    camera_yaw_interp := 1.0; @Ignore
+    camera_yaw_target: float64; @NoSerialize
+    camera_yaw_old: float64; @NoSerialize
+    camera_yaw_interp := 1.0; @NoSerialize
 
-    enemy_timer: float; @Ignore
-    dt_modifier := 1.0; @Ignore
+    enemy_timer: float; @NoSerialize
+    dt_modifier := 1.0; @NoSerialize
     
-    doors: [] Entity_Id; @Ignore // Only Door entities should be put in here.
-    collision: [] Entity_Id; @Ignore
-    viewed: [] View_State; @Ignore
-    desired_enemy_moves: [] Desired_Enemy_Move; @Ignore
-    enemy_move_results: [] Enemy_Move_Result; @Ignore
+    doors: [] Entity_Id; @NoSerialize // Only Door entities should be put in here.
+    collision: [] Entity_Id; @NoSerialize
+    viewed: [] View_State; @NoSerialize
+    desired_enemy_moves: [] Desired_Enemy_Move; @NoSerialize
+    enemy_move_results: [] Enemy_Move_Result; @NoSerialize
 
     // These are stored SOA because we don't want to touch these at the same time.
     // @TODO 3d arrays are stored x-major, then z, then y.
@@ -52,12 +52,12 @@ Level :: struct {
     // development period, but may make less sense later.
     // Consider coming back to this.
 
-    view_texture: View_Texture; @Ignore
+    view_texture: View_Texture; @NoSerialize
     
 
     // @Temporary This is very basic, just to get sound to work for now.
-    playing_sound_count: int; @Ignore
-    playing_sounds: [1024] Playing_Sound; @Ignore
+    playing_sound_count: int; @NoSerialize
+    playing_sounds: [1024] Playing_Sound; @NoSerialize
 }
 
 
@@ -67,7 +67,7 @@ CAMERA_MAX_PITCH :: PI / 2;
 
 CAMERA_YAW_TICK_COUNT :: 12;
 
-    SPAWNING_TIME :: 0.2; @Ignore
+    SPAWNING_TIME :: 0.2; @NoSerialize
 
 Camera_Mode :: enum {
     NEAR;
@@ -110,7 +110,7 @@ Player :: struct {
         respawn_pause: struct {
             interp: float;
         }
-    }; @Ignore
+    }; @NoSerialize
     // You need "using vars: ...", otherwise the compiler won't let you put a note here.
 
     COLOR :: Vector4.{1, 1, 1, 1};
@@ -183,11 +183,11 @@ Favored_Direction :: enum u8 {
 Enemy :: struct {
     using #as e: Entity;
 
-    desired_position: Vector3i; @Ignore // Only used when we are updating all the enemies.
-    MOVING_TIME :: 0.1; @Ignore
-    ANNIHILATION_TIME :: 0.15; @Ignore
-    moving_from: Vector3; @Ignore
-    state: Enemy_State; @Ignore
+    desired_position: Vector3i; @NoSerialize // Only used when we are updating all the enemies.
+    MOVING_TIME :: 0.1; @NoSerialize
+    ANNIHILATION_TIME :: 0.15; @NoSerialize
+    moving_from: Vector3; @NoSerialize
+    state: Enemy_State; @NoSerialize
     favored_direction: Favored_Direction;
     facing: Facing;
 }
@@ -210,7 +210,7 @@ Block :: struct {
     filled: [] bool; // :BitArray
     color: Vector4;
     moveable: bool;
-    mesh: Mesh; @Ignore
+    mesh: Mesh; @NoSerialize
     // @TODO Make a bit array data structure for better cache coherency
 }
 
@@ -220,7 +220,7 @@ Door :: struct {
 
     size: Vector3i;
     filled: [] bool; // :BitArray
-    mesh: Mesh; @Ignore
+    mesh: Mesh; @NoSerialize
 
     COLOR :: Vector4.{1, 0.5, 0.5, 1};
 }

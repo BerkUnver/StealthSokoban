@@ -787,13 +787,13 @@ game_update : Game_Update : (
                 position.y -= toggle_height;
                 size := Vector2.{imgui_size.x, toggle_height};
 
-                toggle("Test Toggle", *imgui_state.test_toggle, position, size);
+                imgui_for_value(*imgui_state.test_toggle, position, size);
             
                 position.y -= get_color_selector_height(imgui_size.x, toggle_height);
                 color_selector(*imgui_state.test_color, position, size, toggle_height);
 
                 position.y -= toggle_height;
-                enum_selector("Test Enum", *imgui_state.test_enum, position, size);
+                imgui_for_value(*imgui_state.test_enum, position, size);
                 
                 position.y -= toggle_height;
                 button("Test Button", position, size);

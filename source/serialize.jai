@@ -199,7 +199,7 @@ can_serialize_member :: (member: *Type_Info_Struct_Member, greatest_offset_befor
     if member.offset_in_bytes <= greatest_offset_before_this_member return false; // This is how we detect #place members.
     // Maybe a better idea would be to have :SpecialSerialization code for stuff that uses #place
     // (Vector3, etc) and just assert that this is never true in normal structs.
-    if contains(member.notes, "Ignore") return false;
+    if contains(member.notes, "NoSerialize") return false;
     return true;
 }
 

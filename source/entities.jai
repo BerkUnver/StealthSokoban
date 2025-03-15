@@ -25,8 +25,8 @@ Entity_Type :: enum {
 Entity_Id :: #type,distinct u32; // Literally just an index
 
 Entity :: struct {
-    type: Entity_Type; @Ignore
-    eid: Entity_Id; @Ignore
+    type: Entity_Type; @NoSerialize
+    eid: Entity_Id; @NoSerialize
     position: Vector3i; // As soon as there's an entity without this member,
     // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
 }

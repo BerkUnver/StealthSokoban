@@ -18,8 +18,32 @@ Imgui_State :: struct {
     
     active_widget_exists: bool; 
     active_widget_loc: Source_Code_Location;
-    active_widget_id: int;
+    active_widget_id: u64;
     active_widget_state: Active_Widget_State;
+
+    // Here is how widget ids work for now.
+    // We treat the id as 8 u8s. Whenever you recurse into a widget, pass the id
+    // as (old_id << 8) + new_id. That way, you can recurse up to 8 times on
+    // imgui widget code while still maintaining unique ids for each widget. 
+    // This, of course, has the limitation that you can only can recurse 8 times,
+    // and each widget can only have 256 sub-widgets at most.
+
+    // We also have to make sure the first old_id was not zero because the top of
+    // the "stack" is represented by zeroed-out bits. This is kind of unintitive.
+    // i.e 0x_00_01_00_09_af_c6_04_12
+    //           ^ Top of the stack, 7 widgets have been pushed so far.
+
+    // The correct thing to do in the long term would just to be to have a stack of
+    // ints, and whenever you start drawing a widget, you push new ints to the stack.
+    // I am doing this because it is simpler for now.
+
+    //          -berk, 2025 - 3 - 14
+}
+
+sub_id :: (id: u64, new_id: u64) -> u64 {
+    assert((cast(u64, 1) << (63 - 8)) > id);
+    assert((cast(u64, 1) << 8) > new_id);
+    return (id << 8) + new_id;
 }
 
 
@@ -27,7 +51,7 @@ HIGHLIGHT_COLOR :: Vector4.{1, 1, 1, 1};
 DULL_COLOR :: Vector4.{0.6, 0.6, 0.6, 1};
 BACKGROUND_COLOR :: Vector4.{0, 0, 0, 1};
 
-is_active :: (loc: Source_Code_Location, id: int) -> bool {
+is_active :: (loc: Source_Code_Location, id: u64) -> bool {
     using context.game_context.imgui_state;
     assert(active_widget_exists);
     return active_widget_loc.fully_pathed_filename == loc.fully_pathed_filename
@@ -82,6 +106,7 @@ imgui_init :: () -> Imgui_State {
 }
 
 
+/*
 toggle :: (label: string, selected: *bool, position: Vector2, size: Vector2) {
     using context.game_context;
     using context.game_context.imgui_state;
@@ -128,10 +153,53 @@ toggle :: (label: string, selected: *bool, position: Vector2, size: Vector2) {
     }
 
     imm_flush();
+} */
+
+
+toggle :: (val: *bool, position: Vector2, size: Vector2) {
+    using context.game_context;
+    using context.game_context.imgui_state;
+
+    font := *consolas;
+    
+    outline_outer_width := round(font.ascender * 1.5);
+    outline_outer_size := Vector2.{outline_outer_width, outline_outer_width};
+
+    outline_inner_width := round(font.ascender * 1.3);
+    outline_inner_size := Vector2.{outline_inner_width, outline_inner_width};
+    
+    toggle_center := position + size / 2;
+
+    outline_outer_position := round(toggle_center - outline_outer_size / 2);
+    outline_inner_position := round(toggle_center - outline_inner_size / 2);
+
+    if !active_widget_exists && inside(outline_outer_position, outline_outer_size, mouse) {
+        for [] Input_Event.{event_count, events.data} {
+            if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                val.* = !val.*;
+            }
+        }
+    }
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+
+    imm_quad(outline_outer_position, outline_outer_size, HIGHLIGHT_COLOR);
+    imm_quad(outline_inner_position, outline_inner_size, BACKGROUND_COLOR);
+    imm_flush();
+
+    if val.* {
+        selected_width := round(font.ascender * 0.9);
+        selected_size := Vector2.{selected_width, selected_width};
+        selected_position := round(toggle_center - selected_size / 2);
+        imm_quad(selected_position, selected_size, HIGHLIGHT_COLOR);
+    }
+
+    imm_flush();
 }
 
 
-slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1 := true, loc := #caller_location, id := 0) {
+slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1 := true, loc := #caller_location, id: u64 = 1) {
     using context.game_context;
     using context.game_context.imgui_state;
 
@@ -204,7 +272,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 }
 
 
-color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location, id := 0) {
+color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location, id: u64 = 1) {
     using context.game_context;
     using context.game_context.imgui_state;
 
@@ -274,14 +342,14 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_flush();
 
 
-    slider(*color.w, alpha_position, alpha_size, loc=loc, id=1);
+    slider(*color.w, alpha_position, alpha_size, loc=loc, id=sub_id(id, 0));
 
     glUseProgram(imm_hue_shader);
     set_uniform("projection", imgui_to_camera);
     imm_quad_with_uvs(hue_position, hue_size);
     imm_flush();
 
-    slider(*hue, hue_position, hue_size, loc=loc, id=2);
+    slider(*hue, hue_position, hue_size, loc=loc, id=sub_id(id, 1));
     color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
 
     if active_widget_exists {
@@ -376,6 +444,7 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 }
 
 
+/*
 // Does this need to be a polymorph?
 enum_selector :: (label: string, val: *$T, position: Vector2, size: Vector2, loc := #caller_location) {
     INFO :: type_info(T);
@@ -436,9 +505,69 @@ enum_selector :: (label: string, val: *$T, position: Vector2, size: Vector2, loc
 
     draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
 }
+*/
 
 
-button :: (label: string, position: Vector2, size: Vector2, loc := #caller_location, id := 0) -> bool {
+
+// Does this need to be a polymorph?
+enum_selector :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 1) {
+    INFO :: type_info(T);
+    #run {
+        assert(type_of(INFO) == *Type_Info_Enum);
+        assert(INFO.values.count != 0);
+    }
+
+    using context.game_context;
+    using context.game_context.imgui_state;
+
+    font := *consolas;
+    
+    margin := font.ascender * 0.3;
+    button_height := size.y - margin * 2;
+    
+    right_button_position := Vector2.{
+        position.x + size.x - margin - button_height,
+        position.y + margin
+    };
+
+    left_button_position := Vector2.{
+        right_button_position.x - margin - button_height,
+        right_button_position.y
+    };
+
+    button_size := Vector2.{button_height, button_height};
+
+    member_index := -1;
+    for INFO.values {
+        if it == xx val.* {
+            member_index = it_index;
+            break;
+        }
+    }
+    if member_index == -1 member_index = 0;
+    // Default to the first value if for some reason the enum got set to some other value.
+
+    if button("<",  left_button_position, button_size, loc=loc, id=sub_id(id, 0)) {
+        member_index = (member_index - 1 + INFO.values.count) % INFO.values.count;
+    }
+
+    if button(">", right_button_position, button_size, loc=loc, id=sub_id(id, 1)) {
+        member_index = (member_index + 1) % INFO.values.count;
+    }
+
+    val.* = xx INFO.values[member_index];
+
+    member_text := INFO.names[member_index];
+
+    member_center_x := (position.x + left_button_position.x) / 2;
+    text_x: float = round(member_center_x - text_length(member_text, font) / 2);
+    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+
+    draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
+}
+
+
+button :: (label: string, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 1) -> bool {
     using context.game_context;
     using context.game_context.imgui_state;
     
@@ -501,3 +630,32 @@ get_color_selector_height :: (width: float, bar_height: float) -> float {
     return margin + bar_height + margin + saturation_value_selector_height + margin + bar_height + margin + bar_height + margin;
 }
 
+
+imgui_for_value :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 1) {
+    INFO :: type_info(T);
+    #if INFO.type == {
+        case .STRUCT;
+            greatest_offset := -1;
+            for * info.members {
+                // The members visible in the editor are strictly a subset of what we can 
+                // serialize... for now.
+                if !can_serialize_member(it, greatest_offset) continue;
+                if contains(it.notes, "NoEditor") continue;
+            }
+        case .BOOL;
+            toggle(val, position, size);
+        case .ENUM;
+            enum_selector(val, position, size, loc, id);
+
+        case .INTEGER;
+        case .FLOAT;
+        case .STRING;
+        case .ARRAY;
+            // @TODO: Implement editors for these
+            #assert false;
+
+        case;
+            // These should never be exposed to the editor.
+            #assert false;
+    }
+}
