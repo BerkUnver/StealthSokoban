@@ -285,13 +285,6 @@ init_from_info :: (info: *Type_Info_Struct, ptr: *void) {
 }
 
 
-operator == :: (a: Source_Code_Location, b: Source_Code_Location) -> bool {
-    return a.fully_pathed_filename == b.fully_pathed_filename
-        && a.line_number           == b.line_number
-        && a.character_number      == b.character_number;
-}
-
-
 // Code for hsv_to_rgb and rgb_to_hsv taken from here:
 // https://axonflux.com/handy-rgb-to-hsl-and-rgb-to-hsv-color-model-c
 

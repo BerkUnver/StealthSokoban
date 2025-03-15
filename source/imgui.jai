@@ -17,14 +17,31 @@ Imgui_State :: struct {
     
     active_widget_exists: bool; 
     active_widget_loc: Source_Code_Location;
+    active_widget_id: int;
     active_widget_state: Active_Widget_State;
+}
+
+
+Active_Widget_Location :: struct {
+    loc: Source_Code_Location;
+    id: int;
+}
+
+
+is_active :: (loc: Source_Code_Location, id: int) -> bool {
+    using context.game_context.imgui_state;
+    assert(active_widget_exists);
+    return active_widget_loc.fully_pathed_filename == loc.fully_pathed_filename
+        && active_widget_loc.line_number           == loc.line_number
+        && active_widget_loc.character_number      == loc.character_number
+        && active_widget_id                        == id;
 }
 
 
 Active_Widget_State :: struct {
     selected: enum {
         SV;
-        HUE;
+        SLIDER;
     }
     union {
         sv: struct {
@@ -36,7 +53,7 @@ Active_Widget_State :: struct {
             // how the conversion function works.
             // So we preserve it here.
         }
-        hue: struct {
+        slider: struct {
             mouse_offset_x: float;
         }
     }
@@ -119,7 +136,80 @@ button :: (label: string, selected: *bool, font: *Font, position: Vector2, size:
 }
 
 
-color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location) {
+slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1 := true, loc := #caller_location, id := 0) {
+    using context.game_context;
+    using context.game_context.imgui_state;
+
+    cursor_x := position.x + size.x * value.*;
+    if active_widget_exists {
+        if is_active(loc, id) {
+            using active_widget_state;
+            assert(selected == .SLIDER);
+
+            end_x := position.x + size.x;
+
+            epsilon := 0.0;
+            if strictly_less_than_1 epsilon = 0.001;
+
+            cursor_x = clamp(mouse.x + active_widget_state.slider.mouse_offset_x, position.x, end_x - epsilon);
+            value.* = (cursor_x - position.x) / (end_x - position.x);
+
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                    active_widget_exists = false;
+                    event_count = 0;
+                    // We clear the input events because this widget consumed it.
+                    // We don't want another widget acting on the input event that deactivated
+                    // this widget.
+                }
+            }
+        }
+    } else {
+        cursor_width := size.x * 0.01;
+        cursor_position := Vector2.{
+            cursor_x - cursor_width / 2,
+            position.y
+        };
+        cursor_size := Vector2.{
+            cursor_width,
+            size.y
+        };
+
+        if inside(cursor_position, cursor_size, mouse) {
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                    active_widget_exists = true;
+                    active_widget_loc = loc;
+                    active_widget_id = id;
+                    active_widget_state = .{
+                        selected = .SLIDER,
+                        slider = .{mouse_offset_x = cursor_x - mouse.x}
+                    };
+                }
+            }
+        }
+    }
+
+
+    bar_width := size.x * 0.01;
+    bar_position := Vector2.{
+        cursor_x - bar_width / 2,
+        position.y
+    };
+
+    bar_size := Vector2.{
+        bar_width,
+        size.y
+    };
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad(bar_position, bar_size, .{1, 1, 1, 1});
+    imm_flush();
+}
+
+
+color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location, id := 0) {
     using context.game_context;
     using context.game_context.imgui_state;
 
@@ -131,6 +221,11 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 
     bar_width := size.x - 2 * margin;
     
+    alpha_position := head;
+    alpha_size := Vector2.{bar_width, bar_height};
+    
+    head.y += bar_height + margin;
+
     hue_position := head;
     hue_size := Vector2.{bar_width, bar_height};
 
@@ -141,10 +236,10 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     sv_position := head;
     sv_size := Vector2.{bar_width, bar_width};
 
-    x0 := sv_position.x;
-    y0 := sv_position.y;
-    x1 := sv_position.x + sv_size.x;
-    y1 := sv_position.y + sv_size.y;
+    sv_x0 := sv_position.x;
+    sv_y0 := sv_position.y;
+    sv_x1 := sv_position.x + sv_size.x;
+    sv_y1 := sv_position.y + sv_size.y;
 
     head.y += sv_size.y + margin;
 
@@ -155,51 +250,64 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     // Store what we expect the values to be, then reassign them
     // when we check input if they change.
     hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
-    sv_cursor: Vector2;
-    hue_cursor_x := hue_position.x + hue_size.x * hue;
-    sv_cursor = Vector2.{
-        lerp(x0, x1, saturation),
-        lerp(y0, y1, value)
+    if active_widget_exists && is_active(loc, id) {
+        // @Hack make sure we use the backed-up hue if the
+        // saturation-value box is selected.
+        assert(active_widget_state.selected == .SV);
+        hue = active_widget_state.sv.hue;
+    }
+
+    sv_cursor := Vector2.{
+        lerp(sv_x0, sv_x1, saturation),
+        lerp(sv_y0, sv_y1, value)
     };
-        
 
-    if active_widget_exists && loc == active_widget_loc {
-        if loc == active_widget_loc {
-            if #complete active_widget_state.selected == {
-                case .SV;
-                    sv_cursor = mouse + active_widget_state.sv.mouse_offset;
-                    clamp(*sv_cursor.x, x0, x1);
-                    clamp(*sv_cursor.y, y0, y1);
+    
+    // @TODO: Draw a little alpha checkerboard texture underneath this.
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    alpha_x0 := alpha_position.x;
+    alpha_y0 := alpha_position.y;
+    alpha_x1 := alpha_x0 + alpha_size.x;
+    alpha_y1 := alpha_y0 + alpha_size.y;
+    imm_vertex(.{alpha_x0, alpha_y0, 0}, .{1, 1, 1, 1});
+    imm_vertex(.{alpha_x1, alpha_y0, 0}, .{0, 0, 0, 1});
+    imm_vertex(.{alpha_x1, alpha_y1, 0}, .{0, 0, 0, 1});
+    imm_vertex(.{alpha_x0, alpha_y0, 0}, .{1, 1, 1, 1});
+    imm_vertex(.{alpha_x1, alpha_y1, 0}, .{0, 0, 0, 1});
+    imm_vertex(.{alpha_x0, alpha_y1, 0}, .{1, 1, 1, 1});
+    imm_flush();
 
-                    saturation = (sv_cursor.x - x0) / (x1 - x0);
-                    value = (sv_cursor.y - y0) / (y1 - y0);
-                    hue = active_widget_state.sv.hue;
-                    hue_cursor_x = hue_position.x + hue_size.x * hue;
-                    
-                    color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
 
-                    for [] Input_Event.{event_count, events.data} {
-                        if it.key == .MOUSE_LEFT_BUTTON && !it.down {
-                            active_widget_exists = false;
-                            break;
-                        }
-                    }
+    slider(*color.w, alpha_position, alpha_size, loc=loc, id=1);
 
-                case .HUE;
-                    hue_cursor_x = mouse.x + active_widget_state.hue.mouse_offset_x;
-                    // Hue cannot be equal to 1 so we clamp the cursor slightly lower.
-                    clamp(*hue_cursor_x, hue_position.x, hue_position.x + hue_size.x - 0.0001);
-                    hue = (hue_cursor_x - hue_position.x) / hue_size.x;
+    glUseProgram(imm_hue_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad_with_uvs(hue_position, hue_size);
+    imm_flush();
 
-                    color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
-                    
-                    for [] Input_Event.{event_count, events.data} {
-                        if it.key == .MOUSE_LEFT_BUTTON && !it.down {
-                            active_widget_exists = false;
-                            break;
-                        }
-                    }
-            };
+    slider(*hue, hue_position, hue_size, loc=loc, id=2);
+    color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
+
+    if active_widget_exists {
+        if is_active(loc, id) {
+            assert(active_widget_state.selected == .SV);
+            sv_cursor = mouse + active_widget_state.sv.mouse_offset;
+            clamp(*sv_cursor.x, sv_x0, sv_x1);
+            clamp(*sv_cursor.y, sv_y0, sv_y1);
+
+            saturation = (sv_cursor.x - sv_x0) / (sv_x1 - sv_x0);
+            value = (sv_cursor.y - sv_y0) / (sv_y1 - sv_y0);
+            
+            color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
+
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                    active_widget_exists = false;
+                    event_count = 0;
+                    break;
+                }
+            }
         }
     } else {
         sv_cursor_size := bar_width * 0.045;
@@ -212,11 +320,12 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
             sv_cursor_size * 2,
             sv_cursor_size * 2
         };
-
+        
         if inside(sv_cursor_position, cursor_selection_size, mouse) {
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && it.down {
                     active_widget_exists = true;
+                    active_widget_id = id;
                     active_widget_loc = loc;
                     active_widget_state = .{
                         selected = .SV,
@@ -226,30 +335,6 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
                         }
                     };
                     break;
-                }
-            }
-        } else {
-            hue_cursor_width := bar_width * 0.03;
-            hue_cursor_position := Vector2.{
-                hue_cursor_x - hue_cursor_width / 2,
-                hue_position.y
-            };
-            hue_cursor_size := Vector2.{
-                hue_cursor_width,
-                hue_size.y
-            };
-            
-            if inside(hue_cursor_position, hue_cursor_size, mouse) {
-                for [] Input_Event.{event_count, events.data} {
-                    if it.key == .MOUSE_LEFT_BUTTON && it.down {
-                        active_widget_exists = true;
-                        active_widget_loc = loc;
-                        active_widget_state = .{
-                            selected = .HUE,
-                            hue = .{mouse_offset_x = hue_cursor_x - mouse.x}
-                        };
-                        break;
-                    }
                 }
             }
         }
@@ -280,17 +365,6 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
         sv_cursor_offset_small * 2,
     };
 
-    hue_cursor_bar_width := bar_width * 0.01;
-    hue_cursor_bar_position := Vector2.{
-        hue_cursor_x - hue_cursor_bar_width / 2,
-        hue_position.y
-    };
-
-    hue_cursor_bar_size := Vector2.{
-        hue_cursor_bar_width,
-        hue_size.y
-    };
-
 
     glUseProgram(imm_saturation_value_shader);
     set_uniform("projection", imgui_to_camera);
@@ -298,17 +372,11 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_quad_with_uvs(sv_position, sv_size);
     imm_flush();
 
-    glUseProgram(imm_hue_shader);
-    set_uniform("projection", imgui_to_camera);
-    imm_quad_with_uvs(hue_position, hue_size);
-    imm_flush();
-
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
     imm_quad(sample_position, sample_size, color.*);
     imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, .{1, 1, 1, 1});
     imm_quad(sv_cursor_vbar_position, sv_cursor_vbar_size, .{1, 1, 1, 1});
-    imm_quad(hue_cursor_bar_position, hue_cursor_bar_size, .{1, 1, 1, 1});
     imm_flush();
 }
 
@@ -318,48 +386,5 @@ get_color_selector_height :: (width: float, bar_height: float) -> float {
 
     saturation_value_selector_height := width - margin * 2;
     return margin + bar_height + margin + saturation_value_selector_height + margin + bar_height + margin + bar_height + margin;
-}
-
-
-draw_text :: (str: string, position: Vector2, font: *Font) {
-    using context.game_context;
-
-    glUseProgram(imm_text_shader);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, font.bitmap);
-    
-    set_uniform("projection", imgui_state.imgui_to_camera);
-    set_uniform("bitmap", cast(s32, 0));
-    
-    x := position.x;
-    y := position.y;
-
-    COLOR :: Vector4.{1,1,1,1};
-
-    for str {
-        if it == #char " " { // ASCII 32
-            x += font.space_advance;
-        } else {
-            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
-            using glyph := font.glyphs[it - VALID_ASCII_START];
-            x0 := x + bearing.x;
-            y0 := y + bearing.y;
-            x1 := x0 + size.x;
-            y1 := y0 + size.y;
-
-            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
-            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, COLOR);
-            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
-
-            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
-            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
-            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, COLOR);
-
-            x += advance;
-        }
-    }
-
-    imm_flush();
 }
 

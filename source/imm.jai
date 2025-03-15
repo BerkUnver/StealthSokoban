@@ -260,3 +260,48 @@ draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: Matrix4
 
     imm_flush();
 }
+
+
+draw_text :: (str: string, position: Vector2, font: *Font) {
+    using context.game_context;
+
+    glUseProgram(imm_text_shader);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, font.bitmap);
+    
+    set_uniform("projection", imgui_state.imgui_to_camera);
+    set_uniform("bitmap", cast(s32, 0));
+    
+    x := position.x;
+    y := position.y;
+
+    COLOR :: Vector4.{1,1,1,1};
+
+    for str {
+        if it == #char " " { // ASCII 32
+            x += font.space_advance;
+        } else {
+            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
+            using glyph := font.glyphs[it - VALID_ASCII_START];
+            x0 := x + bearing.x;
+            y0 := y + bearing.y;
+            x1 := x0 + size.x;
+            y1 := y0 + size.y;
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
+            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, COLOR);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, COLOR);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, COLOR);
+            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, COLOR);
+
+            x += advance;
+        }
+    }
+
+    imm_flush();
+}
+
+
