@@ -262,7 +262,7 @@ draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: Matrix4
 }
 
 
-draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) {
+draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> end_x: float {
     using context.game_context;
 
     glUseProgram(imm_text_shader);
@@ -300,4 +300,6 @@ draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) {
     }
 
     imm_flush();
+
+    return x;
 }

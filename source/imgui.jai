@@ -186,7 +186,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
     }
 
 
-    bar_width := size.x * 0.01;
+    bar_width := size.y * 0.1;
     bar_position := Vector2.{
         cursor_x - bar_width / 2,
         position.y
@@ -376,18 +376,65 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 }
 
 
+// Does this need to be a polymorph?
 enum_selector :: (label: string, val: *$T, position: Vector2, size: Vector2, loc := #caller_location) {
     INFO :: type_info(T);
-    #assert type_of(INFO) == *Type_Info_Enum;
+    #run {
+        assert(type_of(INFO) == *Type_Info_Enum);
+        assert(INFO.values.count != 0);
+    }
 
     using context.game_context;
     using context.game_context.imgui_state;
     
     // @Copypaste from toggle
     font := *consolas;
-    text_x: float = round(position.x + font.ascender / 2);
+    label_x: float = round(position.x + font.ascender / 2);
+    label_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+    label_end_x := draw_text(label, .{label_x, label_y}, font, HIGHLIGHT_COLOR);
+    
+    margin := font.ascender * 0.3;
+    button_height := size.y - margin * 2;
+    
+    right_button_position := Vector2.{
+        position.x + size.x - margin - button_height,
+        position.y + margin
+    };
+
+    left_button_position := Vector2.{
+        right_button_position.x - margin - button_height,
+        right_button_position.y
+    };
+
+    button_size := Vector2.{button_height, button_height};
+
+    member_index := -1;
+    for INFO.values {
+        if it == xx val.* {
+            member_index = it_index;
+            break;
+        }
+    }
+    if member_index == -1 member_index = 0;
+    // Default to the first value if for some reason the enum got set to some other value.
+
+    if button("<",  left_button_position, button_size, loc=loc, id=0) {
+        member_index = (member_index - 1 + INFO.values.count) % INFO.values.count;
+    }
+
+    if button(">", right_button_position, button_size, loc=loc, id=1) {
+        member_index = (member_index + 1) % INFO.values.count;
+    }
+
+    val.* = xx INFO.values[member_index];
+
+    member_text := INFO.names[member_index];
+
+    member_center_x := (label_end_x + left_button_position.x) / 2;
+    text_x: float = round(member_center_x - text_length(member_text, font) / 2);
     text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
-    draw_text(label, .{text_x, text_y}, font, HIGHLIGHT_COLOR);
+
+    draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
 }
 
 
@@ -426,7 +473,9 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
         }
     }
 
-    width := floor(size.y * 0.05);
+    font := *consolas;
+
+    width := floor(font.ascender * 0.05);
 
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
@@ -437,7 +486,6 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
     imm_flush();
 
-    font := *consolas;
     text_x: float = round(position.x + size.x / 2 - text_length(label, font) / 2);
     text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
     draw_text(label, .{text_x, text_y}, font, color);
