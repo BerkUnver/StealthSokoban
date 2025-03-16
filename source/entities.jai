@@ -160,7 +160,7 @@ as :: (e: *Entity, $T: Type) -> *T {
 }
 
 
-get_entity :: inline (using level: *Level, eid: Entity_Id) -> *Entity {
+get_entity :: (using level: *Level, eid: Entity_Id) -> *Entity {
     assert(eid != 0);
     return entities[eid];
 }

@@ -192,8 +192,6 @@ Enemy :: struct {
     state: Enemy_State; @NoSerialize
     favored_direction: Favored_Direction;
     facing: Facing;
-    should_be_pushed: bool; @NoSerialize
-    // Only used when we check if pushing blocks should have also pushed an enemy
 }
 
 
@@ -1087,172 +1085,88 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             set_player_position(level, new_player_position);
             play_sound(level, *footstep);
         }
-    } else if player.state == .GROUND { 
+    } else if player.state == .GROUND {
+        mark := get_mark(*frame_arena);
+        defer restore_mark(*frame_arena, mark);
+        next_collision := alloc_view(
+
+
+
+
+
         pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
         if !pushed_in_bounds return;
 
-        pushed_block: *Block;
+
+        moving_block_data: [2] *Block;
+        moving_blocks: [..] *Block;
+        moving_blocks.allocated = 2;
+        moving_blocks.data = moving_block_data.data;
+
         pushed_eid := collision[pushed_index];
         if pushed_eid {
-            pushed_entity := get_entity(level, pushed_eid);
-            maybe_pushed_block := as(pushed_entity, Block);
-            if maybe_pushed_block {
-                if !maybe_pushed_block.moveable return;
-                pushed_block = maybe_pushed_block;
+            e := get_entity(level, pushed_eid);
+
+            if e.type == .Enemy {
+                set_player_position(level, new_player_position);
+                set_state(player, .DEAD);
+                return;
+            }
+
+            if e.type == .Block {
+                pushed_block := as(e, Block);
+                if !pushed_block.moveable return;
+                append_no_resize(*moving_blocks, pushed_block);
             }
         }
 
-        pulled_block: *Block;
+
+
+        
         if flags & .PULLING {
             pulled_in_bounds, pulled_index := get_3d_index(player.position - push_direction, level_position, level_size);
             if pulled_in_bounds {
                 pulled_eid := collision[pulled_index];
                 if pulled_eid {
-                    pulled_entity := get_entity(level, pulled_eid);
-                    maybe_pulled_block := as(pulled_entity, Block);
-                    if maybe_pulled_block && maybe_pulled_block.moveable {
-                        pulled_block = maybe_pulled_block;
+                    pulled_block := as(get_entity(level, pulled_eid), Block);
+                    if pulled_block 
+                    && pulled_block.moveable
+                    && !contains(*moving_blocks, pulled_block) {
+                        append_no_resize(*moving_blocks, pulled_block);
                     }
                 }
             }
         }
-
-        if pushed_block && pushed_block == pulled_block {
-            pulled_block = null;
-        }
-
-
-        for * _Enemy {
-            it.should_be_pushed = false;
-        }
-
-        push_enemies :: (block: *Block) -> bool #expand {
-            offset := block.position - level_position;
-            
-            // @CompilerBug It's not letting be return from within the for_expansion...
-            // Maybe returning things from inside of for_expansions in macroes is bugged.
-            succeeded := true;
-
-            for :iterate_vector3i block.size {
-                if !block.filled[it_index] continue;
-
-                next := it + push_direction;
-
-                in_bounds, index := get_3d_index(next, block.size);
-                if in_bounds && block.filled[index] continue;
-
-                in_bounds, index = get_3d_index(next + offset, level_size);
-                if !in_bounds {
-                    succeeded = false;
-                    break;
-                }
-
-                eid := collision[index];
-                if eid {
-                    e := get_entity(level, eid);
-                    if e.type == {
-                        case .Enemy;
-                            as(e, Enemy).should_be_pushed = true;
-                        case .Block;
-                            assert(e != block);
-                            succeeded = false;
-                            break;
-                            // This will have to change if we add multipush
-                        case; assert(false);
-                    }
-                }
-            }
-            return succeeded;
-        }
-
-        if pushed_block {
-            if !push_enemies(pushed_block) return;
-        }
-
-        if pulled_block {
-            if !push_enemies(pulled_block) return;
-        }
-
-
-        // Now, begin populating the collision map and look for overlaps.
-
-        mark := get_mark(*frame_arena);
-        defer restore_mark(*frame_arena, mark);
-        next_collision := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Entity_Id);
-
-        for * block: _Block {
-            offset := block.position - level_position;
-            if block == pushed_block || block == pulled_block {
-                assert(block.moveable);
-                offset += push_direction;
-            }
-
-            for :iterate_vector3i block.size {
-                if !block.filled[it_index] continue;
-                in_bounds, index := get_3d_index(it + offset, level_size);
-                
-                // We did early-out checks above that should guarantee both of these to be true.
-                assert(in_bounds);
-                assert(next_collision[index] == 0);
-
-                next_collision[index] = block.eid;
-            }
-        }
-
         
-        for * _Enemy {
-            position := it.position;
-            if it.should_be_pushed {
-                position += push_direction;
-            }
+        for moving_blocks {
+            remove_block_from_collision(level, it);
+        }
 
-            in_bounds, index := get_3d_index(position, level_position, level_size);
+        for moving_blocks {
+            it.position += push_direction;
+            if add_block_to_collision(level, it) != .OK {
 
-            if !in_bounds {
+                // Undo everything we just tried to do
+                it.position -= push_direction;
+                for #v2 < 0..it_index-1 {
+                    block := moving_blocks[it];
+                    remove_block_from_collision(level, block);
+                    block.position -= push_direction;
+                }
+
+                for moving_blocks {
+                    assert(add_block_to_collision(level, it) == .OK);
+                }
+
                 return;
             }
-
-            eid := next_collision[index];
-            if eid == 0 {
-                next_collision[index] = it.eid;
-                continue;
-            }
-
-            e := get_entity(level, eid);
-            if e.type == {
-                case .Enemy;
-                    // Mutual annihilation
-                case .Block;
-                    return;
-            }
-        }
-        
-        // If we got this far, that means the move succeeded. Update everything to reflect it.
-
-        // @Speed just have two separate allocations that we swap back and forth?
-        memcpy(collision.data, next_collision.data, byte_count(collision));
-
-        for * _Block {
-            if it == pushed_block || it == pulled_block {
-                it.position += push_direction;
-            }
         }
 
-        for * _Enemy {
-            if it.should_be_pushed {
-                it.position += push_direction;
-            }
-            // @TODO: Handle mutual enemy annhilation!
-        }
 
-        colliding_eid := collision[pushed_index];
-        if colliding_eid {
-            e := get_entity(level, colliding_eid);
-            if e.type == .Enemy {
-                delete_entity(level, e.eid);
-                collision[pushed_index] = 0;
-                set_state(player, .DEAD);
-            }
+        if is_colliding_below(level, new_player_position) {
+            set_state(player, .GROUND);
+        } else {
+            set_state(player, .FALLING);
         }
 
         set_player_position(level, new_player_position);

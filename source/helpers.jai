@@ -151,8 +151,10 @@ clear :: inline (arena: *Memory_Arena) {
 
 alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
     assert(count >= 0);
+    new_current := arena.current + count;
+    assert(new_current <= arena.count);
     ret := arena.data + arena.current;
-    arena.current += count;
+    arena.current = new_current;
     if zero_init memset(ret, 0, count);
     return ret;
 }
