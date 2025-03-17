@@ -17,7 +17,7 @@ MAX_INPUT_EVENTS_PER_TICK :: 64;
 
 // @TODO: See how much of this memory is actually used!
 GAME_MEMORY_SIZE     :: 1 << 24; 
-LEVEL_ARENA_SIZE     :: 1 << 24;
+LEVEL_ARENA_SIZE     :: 1 << 27;
 PERMANENT_ARENA_SIZE :: 1 << 22;
 FRAME_ARENA_SIZE     :: 1 << 22;
 

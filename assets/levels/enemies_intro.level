@@ -1,0 +1,173 @@
+types
+	_Block 2[
+		e
+			position
+				x -5
+				z -6
+				;
+			;
+		size
+			x 11
+			y 2
+			z 8
+			;
+		filled 176[ 0 0 1 1 1 1 1 1 1 0 0 0 0 1 1 1 1 1 1 1 0 0 0 1 1 1 1 1 1 1 1 0 0 0 1 1 1 1 1 1 1 1 0 0 0 1 1 1 1 1 1 1 1 0 0 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1 1 1 1 1 0 0 0 0 1 1 1 1 1 1 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0 0 ]
+		color
+			x 1
+			y 1
+			z 1
+			w 1
+			;
+		;
+		e
+			position
+				x -2
+				y 1
+				z -6
+				;
+			;
+		size
+			x 1
+			y 1
+			z 1
+			;
+		filled 1[ 1 ]
+		color
+			z 1
+			w 1
+			;
+		moveable 1
+		;
+	]
+	_Door 2[
+		e
+			position
+				x 3
+				y 1
+				z -1
+				;
+			;
+		size
+			x 1
+			y 1
+			z 1
+			;
+		filled 1[ 1 ]
+		;
+		e
+			position
+				x -3
+				y 1
+				z -1
+				;
+			;
+		size
+			x 1
+			y 1
+			z 1
+			;
+		filled 1[ 1 ]
+		;
+	]
+	_Enemy 10[
+		e
+			position
+				x -4
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x -3
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x -2
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x -1
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x 1
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x 2
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x 3
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x 4
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x -5
+				y 1
+				z -1
+				;
+			;
+		;
+	]
+	_Enemy_Spawner 1[
+		e
+			position
+				x -5
+				y 1
+				z -1
+				;
+			;
+		;
+	]
+	_Entrance 1[
+		e
+			position
+				y 1
+				z -4
+				;
+			;
+		;
+	]
+	;
+;

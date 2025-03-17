@@ -82,8 +82,8 @@ Camera_Mode :: enum {
 
 
 Player_State :: enum {
-    SPAWNING;
     GROUND;
+    SPAWNING;
     FALLING;
     DEAD;
     DEAD_PAUSE;
@@ -537,11 +537,6 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
         position = .{2, 0, -1},
     };
     
-    _Player = alloc_array(arena, 1, Player);
-    _Player[0] = .{
-        position = _Entrance[0].position,
-    };
-    
     _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
     _Enemy_Spawner[0] = .{
         position = .{2, 0, 2},
@@ -788,6 +783,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 
             player := make_entity(level, Player, arena);
             player.position = _Entrance[0].position;
+            set_state(player, .SPAWNING);
 
             return true;
     }
@@ -861,12 +857,12 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
 get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
     scale: Matrix4;
     if #complete player.state == {
-        case .SPAWNING;
-            weight := player.spawning.interp;
-            scale = make_scale_matrix4(.{weight, weight, weight});
         case .GROUND; #through;
         case .FALLING;
             scale = Matrix4_Identity;
+        case .SPAWNING;
+            weight := player.spawning.interp;
+            scale = make_scale_matrix4(.{weight, weight, weight});
         case .DEAD;
             weight := 1 - player.dead.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});

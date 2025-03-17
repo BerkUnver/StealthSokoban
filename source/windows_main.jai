@@ -5,6 +5,11 @@
 #load "shared.jai";
 
 
+#program_export NvOptimusEnablement: u32 = 1;
+#program_export AmdPowerXpressRequestHighPerformance: s32 = 1;
+
+
+
 windows: struct {
     stdout: HANDLE;
     input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;

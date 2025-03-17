@@ -108,7 +108,8 @@ LEVELS :: string.[
     "levels/comb2.level",
     "levels/chocolate_bar.level",
     "levels/bridge.level",
-    "levels/prison_escape.level"
+    "levels/prison_escape.level",
+    "levels/enemies_intro.level"
 ];
 
 
