@@ -15,7 +15,7 @@ Level :: struct {
     level_position: Vector3i; @NoSerialize
     level_size: Vector3i; @NoSerialize
 
-    enemy_annihilations: [..] Vector3i; @NoSerialize
+    mutual_annihilations: [..] Mutual_Annihilation; @NoSerialize
     unused_eids: [..] Entity_Id; @NoSerialize
 
     flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; @NoSerialize
@@ -43,7 +43,9 @@ Level :: struct {
     collision: [] Entity_Id; @NoSerialize
     viewed: [] View_State; @NoSerialize
 
-
+    
+    // @Cleanup maybe how we do an enemy update should look more like how we do a
+    // player movement update.
     desired_enemy_moves: [] Desired_Enemy_Move; @NoSerialize
     enemy_move_results: [] Enemy_Move_Result; @NoSerialize
 
@@ -185,15 +187,22 @@ Favored_Direction :: enum u8 {
 Enemy :: struct {
     using #as e: Entity;
 
-    desired_position: Vector3i; @NoSerialize // Only used when we are updating all the enemies.
-    MOVING_TIME :: 0.1; @NoSerialize
-    ANNIHILATION_TIME :: 0.15; @NoSerialize
+    MOVING_TIME :: 0.1;
+
     moving_from: Vector3; @NoSerialize
     state: Enemy_State; @NoSerialize
     favored_direction: Favored_Direction;
     facing: Facing;
-    should_be_pushed: bool; @NoSerialize
+
     // Only used when we check if pushing blocks should have also pushed an enemy
+    should_be_pushed: bool; @NoSerialize
+    mutual_annihilation_state: enum u8 {
+        ALIVE;
+        PRIMARY;
+        SECONDARY;
+    }; @NoSerialize
+
+    desired_position: Vector3i; @NoSerialize // Only used when we are updating all the enemies.
 }
 
 
@@ -249,6 +258,12 @@ Desired_Enemy_Move :: enum u8 {
 Enemy_Move_Result :: enum u8 {
     NOTHING;
     MUTUAL_ANNIHILATION_HAPPENED;
+}
+
+
+Mutual_Annihilation :: struct {
+    position: Vector3i;
+    interp: float;
 }
 
 
@@ -724,7 +739,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             collision = alloc_view(arena, size_1d, Entity_Id);
             enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
             desired_enemy_moves = alloc_view(arena, size_1d, Desired_Enemy_Move);
-            enemy_annihilations = reserve_array(arena, size_1d / 2, Vector3i);
+            mutual_annihilations = reserve_array(arena, size_1d / 2 + 1, Mutual_Annihilation);
 
             for * _Block {  
                 assert(add_block_to_collision(level, it) == .OK);
@@ -1088,6 +1103,16 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             play_sound(level, *footstep);
         }
     } else if player.state == .GROUND { 
+        player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
+        assert(player_in_bounds);
+        if collision[player_index] != 0 {
+            // :PlayerInsideBlock
+            // This could happen if you were in debug mode, then went inside of a block, then
+            // came out of debug mode.
+            assert(get_entity(level, collision[player_index]).type == .Block);
+            return;
+        }
+
         pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
         if !pushed_in_bounds return;
 
@@ -1124,6 +1149,7 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
 
         for * _Enemy {
             it.should_be_pushed = false;
+            it.mutual_annihilation_state = .ALIVE;
         }
 
         push_enemies :: (block: *Block) -> bool #expand {
@@ -1221,7 +1247,9 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             e := get_entity(level, eid);
             if e.type == {
                 case .Enemy;
-                    // Mutual annihilation
+                    enemy := as(e, Enemy);
+                    enemy.mutual_annihilation_state = .PRIMARY;
+                    it.mutual_annihilation_state = .SECONDARY;
                 case .Block;
                     return;
             }
@@ -1242,21 +1270,48 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
             if it.should_be_pushed {
                 it.position += push_direction;
             }
-            // @TODO: Handle mutual enemy annhilation!
         }
 
-        colliding_eid := collision[pushed_index];
-        if colliding_eid {
-            e := get_entity(level, colliding_eid);
-            if e.type == .Enemy {
-                delete_entity(level, e.eid);
-                collision[pushed_index] = 0;
-                set_state(player, .DEAD);
+        for * _Enemy {
+            if #complete it.mutual_annihilation_state == {
+                case .ALIVE;
+                case .PRIMARY;
+                    in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                    assert(collision[index] == it.eid);
+                    append_no_resize(*mutual_annihilations, .{position = it.position});
+                    collision[index] = 0;
+                    delete_entity(level, it.eid);
+                    it_index -= 1; // :DeleteEntityInLoop
+                case .SECONDARY;
+                    delete_entity(level, it.eid);
+                    it_index -= 1; // :DeleteEntityInLoop
             }
         }
 
         set_player_position(level, new_player_position);
         play_sound(level, *footstep);
+
+        colliding_eid := collision[pushed_index];
+        if colliding_eid {
+            // There's no way you could walk into mutually annhilating enemies while
+            // you're pushing a block, because the only way a mutual annihilation could
+            // happen is if an enemy is pushed by the block you're pushing into another
+            // enemy. There is no way that can happen in the square directly in front
+            // of you. As such, we don't need to check for that.
+
+            e := get_entity(level, colliding_eid);
+            if e.type == .Enemy {
+                append_no_resize(*mutual_annihilations, .{position = player.position});
+                delete_entity(level, e.eid);
+                collision[pushed_index] = 0;
+                set_state(player, .DEAD);
+                return;
+            }
+        }
+
+        if !is_colliding_below(level, new_player_position) {
+            set_state(player, .FALLING);
+        }
     }
     
     // @TODO: Add a fade effect when you exit the level.
@@ -1581,10 +1636,11 @@ level_update :: (using level: *Level, dt: float) {
                 case .MUTUAL_ANNIHILATION;
                     if enemy_move_results[index] == .NOTHING {
                         enemy_move_results[index] = .MUTUAL_ANNIHILATION_HAPPENED;
-                        append_no_resize(*enemy_annihilations).* = it.desired_position;
+                        append_no_resize(*mutual_annihilations, .{position = it.desired_position});
                     }
                     delete_entity(level, it.eid);
-                    it_index -= 1; // @Hack so the loop respects that we've deleted the entity.
+                    it_index -= 1; // :DeleteEntityInLoop
+                    // so the loop respects that we've deleted the entity.
             }
         }
 
@@ -1606,7 +1662,7 @@ level_update :: (using level: *Level, dt: float) {
                     assert(enemy_in_bounds);
                     collision[enemy_index] = 0;
                     delete_entity(level, e.eid);
-                    append_no_resize(*enemy_annihilations).* = it.position;
+                    append_no_resize(*mutual_annihilations, .{position = it.position});
                 } else if e.type != .Block {
                     should_spawn_enemy = true;
                 }
@@ -1637,15 +1693,23 @@ level_update :: (using level: *Level, dt: float) {
                     assert(player_in_bounds);
                     if collision[player_index] {
                         e := get_entity(level, collision[player_index]);
-                        assert(e.type == .Enemy);
-                        collision[player_index] = 0;
-                        delete_entity(level, e.eid);
-                        append_no_resize(*enemy_annihilations).* = player.position;
+                        if e.type == {
+                            case .Enemy;
+                                collision[player_index] = 0;
+                                delete_entity(level, e.eid);
+                                append_no_resize(*mutual_annihilations, .{position = player.position});
 
 
-                        // Is it bad that we're killing the player here, then doing the player update later in this procedure?
-                        // My general policy is only one state update per frame to prevent bugs.
-                        set_state(player, .DEAD);
+                                // Is it bad that we're killing the player here, then doing the player update later in this procedure?
+                                // My general policy is only one state update per frame to prevent bugs.
+                                set_state(player, .DEAD);
+                            
+                            case .Block;
+                                // :PlayerInsideBlock
+
+                            case;
+                                assert(false);
+                        }
                     }
 
                 case .DEAD; #through;
@@ -1667,11 +1731,12 @@ level_update :: (using level: *Level, dt: float) {
         }
     }
 
-    if enemy_timer >= Enemy.ANNIHILATION_TIME {
-        enemy_annihilations.count = 0;
+    for * mutual_annihilations {
+        TIME :: 0.15;
+        it.interp += dt / TIME;
+        if it.interp > 1 remove it;
     }
 
-    
     FALLING_SPEED :: 4.0;
     if #complete player.state == {
         case .SPAWNING;
