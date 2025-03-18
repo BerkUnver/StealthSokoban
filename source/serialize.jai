@@ -227,26 +227,6 @@ deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserial
 
 
 deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory_Arena) -> Deserialization_Error {
-    assign_int :: (info: *Type_Info_Integer, ptr: *void, value: s64) {
-        // @Incomplete: We should do our own bounds checking and have an appropriate failure
-        // message, jai native bounds check failure just crashes the program.
-        if info.runtime_size == {
-            case 1;
-                if info.signed cast(*s8, ptr).* = xx value;
-                else           cast(*u8, ptr).* = xx value;
-            case 2;
-                if info.signed cast(*s16, ptr).* = xx value;
-                else           cast(*u16, ptr).* = xx value;
-            case 4;
-                if info.signed cast(*s32, ptr).* = xx value;
-                else           cast(*u32, ptr).* = xx value;
-            case 8;
-                if info.signed cast(*s64, ptr).* = xx value;
-                else           cast(*u64, ptr).* = xx value;
-            case; assert(false);
-        }
-    }
-
     if info.type == {
         case .BOOL;
             token := get_token(lexer);

@@ -787,6 +787,7 @@ game_update : Game_Update : (
                 position.y += imgui_size.y;
                 toggle_height := font.ascender * 2;
                 position.y -= toggle_height;
+
                 size := Vector2.{imgui_size.x, toggle_height};
 
                 imgui_for_value(*imgui_state.test_toggle, position, size);
@@ -799,6 +800,10 @@ game_update : Game_Update : (
                 
                 position.y -= toggle_height;
                 button("Test Button", position, size);
+
+                position.y -= toggle_height;
+                imgui_for_value(*imgui_state.test_struct, position, size);
+
         }
 
         // This is code to do a visualization of a raycast. I'm keeping this around for future reference.

@@ -12,6 +12,7 @@ Imgui_State :: struct {
     test_toggle: bool;
     test_color := Vector4.{0.8, 0.5, 0.2, 1};
     test_enum: enum { ZERO; ONE; TWO; }
+    test_struct: struct {a: bool; b: bool;}
     events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
     event_count: int;
     mouse: Vector2;
@@ -33,12 +34,12 @@ Imgui_State :: struct {
     //          -berk, 2025 - 3 - 17
 
     current_widget_loc: Source_Code_Location;
-    current_widget_id: [64] u64;
+    current_widget_id: [64] u64; // :DynamicArray
     current_widget_id_count: int;
 
     active_widget_exists: bool;
     active_widget_loc: Source_Code_Location;
-    active_widget_id: [64] u64;
+    active_widget_id: [64] u64; // :DynamicArray
     active_widget_id_count: int;
     active_widget_data: Active_Widget_Data;
 }
@@ -165,56 +166,6 @@ imgui_init :: () -> Imgui_State {
 }
 
 
-/*
-toggle :: (label: string, selected: *bool, position: Vector2, size: Vector2) {
-    using context.game_context;
-    using context.game_context.imgui_state;
-    
-    font := *consolas;
-
-    text_x: float = round(position.x + font.ascender / 2);
-    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
-    draw_text(label, .{text_x, text_y}, font, HIGHLIGHT_COLOR);
-
-    outline_outer_width := round(font.ascender * 1.5);
-    outline_outer_size := Vector2.{outline_outer_width, outline_outer_width};
-
-    outline_inner_width := round(font.ascender * 1.3);
-    outline_inner_size := Vector2.{outline_inner_width, outline_inner_width};
-
-    toggle_center_x := position.x + size.x - size.y / 2 - font.ascender / 2;
-    toggle_center_y := position.y + size.y / 2;
-    toggle_center := Vector2.{toggle_center_x, toggle_center_y};
-
-    outline_outer_position := round(toggle_center - outline_outer_size / 2);
-    outline_inner_position := round(toggle_center - outline_inner_size / 2);
-
-    glUseProgram(imm_color_shader);
-    set_uniform("projection", imgui_to_camera);
-
-    imm_quad(outline_outer_position, outline_outer_size, HIGHLIGHT_COLOR);
-    imm_quad(outline_inner_position, outline_inner_size, BACKGROUND_COLOR);
-
-
-    if !active_widget_exists && inside(outline_outer_position, outline_outer_size, mouse) {
-        for [] Input_Event.{event_count, events.data} {
-            if it.key == .MOUSE_LEFT_BUTTON && it.down {
-                selected.* = !selected.*;
-            }
-        }
-    }
-
-    if selected.* {
-        selected_width := round(font.ascender * 0.9);
-        selected_size := Vector2.{selected_width, selected_width};
-        selected_position := round(toggle_center - selected_size / 2);
-        imm_quad(selected_position, selected_size, HIGHLIGHT_COLOR);
-    }
-
-    imm_flush();
-} */
-
-
 toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
     using context.game_context;
     using context.game_context.imgui_state;
@@ -292,7 +243,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
             }
 
         case .NO_ONE;
-            cursor_width := size.x * 0.01;
+            cursor_width := size.x * 0.04;
             cursor_position := Vector2.{
                 cursor_x - cursor_width / 2,
                 position.y
@@ -501,79 +452,14 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 }
 
 
-/*
-// Does this need to be a polymorph?
-enum_selector :: (label: string, val: *$T, position: Vector2, size: Vector2, loc := #caller_location) {
-    INFO :: type_info(T);
-    #run {
-        assert(type_of(INFO) == *Type_Info_Enum);
-        assert(INFO.values.count != 0);
-    }
-
-    using context.game_context;
-    using context.game_context.imgui_state;
-    
-    // @Copypaste from toggle
-    font := *consolas;
-    label_x: float = round(position.x + font.ascender / 2);
-    label_y: float = round(position.y + size.y / 2 - font.ascender / 2);
-    label_end_x := draw_text(label, .{label_x, label_y}, font, HIGHLIGHT_COLOR);
-    
-    margin := font.ascender * 0.3;
-    button_height := size.y - margin * 2;
-    
-    right_button_position := Vector2.{
-        position.x + size.x - margin - button_height,
-        position.y + margin
-    };
-
-    left_button_position := Vector2.{
-        right_button_position.x - margin - button_height,
-        right_button_position.y
-    };
-
-    button_size := Vector2.{button_height, button_height};
-
-    member_index := -1;
-    for INFO.values {
-        if it == xx val.* {
-            member_index = it_index;
-            break;
-        }
-    }
-    if member_index == -1 member_index = 0;
-    // Default to the first value if for some reason the enum got set to some other value.
-
-    if button("<",  left_button_position, button_size, loc=loc, id=0) {
-        member_index = (member_index - 1 + INFO.values.count) % INFO.values.count;
-    }
-
-    if button(">", right_button_position, button_size, loc=loc, id=1) {
-        member_index = (member_index + 1) % INFO.values.count;
-    }
-
-    val.* = xx INFO.values[member_index];
-
-    member_text := INFO.names[member_index];
-
-    member_center_x := (label_end_x + left_button_position.x) / 2;
-    text_x: float = round(member_center_x - text_length(member_text, font) / 2);
-    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
-
-    draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
-}
-*/
-
-
-
-// Does this need to be a polymorph?
 enum_selector :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
     INFO :: type_info(T);
-    #run {
-        assert(type_of(INFO) == *Type_Info_Enum);
-        assert(INFO.values.count != 0);
-    }
+    #assert type_of(INFO) == *Type_Info_Enum;
+    enum_selector(val, INFO, position, size, loc, id);
+}
 
+
+enum_selector :: (val: *void, info: *Type_Info_Enum, position: Vector2, size: Vector2, loc: Source_Code_Location, id: u64) {
     using context.game_context;
     using context.game_context.imgui_state;
 
@@ -596,9 +482,11 @@ enum_selector :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_loc
 
     button_size := Vector2.{button_height, button_height};
 
+    val_s64 := expand_to_s64(val, info.internal_type);
+
     member_index := -1;
-    for INFO.values {
-        if it == xx val.* {
+    for info.values {
+        if it == val_s64 {
             member_index = it_index;
             break;
         }
@@ -607,16 +495,17 @@ enum_selector :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_loc
     // Default to the first value if for some reason the enum got set to some other value.
 
     if button("<",  left_button_position, button_size, loc=loc, id=0) {
-        member_index = (member_index - 1 + INFO.values.count) % INFO.values.count;
+        member_index = (member_index - 1 + info.values.count) % info.values.count;
     }
 
     if button(">", right_button_position, button_size, loc=loc, 1) {
-        member_index = (member_index + 1) % INFO.values.count;
+        member_index = (member_index + 1) % info.values.count;
     }
+    
+    assign_int(info.internal_type, val, info.values[member_index]);
 
-    val.* = xx INFO.values[member_index];
 
-    member_text := INFO.names[member_index];
+    member_text := info.names[member_index];
 
     member_center_x := (position.x + left_button_position.x) / 2;
     text_x: float = round(member_center_x - text_length(member_text, font) / 2);
@@ -690,31 +579,65 @@ get_color_selector_height :: (width: float, bar_height: float) -> float {
 }
 
 
-imgui_for_value :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
-    INFO :: type_info(T);
-    #if INFO.type == {
+imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) {
+    imgui_for_value(val, type_info(T), position, field_size, loc, id);
+}
+
+
+imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, loc: Source_Code_Location, id: u64) {
+    using context.game_context;
+    using context.game_context.imgui_state;
+    scope_widget(loc, id);
+
+    font := *consolas;
+    margin := font.ascender * 0.2;
+    indent := font.ascender * 4;
+
+    if info.type == {
         case .STRUCT;
+            struct_info := cast(*Type_Info_Struct, info);
             greatest_offset := -1;
-            for * info.members {
+            y := position.y;
+            for * struct_info.members {
                 // The members visible in the editor are strictly a subset of what we can 
                 // serialize... for now.
                 if !can_serialize_member(it, greatest_offset) continue;
-                if contains(it.notes, "NoEditor") continue;
+                greatest_offset = it.offset_in_bytes;
+                if contains(it.notes, "NoEditor") continue; // @Speed!
+                
+                label_x := round(position.x + margin);
+                label_y := round(y + field_size.y / 2 - font.ascender / 2);
+
+                value_x := draw_text(it.name, .{label_x, label_y}, font, HIGHLIGHT_COLOR);
+                value_y := y;
+                
+                value_position := Vector2.{value_x, value_y};
+                value_size := field_size;
+
+                if it.type.type == .STRUCT {
+                    value_position.y += field_size.y;
+                    value_position.x += indent;
+                    value_size.x -= indent;
+                }
+                
+                imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, loc, xx it_index);
+
+                y += field_size.y;
             }
         case .BOOL;
-            toggle(val, position, size);
+            toggle(val, position, field_size, loc);
         case .ENUM;
-            enum_selector(val, position, size, loc, id);
-
-        case .INTEGER;
-        case .FLOAT;
-        case .STRING;
+            enum_info := cast(*Type_Info_Enum, info);
+            enum_selector(val, enum_info, position, field_size, loc, 0);
+        case .INTEGER; #through;
+        case .FLOAT; #through;
+        case .STRING; #through;
         case .ARRAY;
             // @TODO: Implement editors for these
-            #assert false;
+            assert(false);
 
         case;
             // These should never be exposed to the editor.
-            #assert false;
+            assert(false);
     }
 }

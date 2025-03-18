@@ -140,25 +140,27 @@ print_string :: (using sb: *String_Builder, str: string) {
 }
 
 
+expand_to_s64 :: (value: *void, info: *Type_Info) -> s64 {
+    assert(info != type_info(u64));
+
+    check :: (T: Type) #expand {
+        if info == type_info(T) `return xx cast(*T, value).*;
+    }
+
+    check(s8);
+    check(u8);
+    check(s16);
+    check(u16);
+    check(s32);
+    check(u32);
+    check(s64);
+
+    assert(false);
+    return 0;
+}
+
 print :: (using sb: *String_Builder, s: string, args: ..Any) {
     arg_index := 0;
-    
-    expand_to_s64 :: (value: *void, info: *Type_Info) -> s64 {
-        check :: (T: Type) #expand {
-            if `info == type_info(T) `return xx cast(*T, `value).*;
-        }
-
-        check(s8);
-        check(u8);
-        check(s16);
-        check(u16);
-        check(s32);
-        check(u32);
-        check(s64);
-
-        assert(false);
-        return 0;
-    }
 
     for 0..s.count-1 {
         if s[it] == #char "%" {
