@@ -12,6 +12,7 @@ Editor_Mode :: enum {
 }
 
 
+// @TODO: Maybe this should just be put in the level struct. This is per-level editor state.
 Editor :: struct {
     mode: Editor_Mode;
 

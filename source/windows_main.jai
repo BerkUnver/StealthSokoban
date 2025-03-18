@@ -74,6 +74,8 @@ main :: () {
                         key = #char "=";
                     } else if keycode == VK_OEM_MINUS {
                         key = #char "-";
+                    } else if keycode == VK_TAB {
+                        key = .TAB;    
                     // @TODO: Properly handle left and right alts, shifts, and ctrls.
                     } else if keycode == VK_SHIFT {
                         key = .SHIFT;

@@ -85,6 +85,7 @@ Game :: struct {
     level: Level;
     editor: Editor;
     editor_level_index: int;
+    editor_imgui_disabled: bool;
     game_level_index: int;
     level_arena: Memory_Arena;
 
@@ -289,7 +290,6 @@ game_update : Game_Update : (
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         imgui_position := Vector2.{0, INNER_WINDOW_H - 800};
         imgui_size := Vector2.{400, 800};
-        imgui_capturing_input := editor.mode == .IDLE && (imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse));
         
         // Instead of using different focusing systems for the editor and imgui,
         // we could have a #caller_location-based focusing system for everything,
@@ -349,10 +349,20 @@ game_update : Game_Update : (
                     level_handle_input(*level, *level_arena, it);
 
                 case .EDITOR;
+                    imgui_capturing_input := 
+                        !editor_imgui_disabled
+                     && editor.mode == .IDLE 
+                     && (imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse));
+
                     if imgui_capturing_input {
                         assert(imgui_state.event_count < imgui_state.events.count);
                         imgui_state.events[imgui_state.event_count] = it;
                         imgui_state.event_count += 1;
+                        continue;
+                    }
+
+                    if it.key == .TAB && it.down {
+                        editor_imgui_disabled = !editor_imgui_disabled;
                         continue;
                     }
 
@@ -772,37 +782,39 @@ game_update : Game_Update : (
                     imm_flush();
                 }
 
-
-                glDisable(GL_DEPTH_TEST);
-                glDisable(GL_CULL_FACE);
-
-                glUseProgram(imm_color_shader);
-                set_uniform("projection", imgui_state.imgui_to_camera);
-                imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
-                imm_flush();
-
                 
-                font := *consolas;
-                position := imgui_position;
-                position.y += imgui_size.y;
-                toggle_height := font.ascender * 2;
-                position.y -= toggle_height;
+                if !editor_imgui_disabled {
+                    glDisable(GL_DEPTH_TEST);
+                    glDisable(GL_CULL_FACE);
 
-                size := Vector2.{imgui_size.x, toggle_height};
+                    glUseProgram(imm_color_shader);
+                    set_uniform("projection", imgui_state.imgui_to_camera);
+                    imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
+                    imm_flush();
 
-                imgui_for_value(*imgui_state.test_toggle, position, size);
-            
-                position.y -= get_color_selector_height(imgui_size.x, toggle_height);
-                color_selector(*imgui_state.test_color, position, size, toggle_height);
+                    
+                    font := *consolas;
+                    position := imgui_position;
+                    position.y += imgui_size.y;
+                    toggle_height := font.ascender * 2;
+                    position.y -= toggle_height;
 
-                position.y -= toggle_height;
-                imgui_for_value(*imgui_state.test_enum, position, size);
+                    size := Vector2.{imgui_size.x, toggle_height};
+
+                    imgui_for_value(*imgui_state.test_toggle, position, size);
                 
-                position.y -= toggle_height;
-                button("Test Button", position, size);
+                    position.y -= get_color_selector_height(imgui_size.x, toggle_height);
+                    color_selector(*imgui_state.test_color, position, size, toggle_height);
 
-                position.y -= toggle_height;
-                imgui_for_value(*imgui_state.test_struct, position, size);
+                    position.y -= toggle_height;
+                    imgui_for_value(*imgui_state.test_enum, position, size);
+                    
+                    position.y -= toggle_height;
+                    button("Test Button", position, size);
+
+                    position.y -= toggle_height;
+                    imgui_for_value(*imgui_state.test_struct, position, size);
+                }
 
         }
 
