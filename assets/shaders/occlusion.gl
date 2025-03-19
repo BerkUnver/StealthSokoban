@@ -1,7 +1,7 @@
 // Mostly @Copypasta from shaders\color.gl
 
 #ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
+layout(location=LOC_POSITION) in vec3 vertex_position;
 #else
 layout(location=0) out vec4 fragment_color;
 #endif

@@ -1,12 +1,14 @@
 #ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=1) in vec2 vertex_uv;
-layout(location=2) in ivec3 vertex_viewed_offset;
+layout(location=LOC_POSITION)      in vec3 vertex_position;
+layout(location=LOC_UV)            in vec2 vertex_uv;
+layout(location=LOC_VIEWED_OFFSET) in ivec3 vertex_viewed_offset;
+layout(location=LOC_OUTLINE_UV)    in int vertex_is_on_edge; // Booleans
 #else
 layout(location=0) out vec4 fragment_color;
 #endif
 
 uniform sampler2D bitmap;
+uniform sampler2D outline_bitmap;
 uniform usamplerBuffer viewed;
 uniform ivec3 viewed_size;
 uniform ivec3 viewed_position;
@@ -15,6 +17,7 @@ uniform vec4 color;
 
 OUTIN vec2 fragment_uv;
 OUTIN float fragment_brightness;
+OUTIN vec2 fragment_outline_uv;
 
 
 // @Speed figure out how to optimize branching
@@ -41,9 +44,14 @@ void main() {
         gl_Position = projection * vec4(vertex_position, 1.0);
     } else {
         gl_Position = vec4(0, 0, -2, 1);
+        return;
     }
 #else
-    vec4 regular_color = color * texture(bitmap, fragment_uv);
-    fragment_color = vec4(regular_color.rgb * fragment_brightness, regular_color.a);
+    vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
+    vec4 bitmap_color = texture(bitmap, fragment_uv);
+    
+    vec4 combined_color = vec4(mix(outline_color.xyz, bitmap_color.xyz, outline_color.a), bitmap_color.a);
+    vec4 tinted_color = color * combined_color;
+    fragment_color = vec4(tinted_color.rgb * fragment_brightness, tinted_color.a);
 #endif
 }

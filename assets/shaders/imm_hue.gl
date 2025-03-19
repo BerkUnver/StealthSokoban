@@ -1,6 +1,6 @@
 #ifdef VERTEX_SHADER
-layout(location=0) in vec3 vertex_position;
-layout(location=1) in vec2 vertex_uv;
+layout(location=LOC_POSITION) in vec3 vertex_position;
+layout(location=LOC_UV)       in vec2 vertex_uv;
 #else
 layout(location=0) out vec4 fragment_color;
 #endif

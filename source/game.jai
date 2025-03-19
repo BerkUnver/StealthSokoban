@@ -1,5 +1,6 @@
 #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
 #import "freetype-2.12.1";
+#import "stb_image";
 
 #load "gl.jai";
 #load "shared.jai";
@@ -213,6 +214,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         
         // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
         f := cast(u8, 255);
+        /*
         bitmap_data := u8.[ 
             0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 
             0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
@@ -231,14 +233,9 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
             0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
             0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0
         ];
+        */
 
-        glGenTextures(1, *gridlike_bitmap);
-        assert(gridlike_bitmap != 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, gridlike_bitmap);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE, *bitmap_data[0]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gridlike_bitmap = load_bitmap("gridlike.tga");
 
         enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
         enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0, 0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0, 0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);

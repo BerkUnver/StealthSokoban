@@ -31,15 +31,15 @@ Cube_Vertex :: enum {
 // I don't know enough about rendering to know if this has @Speed considerations, and, quite frankly,
 // this isn't something that is appropriate for me to be thinking about in this stage of the project.
 
-// @Volatile Make sure this matches the layout locations in shaders. Possibly we can make a
-// corresponding enum / macros for shaders once shader including is working.
-
 //          -berk, 2025 - 2 - 9
+
+// @Volatile :LayoutLocation
 Layout_Location :: enum {
     POSITION;
     UV;
     VIEWED_OFFSET;
     COLOR;
+    OUTLINE_UV;
 }
 
 
@@ -186,6 +186,7 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 Block_Vertex :: struct {
     position: Vector3;
     uv: Vector2;
+    outline_uv: Vector2;
     viewed_offset: Vector3i;
 }
 
@@ -243,6 +244,13 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
     return vertex_positions;
 }
+
+
+/*
+make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
+
+}
+*/
 
 
 make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) -> Mesh {      
@@ -369,6 +377,45 @@ draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
 }
 
 
+load_bitmap :: (file_name: string) -> GLuint {
+    using context.game_context;
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+
+    success, str := read_file(file_name, *frame_arena);
+    if !success {
+        log(.ERROR, "Failed to load the file for bitmap \"%\"\n", file_name);
+        assert(false);
+    }
+    
+    w, h, channels: s32;
+    data := stbi_load_from_memory(str.data, xx str.count, *w, *h, *channels, 0);
+    defer stbi_image_free(data);
+    assert(channels == 4);
+
+    bitmap: GLuint;
+    glGenTextures(1, *bitmap);
+    glBindTexture(GL_TEXTURE_2D, bitmap);
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA8,
+        xx w,
+        xx h,
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        data
+    );
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    return bitmap;
+}
+
+
 load_shader :: (file_name: string, prefix := "") -> GLuint {
     using context.game_context;
     
@@ -378,7 +425,7 @@ load_shader :: (file_name: string, prefix := "") -> GLuint {
     success, str := read_file(file_name, *frame_arena);
     if !success {
         log(.ERROR, "Failed to load the file for shader \"%\"\n", file_name);
-        return 0;
+        assert(false);
     }
 
     return load_shader(file_name, str, prefix);
