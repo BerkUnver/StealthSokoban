@@ -188,6 +188,8 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         imm_state = imm_init();
         imgui_state = imgui_init();
 
+        stbi_set_flip_vertically_on_load(1);
+
         imm_color_shader = load_shader("shaders/imm_color.gl");
         imm_text_shader = load_shader("shaders/imm_text.gl");
         imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
@@ -553,12 +555,12 @@ game_update : Game_Update : (
 
                         if !in_bounds {
                             if hidden || a_gridlike_is_here {
-                                for 0..5 imm_vertex(origin + cube_vertices[xx face + it], .{0,0,0,1});
+                                for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], .{0,0,0,1});
                             }
                         } else {
                             if hidden && !a_gridlike_is_here && viewed[index] & .SEEN != 0 {
                                 if !is_a_gridlike_at(*level, index) {
-                                    for 0..5 imm_vertex(origin + cube_vertices[xx face + it], .{0,0,0,1});
+                                    for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], .{0,0,0,1});
                                 }
                             }
                         }

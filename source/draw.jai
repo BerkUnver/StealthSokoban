@@ -43,7 +43,7 @@ Layout_Location :: enum {
 }
 
 
-cube_vertices : [Cube_Vertex.COUNT] Vector3 : .[
+CUBE_VERTICES : [Cube_Vertex.COUNT] Vector3 : .[
     // Front face
     .{0, 0, 0},
     .{1, 0, 0},
@@ -94,7 +94,7 @@ cube_vertices : [Cube_Vertex.COUNT] Vector3 : .[
 ];
 
 
-cube_uvs : [Cube_Vertex.COUNT] Vector2 : .[
+CUBE_UVS : [Cube_Vertex.COUNT] Vector2 : .[
     .{0, 0},
     .{1, 0},
     .{1, 1},
@@ -147,7 +147,7 @@ cube_uvs : [Cube_Vertex.COUNT] Vector2 : .[
 make_cuboid :: (vertices: [] Vector3, begin: Vector3, end: Vector3) -> [] Vector3 { 
     size := end - begin;
     for 0..35 {
-        vertices[it] = begin + cube_vertices[it] * size;
+        vertices[it] = begin + CUBE_VERTICES[it] * size;
     }
     return slice(vertices, 36);
 }
@@ -186,11 +186,12 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 Block_Vertex :: struct {
     position: Vector3;
     uv: Vector2;
-    outline_uv: Vector2;
     viewed_offset: Vector3i;
+    outline_uv: Vector2;
 }
 
 
+/*
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
     
@@ -203,18 +204,14 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
         if !filled[it_index] continue;
         
         origin := to_vector3(it);
-
-        position: Vector3i;
-        success: bool;
-        index: s64;
         
         check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
-            success, index = get_3d_index(position, size);
+            success, index := get_3d_index(position, size);
             if !success || !filled[index] {
                 for 0..5 {
                     append(*vertices, *frame_arena).* = .{
-                       position = origin + cube_vertices[xx face + it],
-                       uv = cube_uvs[xx face + it],
+                       position = origin + CUBE_VERTICES[xx face + it],
+                       uv = CUBE_UVS[xx face + it],
                        viewed_offset = position,
                     };
                 }
@@ -241,16 +238,114 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
     return vertex_positions;
 }
+*/
 
 
-/*
+// Which side of the square is the line on?
+Gridlike_UV :: enum_flags {
+    XP; // X-positive
+    YP; // Y-positive
+    XN; // X-negative
+    YN; // Y-negative
+}
+
+
+GRIDLIKE_UVS : [3][2] Gridlike_UV : .[
+    .[
+        .XP | .YP | .XN | .YN,
+        .XP | .XN
+    ],
+    .[
+        .XP | .YP | .XN,
+        .XP
+    ],
+    .[
+        .XP | .YP,
+        0
+    ]
+];
+
+
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
 
     mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_anrea, mark);
+    defer restore_mark(*frame_arena, mark);
+
+    vertices: [..] Block_Vertex;
+
+    for :iterate_vector3i size {
+        if !filled[it_index] continue;
+
+        success: bool;
+        index: int;
+
+        success, index = get_3d_index(.{it.x, it.y + 1, it.z}, size);
+        if success && filled[index] continue;
+
+        occupied: Gridlike_UV;
+
+        success, index = get_3d_index(.{it.x + 1, it.y, it.z}, size);
+        if success && filled[index] occupied |= .XP;
+
+        success, index = get_3d_index(.{it.x - 1, it.y, it.z}, size);
+        if success && filled[index] occupied |= .XN;
+
+        success, index = get_3d_index(.{it.x, it.y, it.z + 1}, size);
+        if success && filled[index] occupied |= .YP;
+
+        success, index = get_3d_index(.{it.x, it.y, it.z - 1}, size);
+        if success && filled[index] occupied |= .YN;
+
+        found := false;
+        outline_uv: Vector2;
+        
+        for rotation: 0..3 {
+            occupied <<= 1;
+            occupied |= occupied >> 4;
+            occupied &= ~(1 << 4);
+
+            for y_row, y: GRIDLIKE_UVS {
+                for val, x: y_row {
+                    if val == occupied {
+                        found = true;
+                        outline_uv = .{
+                            cast(float, x) / cast(float, y_row.count),
+                            cast(float, y) / cast(float, GRIDLIKE_UVS.count)
+                        };
+                        break rotation;
+                    }
+                }
+            }
+        }
+
+        origin := to_vector3(it);
+
+        for i: 0..5 {
+            index := xx Cube_Vertex.Y_POSITIVE + i;
+            append(*vertices, *frame_arena).* = .{
+                position = origin + CUBE_VERTICES[index],
+                uv = CUBE_UVS[index],
+                viewed_offset = .{it.x + 1, it.y, it.z},
+                outline_uv = outline_uv + CUBE_UVS[index] / Vector2.{2, 3}
+            };
+        }
+
+        assert(found);
+    }
+
+    vertex_positions := alloc_view(arena, vertices.count, Vector3);
+
+    for * vertices {
+        vertex_positions[it_index] = it.position;
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
+
+
+    return vertex_positions;
 }
-*/
 
 
 make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) -> Mesh {      
@@ -274,6 +369,9 @@ make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Are
 
     glEnableVertexAttribArray(xx VIEWED_OFFSET);
     glVertexAttribIPointer(xx VIEWED_OFFSET, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
+
+    glEnableVertexAttribArray(xx OUTLINE_UV);
+    glVertexAttribPointer(xx OUTLINE_UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).outline_uv);
 
 
 

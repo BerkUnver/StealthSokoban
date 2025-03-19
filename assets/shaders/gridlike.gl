@@ -2,7 +2,7 @@
 layout(location=LOC_POSITION)      in vec3 vertex_position;
 layout(location=LOC_UV)            in vec2 vertex_uv;
 layout(location=LOC_VIEWED_OFFSET) in ivec3 vertex_viewed_offset;
-layout(location=LOC_OUTLINE_UV)    in int vertex_is_on_edge; // Booleans
+layout(location=LOC_OUTLINE_UV)    in vec2 vertex_outline_uv;
 #else
 layout(location=0) out vec4 fragment_color;
 #endif
@@ -57,7 +57,7 @@ void main() {
     gl_Position = projection * vec4(vertex_position, 1.0);
 #endif
     fragment_uv = vertex_uv;
-    fragment_outline_uv = vertex_uv;
+    fragment_outline_uv = vertex_outline_uv;
 #else
     vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
     vec4 bitmap_color = texture(bitmap, fragment_uv);

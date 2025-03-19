@@ -143,7 +143,7 @@ imm_quad_with_uvs :: (position: Vector2, size: Vector2) {
 imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
     size := end - begin;
     for 0..35 {
-        imm_vertex(begin + cube_vertices[it] * size, color);
+        imm_vertex(begin + CUBE_VERTICES[it] * size, color);
     }
 }
 
@@ -151,7 +151,7 @@ imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
 imm_cuboid_with_uvs :: (begin: Vector3, end: Vector3, color: Vector4) {
     size := end - begin;
     for 0..35 {
-        imm_vertex(begin + cube_vertices[it] * size, cube_uvs[it], color);
+        imm_vertex(begin + CUBE_VERTICES[it] * size, CUBE_UVS[it], color);
     }
 }
 
