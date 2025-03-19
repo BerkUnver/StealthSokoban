@@ -50,15 +50,16 @@ Game_Context :: struct {
         imm_text_shader: GLuint;
         imm_saturation_value_shader: GLuint;
         imm_hue_shader: GLuint;
-        gridlike_shader: GLuint;
+        game_gridlike_shader: GLuint;
+        editor_gridlike_shader: GLuint;
         color_shader: GLuint;
         wireframe_shader: GLuint;
         color_and_bitmap_shader: GLuint;
         item_shader: GLuint;
         unviewed_color_item_shader: GLuint;
         occlusion_shader: GLuint;
-        texture_and_color_shader: GLuint;
         gridlike_bitmap: GLuint;
+        gridlike_outline_bitmap: GLuint;
 
         consolas: Font;
 
@@ -191,51 +192,21 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         imm_text_shader = load_shader("shaders/imm_text.gl");
         imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
         imm_hue_shader = load_shader("shaders/imm_hue.gl");
-        gridlike_shader = load_shader("shaders/gridlike.gl");
+        game_gridlike_shader = load_shader("shaders/gridlike.gl", "#define GAME\n");
+        editor_gridlike_shader = load_shader("shaders/gridlike.gl");
         color_shader = load_shader("shaders/color.gl");
         wireframe_shader = load_shader("shaders/wireframe.gl");
         color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
         item_shader = load_shader("shaders/item.gl");
         unviewed_color_item_shader = load_shader("shaders/item.gl", "#define UNVIEWED_COLOR\n");
         occlusion_shader = load_shader("shaders/occlusion.gl");
-        texture_and_color_shader = load_shader("shaders/texture_and_color.gl");
 
         consolas = load_font("consolas.ttf");
 
         footstep = load_wav("footstep.wav", *permanent_arena);
 
-        //
-        // Now that the game_context is initted, we can init the game.
-        //
-
-        using game_memory;
-        using game_memory.game;
-        level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
-        
-        // @TODO: Get actual bitmap loading to work, this is just temporary for testing.
-        f := cast(u8, 255);
-        /*
-        bitmap_data := u8.[ 
-            0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, f,f,f, 0,0,0,
-            0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0
-        ];
-        */
-
         gridlike_bitmap = load_bitmap("gridlike.tga");
+        gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
 
         enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
         enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0, 0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0, 0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);
@@ -245,7 +216,14 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
 
+        //
+        // Now that the game_context is initted, we can init the game.
+        //
 
+        using game_memory;
+        using game_memory.game;
+        level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
+        
         set_mode(*game, .EDITOR);
         
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
@@ -438,15 +416,11 @@ game_update : Game_Update : (
 
                 world_to_camera := get_game_camera_matrix(*level);
 
-                glUseProgram(gridlike_shader);
-
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, gridlike_bitmap);
-                glActiveTexture(GL_TEXTURE1);
-                glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
-
-                set_uniform("bitmap", cast(s32, 0));
-                set_uniform("viewed", cast(s32, 1));
+                glUseProgram(game_gridlike_shader);
+                
+                set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
+                set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
+                set_uniform_bitmap("viewed", 2, view_texture.tbo, GL_TEXTURE_BUFFER);
                 set_uniform("viewed_size", level_size);
 
                 for * _Block {
@@ -474,8 +448,7 @@ game_update : Game_Update : (
                 set_uniforms_for_item_shaders :: () #expand {
                     set_uniform("viewed_position", level_position);
                     set_uniform("viewed_size", level_size);
-                    glActiveTexture(GL_TEXTURE0);
-                    glBindTexture(GL_TEXTURE_BUFFER, view_texture.tbo);
+                    set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
                     set_uniform("viewed", cast(s32, 0));
                     set_uniform("world_to_camera", world_to_camera);
                 }
@@ -638,12 +611,10 @@ game_update : Game_Update : (
 
                 world_to_camera := get_editor_camera_matrix(*editor);
 
-                glUseProgram(texture_and_color_shader);
+                glUseProgram(editor_gridlike_shader);
 
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, gridlike_bitmap);
-                set_uniform("bitmap", cast(s32, 0));
-
+                set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
+                set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
                 for * _Block {
                     projection := translate(world_to_camera, to_vector3(it.position));
                     set_uniform("projection", projection);

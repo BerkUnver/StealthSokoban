@@ -9,21 +9,28 @@ layout(location=0) out vec4 fragment_color;
 
 uniform sampler2D bitmap;
 uniform sampler2D outline_bitmap;
-uniform usamplerBuffer viewed;
-uniform ivec3 viewed_size;
-uniform ivec3 viewed_position;
 uniform mat4 projection;
 uniform vec4 color;
 
+#ifdef GAME
+uniform usamplerBuffer viewed;
+uniform ivec3 viewed_size;
+uniform ivec3 viewed_position;
+#endif
+
+
 OUTIN vec2 fragment_uv;
-OUTIN float fragment_brightness;
 OUTIN vec2 fragment_outline_uv;
+
+#ifdef GAME
+OUTIN float fragment_brightness;
+#endif
 
 
 // @Speed figure out how to optimize branching
 void main() {
 #ifdef VERTEX_SHADER
-    fragment_uv = vertex_uv;
+#ifdef GAME
     ivec3 viewed_coord = viewed_position + vertex_viewed_offset;
     
     int index;
@@ -46,12 +53,21 @@ void main() {
         gl_Position = vec4(0, 0, -2, 1);
         return;
     }
+#else 
+    gl_Position = projection * vec4(vertex_position, 1.0);
+#endif
+    fragment_uv = vertex_uv;
+    fragment_outline_uv = vertex_uv;
 #else
     vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
     vec4 bitmap_color = texture(bitmap, fragment_uv);
     
-    vec4 combined_color = vec4(mix(outline_color.xyz, bitmap_color.xyz, outline_color.a), bitmap_color.a);
+    vec4 combined_color = vec4(mix(bitmap_color.xyz, outline_color.xyz, outline_color.a), bitmap_color.a);
     vec4 tinted_color = color * combined_color;
+#ifdef GAME
     fragment_color = vec4(tinted_color.rgb * fragment_brightness, tinted_color.a);
+#else
+    fragment_color = tinted_color;
+#endif
 #endif
 }

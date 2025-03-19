@@ -611,6 +611,15 @@ set_uniform :: (name: *u8, val: $T) {
     } else #assert false;
 }
 
+
+set_uniform_bitmap :: (name: *u8, unit_index: int, bitmap: GLuint, type: GLenum = GL_TEXTURE_2D) {
+    using context.game_context;
+    glActiveTexture(GL_TEXTURE0 + cast(GLenum, unit_index));
+    glBindTexture(type, bitmap);
+    set_uniform(name, cast(s32, unit_index));
+}
+
+
 bind_and_draw :: (mesh: *Mesh) {
     using context.game_context;
     glBindVertexArray(mesh.vao);

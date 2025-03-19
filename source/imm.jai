@@ -266,12 +266,9 @@ draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> en
     using context.game_context;
 
     glUseProgram(imm_text_shader);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, font.bitmap);
     
+    set_uniform_bitmap("bitmap", 0, font.bitmap);
     set_uniform("projection", imgui_state.imgui_to_camera);
-    set_uniform("bitmap", cast(s32, 0));
     
     x := position.x;
     y := position.y;
