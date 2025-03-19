@@ -240,32 +240,6 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 }
 */
 
-
-// Which side of the square is the line on?
-Gridlike_UV :: enum_flags {
-    XP; // X-positive
-    YP; // Y-positive
-    XN; // X-negative
-    YN; // Y-negative
-}
-
-
-GRIDLIKE_UVS : [3][2] Gridlike_UV : .[
-    .[
-        .XP | .YP | .XN | .YN,
-        .XP | .XN
-    ],
-    .[
-        .XP | .YP | .XN,
-        .XP
-    ],
-    .[
-        .XP | .YP,
-        0
-    ]
-];
-
-
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
 
@@ -275,6 +249,48 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
     vertices: [..] Block_Vertex;
 
     for :iterate_vector3i size {
+        // This algorithm is a little wacky so I will do my best to explain it here.
+        // We want to find the UV coordinates of the part of the texture that corresponds
+        // to the combination of edges that this quad has.
+
+        // We represent which sides of the texture have edges on them via the Edge bitflags.
+        // We also store which part of the texture corresponds to which combination of 
+        // bitflags in the EDGES array.
+
+        // We then just iterate through the array to find the part of the texture that
+        // corresponds to our combination of bitflags. We have to do it four times, and rotate
+        // the flags each time, which corresponds to the four possible orientations of each
+        // square. @Speed many of these are redundant, we could do manual checks instead.
+
+        // We also have to make sure to rotate the coordinates (which is what the PX_N constants
+        // are for. They store the value of the uv for each of the four rotations).
+
+        // Then, we just generate the vertex information and append that to the vertices.
+
+        //          -berk, 2025 - 3 - 19
+
+
+
+        // @Speed there are probably many ways this algorithm could be sped up tremendously
+        // if that becomes a problem.
+
+        
+        Edge :: enum_flags u8 {
+            XP; // X-positive
+            YP; // Y-positive
+            XN; // X-negative
+            YN; // Y-negative
+        }
+        using Edge;
+
+
+        EDGES : [3][2] Edge : .[
+            .[XP | YP,              0],
+            .[XP | YP | XN,         XP],
+            .[XP | YP | XN | YN,    XP | XN]
+        ];
+
+
         if !filled[it_index] continue;
 
         success: bool;
@@ -283,43 +299,83 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
         success, index = get_3d_index(.{it.x, it.y + 1, it.z}, size);
         if success && filled[index] continue;
 
-        occupied: Gridlike_UV;
+        occupied: Edge;
 
         success, index = get_3d_index(.{it.x + 1, it.y, it.z}, size);
-        if success && filled[index] occupied |= .XP;
+        if !success || !filled[index] occupied |= XP;
 
         success, index = get_3d_index(.{it.x - 1, it.y, it.z}, size);
-        if success && filled[index] occupied |= .XN;
+        if !success || !filled[index] occupied |= XN;
 
         success, index = get_3d_index(.{it.x, it.y, it.z + 1}, size);
-        if success && filled[index] occupied |= .YP;
+        if !success || !filled[index] occupied |= YP;
 
         success, index = get_3d_index(.{it.x, it.y, it.z - 1}, size);
-        if success && filled[index] occupied |= .YN;
+        if !success || !filled[index] occupied |= YN;
+
+
+        P0_X :: float.[0, 1, 1, 0];
+        P0_Y :: float.[0, 0, 1, 1];
+
+        P1_X :: float.[1, 1, 0, 0];
+        P1_Y :: float.[0, 1, 1, 0];
+
+        P2_X :: float.[1, 0, 0, 1];
+        P2_Y :: float.[1, 1, 0, 0];
+
+        P3_X :: float.[0, 0, 1, 1];
+        P3_Y :: float.[1, 0, 0, 1];
+
 
         found := false;
-        outline_uv: Vector2;
+        p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y: float;
         
         for rotation: 0..3 {
-            occupied <<= 1;
-            occupied |= occupied >> 4;
-            occupied &= ~(1 << 4);
-
-            for y_row, y: GRIDLIKE_UVS {
+            for y_row, y: EDGES {
                 for val, x: y_row {
                     if val == occupied {
                         found = true;
-                        outline_uv = .{
-                            cast(float, x) / cast(float, y_row.count),
-                            cast(float, y) / cast(float, GRIDLIKE_UVS.count)
-                        };
+
+                        E :: 0.00001;
+                        // This epsilon value is to correct for when the UVs get rounded
+                        // incorrectly due to vertex varying interpolation. Because we're
+                        // doing nearest-neighbor interpolation for the bitmap, this might
+                        // cause the pixel value from an adjacent part of the bitmap to be
+                        // read instead. We shrink the coordinates ever so slightly by
+                        // epsilon to prevent this from happening.
+                        
+                        p0_x =  E + (x + P0_X[rotation]) / cast(float, y_row.count);
+                        p0_y =  E + (y + P0_Y[rotation]) / cast(float, EDGES.count);
+
+                        p1_x = -E + (x + P1_X[rotation]) / cast(float, y_row.count);
+                        p1_y =  E + (y + P1_Y[rotation]) / cast(float, EDGES.count);
+
+                        p2_x = -E + (x + P2_X[rotation]) / cast(float, y_row.count);
+                        p2_y = -E + (y + P2_Y[rotation]) / cast(float, EDGES.count);
+
+                        p3_x =  E + (x + P3_X[rotation]) / cast(float, y_row.count);
+                        p3_y = -E + (y + P3_Y[rotation]) / cast(float, EDGES.count);
+
                         break rotation;
                     }
                 }
             }
+
+            occupied <<= 1;
+            occupied |= occupied >> 4;
+            occupied &= ~(cast(Edge, 1 << 4));
         }
+        assert(found);
 
         origin := to_vector3(it);
+        outline_uvs := Vector2.[
+            .{p0_x, p0_y},
+            .{p1_x, p1_y},
+            .{p2_x, p2_y},
+            .{p0_x, p0_y},
+            .{p2_x, p2_y},
+            .{p3_x, p3_y}
+        ];
 
         for i: 0..5 {
             index := xx Cube_Vertex.Y_POSITIVE + i;
@@ -327,11 +383,9 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                 position = origin + CUBE_VERTICES[index],
                 uv = CUBE_UVS[index],
                 viewed_offset = .{it.x + 1, it.y, it.z},
-                outline_uv = outline_uv + CUBE_UVS[index] / Vector2.{2, 3}
+                outline_uv = outline_uvs[i]
             };
         }
-
-        assert(found);
     }
 
     vertex_positions := alloc_view(arena, vertices.count, Vector3);
