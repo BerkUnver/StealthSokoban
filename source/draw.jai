@@ -194,13 +194,10 @@ Block_Vertex :: struct {
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
     
-    // @Temporary @TODO: Make it so we can freely resize the topmost allocations of memory arenas!
-    
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
-
-    vertices := alloc_view(*frame_arena, 100000, Block_Vertex, zero_init=false);
-    vertex_count := 0;
+    
+    vertices: [..] Block_Vertex;
 
     for :iterate_vector3i size {
         if !filled[it_index] continue;
@@ -215,12 +212,11 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
             success, index = get_3d_index(position, size);
             if !success || !filled[index] {
                 for 0..5 {
-                    vertices[vertex_count] = .{
+                    append(*vertices, *frame_arena).* = .{
                        position = origin + cube_vertices[xx face + it],
                        uv = cube_uvs[xx face + it],
                        viewed_offset = position,
                     };
-                    vertex_count += 1;
                 }
             }
         }
@@ -233,13 +229,14 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
         check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
     }
     
-    vertex_positions := alloc_view(arena, vertex_count, Vector3);
-    for 0..vertex_count-1 {
-        vertex_positions[it] = vertices[it].position;
+    vertex_positions := alloc_view(arena, vertices.count, Vector3);
+
+    for * vertices {
+        vertex_positions[it_index] = it.position;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertex_count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertices.count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
 
 
     return vertex_positions;
@@ -248,7 +245,10 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
 /*
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
+    using context.game_context;
 
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_anrea, mark);
 }
 */
 

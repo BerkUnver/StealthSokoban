@@ -159,9 +159,43 @@ alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
     return ret;
 }
 
+
 alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
     return alloc(arena, size_of(T), zero_init);
 }
+
+
+realloc :: (arena: *Memory_Arena, old: *void, old_count: s64, new_count: s64, zero_init := true) -> *void {
+    assert(old_count >= 0);
+    assert(new_count >= 0);
+
+    if old == null {
+        assert(old_count == 0);
+        return alloc(arena, new_count, zero_init);
+    }
+
+    current := arena.data + arena.current;
+    assert(arena.data <= old && old <= current);
+
+    if new_count < old_count return old;
+
+    if old + old_count == current {
+        alloc(arena, new_count - old_count, zero_init);
+        return old;
+    }
+
+    new := alloc(arena, new_count, false);
+    memcpy(new, old, old_count);
+    if zero_init memset(new + old_count, 0, new_count - old_count);
+
+    return new;
+}
+
+
+realloc_many :: (arena: *Memory_Arena, old: *$T, old_count: s64, new_count: s64, zero_init := true) -> *T {
+    return realloc(arena, old, old_count * size_of(T), new_count * size_of(T), zero_init); 
+}
+
 
 alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
     byte_count := size_of(T) * count; 
@@ -245,12 +279,10 @@ contains :: (a: [] $T, item: T) -> bool {
 
 append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
     if a.count == a.allocated {
-        // @TODO: Realloc if this is the topmost allocation
         if a.count == 0 a.allocated = 8;
         else a.allocated *= 2;
-        new_memory := alloc(arena, a.allocated * size_of(T), zero_init=false);
-        memcpy(new_memory, a.data, a.count * size_of(T));
-        a.data = new_memory;
+
+        a.data = realloc_many(arena, a.data, a.count, a.allocated, zero_init = false);
     }
 
     item := a.data + a.count;
