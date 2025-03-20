@@ -191,7 +191,6 @@ Block_Vertex :: struct {
 }
 
 
-/*
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
     
@@ -238,8 +237,9 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
     return vertex_positions;
 }
-*/
 
+
+/*
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
 
@@ -273,21 +273,27 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
         // @Speed there are probably many ways this algorithm could be sped up tremendously
         // if that becomes a problem.
-
         
-        Edge :: enum_flags u8 {
-            XP; // X-positive
-            YP; // Y-positive
-            XN; // X-negative
-            YN; // Y-negative
+        // @CompilerBug doing "enum_flags u8" doesn't actually make it a u8.
+
+        Edge :: enum u8 {
+            XP    :: 1 << 0;
+            XP_YP :: 1 << 1;
+            YP    :: 1 << 2;
+            XN_YP :: 1 << 3;
+            XN    :: 1 << 4;
+            XN_YN :: 1 << 5;
+            YN    :: 1 << 6;
+            XP_YN :: 1 << 7;
         }
         using Edge;
 
 
-        EDGES : [3][2] Edge : .[
-            .[XP | YP,              0],
-            .[XP | YP | XN,         XP],
-            .[XP | YP | XN | YN,    XP | XN]
+        EDGES : [4][4] Edge : .[
+            .[XP | YP,              0,              XP | YP | XN | XN_YN,               XP | XN_YP | XN_YN],
+            .[XP | YP | XN,         XP,             XP | XN_YP,                         XP | XN_YN],
+            .[XP | YP | XN | YN,    XP | XN,        XP_YP | XN_YP,                      XP_YP],
+            .[0,                    0,              XP_YP | XN_YP | XN_YN | XP_YN,      XP_YP | XN_YP | XN_YN],
         ];
 
 
@@ -313,6 +319,20 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
         success, index = get_3d_index(.{it.x, it.y, it.z - 1}, size);
         if !success || !filled[index] occupied |= YN;
 
+        success, index = get_3d_index(.{it.x + 1, it.y, it.z + 1}, size);
+        if (!success || !filled[index]) && (occupied & (XP | YP)) == 0 occupied |= XP_YP;
+
+        success, index = get_3d_index(.{it.x - 1, it.y, it.z + 1}, size);
+        if (!success || !filled[index]) && (occupied & (XN | YP)) == 0 occupied |= XN_YP;
+
+        success, index = get_3d_index(.{it.x - 1, it.y, it.z - 1}, size);
+        if (!success || !filled[index]) && (occupied & (XN | YN)) == 0 occupied |= XN_YN;
+
+        success, index = get_3d_index(.{it.x + 1, it.y, it.z - 1}, size);
+        if (!success || !filled[index]) && (occupied & (XP | YN)) == 0 occupied |= XP_YN;
+
+
+
 
         P0_X :: float.[0, 1, 1, 0];
         P0_Y :: float.[0, 0, 1, 1];
@@ -329,11 +349,13 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
         found := false;
         p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y: float;
+
+        occupied_rotated := occupied;
         
         for rotation: 0..3 {
             for y_row, y: EDGES {
                 for val, x: y_row {
-                    if val == occupied {
+                    if val == occupied_rotated {
                         found = true;
 
                         E :: 0.00001;
@@ -361,9 +383,9 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                 }
             }
 
-            occupied <<= 1;
-            occupied |= occupied >> 4;
-            occupied &= ~(cast(Edge, 1 << 4));
+            last_two := occupied_rotated >> 6;
+            occupied_rotated <<= 2;
+            occupied_rotated |= last_two;
         }
         assert(found);
 
@@ -400,6 +422,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
     return vertex_positions;
 }
+*/
 
 
 make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) -> Mesh {      

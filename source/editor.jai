@@ -27,6 +27,7 @@ Editor :: struct {
             start_intersection: Vector3;
             end_intersection: Vector3;
             plane_normal: Vector3i;
+            deletion: bool;
         }
 
         drag: struct {
@@ -71,7 +72,7 @@ get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
 }
 
 
-editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event, keys_down: *[Key.COUNT] bool) {
+editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event, keys_down: *[Key.COUNT] bool) {
     using context.game_context;
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
@@ -107,83 +108,6 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     editor.mode = .CAMERA;
                     editor.camera = .{};
                     return;
-            }
-            
-            if event.key == #char "X" && event.down {
-                mouse_start := editor.camera_position;
-                mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
-
-                Data :: struct {
-                    level: *Level;
-                    arena: *Memory_Arena;
-                    editor: *Editor;
-                }
-
-                visitor :: (position: Vector3i, using d: *Data) -> bool {
-                    remove_gridlike_cell :: (entities: [] $T) #expand {
-                        for * entities {
-                            success, index := get_3d_index(position, it.position, it.size);
-                            if !success || !it.filled[index] continue;
-
-                            it.filled[index] = false;
-
-                            all_zero := true;
-                            new_position: Vector3i;
-                            new_end: Vector3i;
-
-                            for :iterate_vector3i v: it.size {
-                                filled := it.filled[it_index];
-                                if !filled continue;
-                                cell_position := v + it.position;
-                                
-                                if all_zero {
-                                    all_zero = false;
-                                    new_position = cell_position;
-                                    new_end = cell_position;
-                                } else {
-                                    if cell_position.x < new_position.x new_position.x = cell_position.x;
-                                    if cell_position.y < new_position.y new_position.y = cell_position.y;
-                                    if cell_position.z < new_position.z new_position.z = cell_position.z;
-                                    
-                                    if cell_position.x > new_end.x new_end.x = cell_position.x;
-                                    if cell_position.y > new_end.y new_end.y = cell_position.y;
-                                    if cell_position.z > new_end.z new_end.z = cell_position.z;
-                                }
-                            }
-
-                            if all_zero {
-                                if it.eid == editor.selected editor.selected = 0;
-                                delete_entity(level, it.eid, arena);
-                            } else {
-                                new_size := new_end - new_position + Vector3i.{1,1,1};
-                                if it.size != new_size {
-                                    new_filled := alloc_view(arena, new_size.x * new_size.y * new_size.z, bool);
-                                    for :iterate_vector3i v: new_size {
-                                        success, src_index := get_3d_index(v + new_position, it.position, it.size);
-                                        assert(success);
-                                        new_filled[it_index] = it.filled[src_index];
-                                    }
-
-                                    it.filled = new_filled;
-                                    it.position = new_position;
-                                    it.size = new_size;
-                                }
-
-                                update_gridlike_mesh(it, arena);
-                            }
-                            `return true;
-                        }
-
-                    }
-
-                    remove_gridlike_cell(level._Block);
-                    remove_gridlike_cell(level._Door);
-                    return false;
-                }
-                
-                data := Data.{ level=level, editor=editor, arena=level_arena };
-                raycast(mouse_start, mouse_end, visitor, *data);
-                return;
             }
             
             if event.key == xx #char "Z" && event.down {
@@ -227,7 +151,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                     start_position: Vector3i;
                     tweak_sign := 0.0;
 
-                    if keys_down.*[Key.SHIFT] {
+                    if keys_down.*[Key.SHIFT] != keys_down.*[Key.CTRL] {
                         start_position = data.selected_position;
                         tweak_sign = 1;
                     } else {
@@ -251,6 +175,7 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                         start_intersection = intersection,
                         end_intersection = intersection,
                         plane_normal = .{0, 1, 0},
+                        deletion = keys_down.*[Key.CTRL],
                     };
 
                 } else {
@@ -267,16 +192,16 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
                     if parallel || new_block_t <= 0 return;
 
-                    filled := alloc_view(level_arena, 1, bool);
+                    filled := alloc_view(arena, 1, bool);
                     filled[0] = true;
                     size := Vector3i.{1, 1, 1};
 
-                    block := make_entity(level, Block, level_arena);
+                    block := make_entity(level, Block, arena);
                     block.size = size;
                     block.position = .{xx floor(point.x), 0, xx floor(point.z)};
                     block.filled = filled;
                     block.color = .{1, 1, 1, 1};
-                    block.mesh = make_block_mesh(size, filled, level_arena);
+                    block.mesh = make_block_mesh(size, filled, arena);
 
                     start_intersection := point + normalize(mouse_direction) * 0.001;
 
@@ -308,8 +233,10 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
             }
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
-                delete_entity(level, editor.selected, level_arena);
-                editor.selected = 0;
+                if editor.selected != 0 {
+                    delete_entity(level, editor.selected, arena);
+                    editor.selected = 0;
+                }
                 return;
             }
             
@@ -340,6 +267,37 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 return;
             }
 
+            if .ARROW_START <= event.key && event.key <= .ARROW_END && event.down {
+                if editor.selected == 0 return;
+                e := get_entity(level, editor.selected);
+
+                dir: Vector3i;
+                if event.key == {
+                    case .UP_ARROW;     dir = local_to_global_direction( 0,  1, xx editor.camera_yaw);
+                    case .LEFT_ARROW;   dir = local_to_global_direction(-1,  0, xx editor.camera_yaw);
+                    case .DOWN_ARROW;   dir = local_to_global_direction( 0, -1, xx editor.camera_yaw);
+                    case .RIGHT_ARROW;  dir = local_to_global_direction( 1,  0, xx editor.camera_yaw);
+                    case; assert(false);
+                }
+
+                facing := vector3i_to_facing(dir);
+                
+                enemy := as(e, Enemy);
+                if enemy {
+                    enemy.facing = facing;
+                    return;
+                }
+
+                enemy_spawner := as(e, Enemy_Spawner);
+                if enemy_spawner {
+                    enemy_spawner.facing = facing;
+                    return;
+                }
+
+                return;
+            }
+
+
             if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.down {
                 success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
                 position: Vector3i;
@@ -362,17 +320,17 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
 
 
                 index := cast(int, event.key - 1 - .F_BASE);
-                e := make_entity(level, index, level_arena);
+                e := make_entity(level, index, arena);
                 e.position = position;
 
 
                 init_grid_entity :: (e: *$T) #expand {
-                    filled := alloc_view(level_arena, 1, bool);
+                    filled := alloc_view(arena, 1, bool);
                     filled[0] = true;
 
                     e.size = .{1, 1, 1};
                     e.filled = filled;
-                    e.mesh = make_gridlike_mesh(.{1, 1, 1}, filled, level_arena);
+                    e.mesh = make_gridlike_mesh(.{1, 1, 1}, filled, arena);
                 }
 
                 if e.type == .Block {
@@ -424,17 +382,75 @@ editor_handle_input :: (using level: *Level, level_arena: *Memory_Arena, editor:
                 }
             } else if event.key == #char "Z" && !event.down {
                 position, size := get_editor_extrude_size(editor);
-                extrude_gridlike_entity :: (e: $T) #expand {
-                    e.position, e.size, e.filled = realloc_3d_array_to_fit_subarea(e.position, e.size, e.filled, position, size, level_arena);
-                    offset := position - e.position;
 
-                    for :iterate_vector3i size {
-                        gridlike_position := it + offset;
-                        success, index := get_3d_index(gridlike_position, e.size);
-                        assert(success);
-                        e.filled[index] = true;
+                extrude_gridlike_entity :: (e: *$T/Entity) #expand {
+                    if deletion {
+                        offset := position - e.position;
+                        // @Speed iterate over the overlap between the selection and the block
+                        for :iterate_vector3i size {    
+                            success, index := get_3d_index(it + offset, e.size);
+                            if success e.filled[index] = false;
+                        }
+
+                        // Now, we want to shrink where the block boundaries are if we can.
+
+                        all_zero := true;
+                        new_position: Vector3i;
+                        new_end: Vector3i;
+
+                        for :iterate_vector3i e.size {
+                            filled := e.filled[it_index];
+                            if !filled continue;
+                            cell_position := it + e.position;
+                            
+                            if all_zero {
+                                all_zero = false;
+                                new_position = cell_position;
+                                new_end = cell_position;
+                            } else {
+                                if cell_position.x < new_position.x new_position.x = cell_position.x;
+                                if cell_position.y < new_position.y new_position.y = cell_position.y;
+                                if cell_position.z < new_position.z new_position.z = cell_position.z;
+                                
+                                if cell_position.x > new_end.x new_end.x = cell_position.x;
+                                if cell_position.y > new_end.y new_end.y = cell_position.y;
+                                if cell_position.z > new_end.z new_end.z = cell_position.z;
+                            }
+                        }
+
+                        if all_zero {
+                            if e.eid == editor.selected editor.selected = 0;
+                            delete_entity(level, e.eid, arena);
+                        } else {
+                            new_size := new_end - new_position + Vector3i.{1,1,1};
+                            if e.size != new_size {
+                                new_filled := alloc_view(arena, new_size.x * new_size.y * new_size.z, bool);
+                                for :iterate_vector3i v: new_size {
+                                    success, src_index := get_3d_index(v + new_position, e.position, e.size);
+                                    assert(success);
+                                    new_filled[it_index] = e.filled[src_index];
+                                }
+
+                                e.filled = new_filled;
+                                e.position = new_position;
+                                e.size = new_size;
+                            }
+
+                            update_gridlike_mesh(e, arena);
+                        }
+                    } else {
+                        e.position, e.size, e.filled = realloc_3d_array_to_fit_subarea(e.position, e.size, e.filled, position, size, arena);
+                        offset := position - e.position;
+
+                        for :iterate_vector3i size {
+                            gridlike_position := it + offset;
+                            success, index := get_3d_index(gridlike_position, e.size);
+                            assert(success);
+                            e.filled[index] = true;
+                        }
+
+                        update_gridlike_mesh(e, arena);
                     }
-                    update_gridlike_mesh(e, level_arena);
                 }
 
                 e := get_entity(level, selected);

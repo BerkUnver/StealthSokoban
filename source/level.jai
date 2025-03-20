@@ -151,7 +151,7 @@ Facing :: enum u8 {
 }
 
 
-facing_vector3i :: (f: Facing) -> Vector3i {
+facing_to_vector3i :: (f: Facing) -> Vector3i {
     v := Vector3i.{};
     if f == {
         case .X_POSITIVE; v.x += 1;
@@ -160,6 +160,18 @@ facing_vector3i :: (f: Facing) -> Vector3i {
         case .Z_NEGATIVE; v.z -= 1;
     }
     return v;
+}
+
+
+vector3i_to_facing :: (v: Vector3i) -> Facing {
+    assert(v.y == 0);
+    assert((v.x != 0 && v.z == 0) || (v.x == 0 && v.z != 0));
+    if v.x > 0 return .X_POSITIVE;
+    if v.x < 0 return .X_NEGATIVE;
+    if v.z > 0 return .Z_POSITIVE;
+    if v.z < 0 return .Z_NEGATIVE;
+    assert(false);
+    return 0;
 }
 
 
@@ -179,8 +191,8 @@ facing_opposite :: inline (f: Facing) -> Facing {
 
 
 Favored_Direction :: enum u8 {
-    LEFT;
     RIGHT;
+    LEFT;
 }
 
 
@@ -206,10 +218,18 @@ Enemy :: struct {
 }
 
 
+Enemy_Spawner_Type :: enum {
+    ALTERNATING;
+    ALL_RIGHT;
+    ALL_LEFT;
+}
+
+
 Enemy_Spawner :: struct {
     using #as e: Entity;
-
-    favored_direction: Favored_Direction;
+    
+    enemy_spawner_type: Enemy_Spawner_Type;
+    alternating_direction: Favored_Direction; @NoSerialize
     facing: Facing;
 
     COLOR :: Vector4.{0.5, 0, 0, 1};
@@ -1047,21 +1067,12 @@ level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: I
     //
 
     push_direction: Vector3i;
-
-    move :: (direction: Vector2) #expand {
-        rotated := rotate(direction, cast(float, camera_yaw_target));
-        if abs(rotated.x) > abs(rotated.y) {
-            push_direction.x += cast(s32, sign(rotated.x));
-        } else {
-            push_direction.z += cast(s32, sign(rotated.y));
-        }
-    }
-
+    
     if event.key == {
-        case xx #char "W"; move(.{0, 1});
-        case xx #char "A"; move(.{-1, 0});
-        case xx #char "S"; move(.{0, -1});
-        case xx #char "D"; move(.{1, 0});
+        case xx #char "W"; push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
+        case xx #char "A"; push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
+        case xx #char "S"; push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
+        case xx #char "D"; push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
         case xx #char "Q"; if flags & .DEBUG_MOVEMENT push_direction.y += 1; else return;
         case xx #char "E"; if flags & .DEBUG_MOVEMENT push_direction.y -= 1; else return;
         case; return;
@@ -1540,7 +1551,7 @@ level_update :: (using level: *Level, dt: float) {
         }
 
         for * _Enemy {  
-            desired_direction := facing_vector3i(it.facing);
+            desired_direction := facing_to_vector3i(it.facing);
 
             if can_move_to(level, it.position + desired_direction) {
                 it.desired_position = it.position + desired_direction;
@@ -1554,7 +1565,7 @@ level_update :: (using level: *Level, dt: float) {
                         new_facing = facing_right(it.facing);
                 }
 
-                desired_direction := facing_vector3i(new_facing);
+                desired_direction := facing_to_vector3i(new_facing);
 
                 if can_move_to(level, it.position + desired_direction) {
                     it.desired_position = it.position + desired_direction;
@@ -1568,14 +1579,14 @@ level_update :: (using level: *Level, dt: float) {
                             new_facing = facing_left(it.facing);
                     }
 
-                    desired_direction := facing_vector3i(new_facing);
+                    desired_direction := facing_to_vector3i(new_facing);
 
                     if can_move_to(level, it.position + desired_direction) {
                         it.desired_position = it.position + desired_direction;
                         it.facing = new_facing;
                     } else {
                         new_facing := facing_opposite(it.facing);
-                        desired_direction := facing_vector3i(new_facing);
+                        desired_direction := facing_to_vector3i(new_facing);
 
                         if can_move_to(level, it.position + desired_direction) {
                             it.desired_position = it.position + desired_direction;
@@ -1668,15 +1679,30 @@ level_update :: (using level: *Level, dt: float) {
                 e := make_entity(level, Enemy);
                 e.position = it.position;
                 e.state = .SPAWNING;
-                e.favored_direction = it.favored_direction;
+
+                if it.enemy_spawner_type == {
+                    case .ALTERNATING;
+                        e.favored_direction = it.alternating_direction;
+                    case .ALL_RIGHT;
+                        e.favored_direction = .RIGHT;
+                    case .ALL_LEFT;
+                        e.favored_direction = .LEFT;
+                }
+
                 e.facing = it.facing;
                 assert(collision[index] == 0);
                 collision[index] = e.eid;
             }
 
-            // Flip the favored direction every tick
 
-            it.favored_direction = ifx it.favored_direction == .LEFT then .RIGHT else .LEFT;
+            if it.enemy_spawner_type == .ALTERNATING {
+                // Flip the direction every tick
+                if it.alternating_direction == .LEFT {
+                    it.alternating_direction = .RIGHT;
+                } else {
+                    it.alternating_direction = .LEFT;
+                }
+            }
         }
 
         if !(flags & .DEBUG_MOVEMENT) {

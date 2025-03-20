@@ -160,6 +160,19 @@ round :: (v: $T) -> T {
     return floor(v + 0.5);
 }
 
+// This is in the jai standard library math module,
+// but I wanted a double-precision version of this
+// for the gameplay camera yaw.
+rotate :: (v: Vector2, theta: float64) -> Vector2 {
+    ct := cast(float, cos(theta));
+    st := cast(float, sin(theta));
+
+    r: Vector2 = ---;
+    r.x = v.x * ct + v.y * -st;
+    r.y = v.x * st + v.y * ct;
+
+    return r;
+}
 
 make_quaternion :: (from_: Vector3, to_: Vector3) -> Quaternion {
     // Formula from here: https://jacquesheunis.com/post/rotors/

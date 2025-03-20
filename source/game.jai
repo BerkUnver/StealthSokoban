@@ -694,10 +694,14 @@ game_update : Game_Update : (
                     imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
                     imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
                     WIDTH :: 0.03;
-                    COLOR :: Vector4.{1, 1, 1, 1};
+                    
+                    color: Vector4;
+                    if deletion color = .{1, 0, 0, 1};
+                    else        color = .{1, 1, 1, 1};
+
                     for :iterate_vector3i size {
                         cuboid_position := to_vector3(position + it);
-                        imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, COLOR);
+                        imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
                     }
 
                     imm_flush();

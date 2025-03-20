@@ -410,3 +410,15 @@ assign_int :: (info: *Type_Info_Integer, ptr: *void, value: s64) {
     }
 }
 
+
+local_to_global_direction :: (x: float, z: float, yaw: float64) -> Vector3i {
+    rotated := rotate(Vector2.{x, z}, yaw);
+    dir: Vector3i;
+    if abs(rotated.x) > abs(rotated.y) {
+        dir.x += cast(s32, sign(rotated.x));
+    } else {
+        dir.z += cast(s32, sign(rotated.y));
+    }
+
+    return dir;
+}
