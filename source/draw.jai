@@ -300,45 +300,45 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
         if !filled[it_index] continue;
 
-        success: bool;
-        index: int;
-
-        success, index = get_3d_index(.{it.x, it.y + 1, it.z}, size);
+        success, index := get_3d_index(.{it.x, it.y + 1, it.z}, size);
         if success && filled[index] continue;
 
         occupied: Gridlike_Edge;
 
-        success, index = get_3d_index(.{it.x + 1, it.y, it.z}, size);
-        if !success || !filled[index] occupied |= XP;
-
-        success, index = get_3d_index(.{it.x - 1, it.y, it.z}, size);
-        if !success || !filled[index] occupied |= XN;
-
-        success, index = get_3d_index(.{it.x, it.y, it.z + 1}, size);
-        if !success || !filled[index] occupied |= YP;
-
-        success, index = get_3d_index(.{it.x, it.y, it.z - 1}, size);
-        if !success || !filled[index] occupied |= YN;
-
-        if (occupied & (XP | YP)) == 0 {
-            success, index := get_3d_index(.{it.x + 1, it.y, it.z + 1}, size);
-            if !success || !filled[index] occupied |= XP_YP;
+        check_edge :: (x_offset: s32, z_offset: s32, edge: Gridlike_Edge) #expand {
+            position := Vector3i.{it.x + x_offset, it.y, it.z + z_offset};
+            success, index := get_3d_index(position, size);
+            if !success || !filled[index] {
+                occupied |= edge;
+            } else {
+                position.y += 1;
+                success, index := get_3d_index(position, size);
+                if success && filled[index] occupied |= edge;
+            }
         }
 
-        if (occupied & (XN | YP)) == 0 {
-            success, index := get_3d_index(.{it.x - 1, it.y, it.z + 1}, size);
-            if !success || !filled[index] occupied |= XN_YP;
+        check_edge( 1,  0, XP);
+        check_edge(-1,  0, XN);
+        check_edge( 0,  1, YP);
+        check_edge( 0, -1, YN);
+        
+        check_corner :: (x_offset: s32, z_offset: s32, edges: Gridlike_Edge, corner: Gridlike_Edge) #expand {
+            if occupied & edges return;
+            position := Vector3i.{it.x + x_offset, it.y, it.z + z_offset};
+            success, index := get_3d_index(position, size);
+            if !success || !filled[index] {
+                occupied |= corner;
+            } else {
+                position.y += 1;
+                success, index := get_3d_index(position, size);
+                if success && filled[index] occupied |= corner;
+            }
         }
 
-        if (occupied & (XN | YN)) == 0 {
-            success, index := get_3d_index(.{it.x - 1, it.y, it.z - 1}, size);
-            if !success || !filled[index] occupied |= XN_YN;
-        }
-
-        if (occupied & (XP | YN)) == 0 {
-            success, index := get_3d_index(.{it.x + 1, it.y, it.z - 1}, size);
-             if !success || !filled[index] occupied |= XP_YN;
-        }
+        check_corner( 1,  1, XP | YP, XP_YP);
+        check_corner(-1,  1, XN | YP, XN_YP);
+        check_corner(-1, -1, XN | YN, XN_YN);
+        check_corner( 1, -1, XP | YN, XP_YN);
 
         E :: 0.0001;
         // this epsilon value is to correct for when the uvs get rounded
