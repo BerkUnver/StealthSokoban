@@ -57,14 +57,24 @@ void main() {
     fragment_outline_uv = vertex_outline_uv;
 #else
     vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
+    float outline_brightness = 1;
+    if (outline_color.a == 1) {
+        outline_brightness = 0.4;
+    }
+
     vec4 bitmap_color = texture(bitmap, fragment_uv);
     
-    vec4 combined_color = vec4(mix(bitmap_color.xyz, outline_color.xyz, outline_color.a), bitmap_color.a);
-    vec4 tinted_color = color * combined_color;
+    float edge_brightness = 1;
+#define GRID_THICKNESS 0.0625
+    if (fragment_uv.x < GRID_THICKNESS || (1 - GRID_THICKNESS) < fragment_uv.x
+     || fragment_uv.y < GRID_THICKNESS || (1 - GRID_THICKNESS) < fragment_uv.y) {
+        edge_brightness = 0.8;
+    }
+
+    fragment_color = color * bitmap_color;
+    fragment_color.rgb *= outline_brightness * edge_brightness;
 #ifdef GAME
-    fragment_color = vec4(tinted_color.rgb * fragment_brightness, tinted_color.a);
-#else
-    fragment_color = tinted_color;
+    fragment_color.rgb *= fragment_brightness;
 #endif
 #endif
 }
