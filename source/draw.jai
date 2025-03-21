@@ -264,6 +264,8 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
     vertices: [..] Block_Vertex;
 
     for :iterate_vector3i size {
+        if !filled[it_index] continue;
+
         // This algorithm is a little wacky so I will do my best to explain it here.
         // We want to find the UV coordinates of the part of the texture that corresponds
         // to the combination of edges that this quad has.
@@ -288,137 +290,215 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
         // @Speed there are probably many ways this algorithm could be sped up tremendously
         // if that becomes a problem.
-        
+
+        // 2023 - 3 - 20 Addendum:
+        // @Speed This is taking 8ms on the larger levels. Though this is related to surface area
+        // rather than volume, and half of it comes from OpenGL allocating memory internally,
+        // this is still worth keeping an eye on.
+
+
         using Gridlike_Edge;
         EDGES : [4][4] Gridlike_Edge : .[
-            .[0,                    0,              XP_YP | XN_YP | XN_YN | XP_YN,      XP_YP | XN_YP | XN_YN],
-            .[XP | YP,              0,              XP_YP | XN_YP,                      XP_YP],
-            .[XP | YP | XN,         XP,             XP | XN_YP,                         XP | XN_YN], 
-            .[XP | YP | XN | YN,    XP | XN,        XP | YP | XN_YN,                    XP | XN_YP | XN_YN],
+            .[0,                    XP_YP | XN_YN,      XP_YP | XN_YP | XN_YN | XP_YN,      XP_YP | XN_YP | XN_YN],
+            .[XP | YP,              0,                  XP_YP | XN_YP,                      XP_YP],
+            .[XP | YP | XN,         XP,                 XP | XN_YP,                         XP | XN_YN], 
+            .[XP | YP | XN | YN,    XP | XN,            XP | YP | XN_YN,                    XP | XN_YP | XN_YN],
         ];
 
 
-        if !filled[it_index] continue;
-
-        success, index := get_3d_index(.{it.x, it.y + 1, it.z}, size);
-        if success && filled[index] continue;
-
-        occupied: Gridlike_Edge;
-
-        check_edge :: (x_offset: s32, z_offset: s32, edge: Gridlike_Edge) #expand {
-            position := Vector3i.{it.x + x_offset, it.y, it.z + z_offset};
-            success, index := get_3d_index(position, size);
-            if !success || !filled[index] {
-                occupied |= edge;
-            } else {
-                position.y += 1;
-                success, index := get_3d_index(position, size);
-                if success && filled[index] occupied |= edge;
+        // Hopefully the optimizer takes the hint from all these constants.
+        check :: ($face: Cube_Vertex) #expand {
+            #if face == {
+                case .X_POSITIVE;
+                    NORMAL_INDEX :: 0;
+                    NORMAL :: 1;
+                    X_AXIS_INDEX :: 2;
+                    X_AXIS :: 1;
+                    Y_AXIS_INDEX :: 1;
+                    Y_AXIS :: 1;
+                    viewed_offset := Vector3i.{it.x + 1, it.y, it.z};
+                case .X_NEGATIVE;
+                    NORMAL_INDEX :: 0;
+                    NORMAL :: -1;
+                    X_AXIS_INDEX :: 2;
+                    X_AXIS :: -1;
+                    Y_AXIS_INDEX :: 1;
+                    Y_AXIS :: 1;
+                    viewed_offset := it;
+                case .Y_POSITIVE;
+                    NORMAL_INDEX :: 1;
+                    NORMAL :: 1;
+                    X_AXIS_INDEX :: 0;
+                    X_AXIS :: 1;
+                    Y_AXIS_INDEX :: 2;
+                    Y_AXIS :: 1;
+                    viewed_offset := Vector3i.{it.x, it.y + 1, it.z};
+                case .Y_NEGATIVE;
+                    NORMAL_INDEX :: 1;
+                    NORMAL :: -1;
+                    X_AXIS_INDEX :: 0;
+                    X_AXIS :: -1;
+                    Y_AXIS_INDEX :: 2;
+                    Y_AXIS :: 1;
+                    viewed_offset := it;
+                case .Z_POSITIVE;
+                    NORMAL_INDEX :: 2;
+                    NORMAL :: 1;
+                    X_AXIS_INDEX :: 0;
+                    X_AXIS :: -1;
+                    Y_AXIS_INDEX :: 1;
+                    Y_AXIS :: 1;
+                    viewed_offset := Vector3i.{it.x, it.y, it.z + 1};
+                case .Z_NEGATIVE;
+                    NORMAL_INDEX :: 2;
+                    NORMAL :: -1;
+                    X_AXIS_INDEX :: 0;
+                    X_AXIS :: 1;
+                    Y_AXIS_INDEX :: 1;
+                    Y_AXIS :: 1;
+                    viewed_offset := it;
+                case;
+                    #assert false;
             }
-        }
 
-        check_edge( 1,  0, XP);
-        check_edge(-1,  0, XN);
-        check_edge( 0,  1, YP);
-        check_edge( 0, -1, YN);
-        
-        check_corner :: (x_offset: s32, z_offset: s32, edges: Gridlike_Edge, corner: Gridlike_Edge) #expand {
-            if occupied & edges return;
-            position := Vector3i.{it.x + x_offset, it.y, it.z + z_offset};
-            success, index := get_3d_index(position, size);
-            if !success || !filled[index] {
-                occupied |= corner;
-            } else {
-                position.y += 1;
+
+            above := it;
+            above.component[NORMAL_INDEX] += NORMAL;
+
+            success, index := get_3d_index(above, size);
+            if success && filled[index] return;
+
+            occupied: Gridlike_Edge;
+
+            check_edge :: ($x_offset: s32, $y_offset: s32, $edge: Gridlike_Edge) #expand {
+                position := it;
+                position.component[X_AXIS_INDEX] += x_offset * X_AXIS;
+                position.component[Y_AXIS_INDEX] += y_offset * Y_AXIS;
                 success, index := get_3d_index(position, size);
-                if success && filled[index] occupied |= corner;
-            }
-        }
-
-        check_corner( 1,  1, XP | YP, XP_YP);
-        check_corner(-1,  1, XN | YP, XN_YP);
-        check_corner(-1, -1, XN | YN, XN_YN);
-        check_corner( 1, -1, XP | YN, XP_YN);
-
-        E :: 0.0001;
-        // this epsilon value is to correct for when the uvs get rounded
-        // incorrectly due to vertex varying interpolation. Because we're
-        // doing nearest-neighbor interpolation for the bitmap, this might
-        // cause the pixel value from an adjacent part of the bitmap to be
-        // read instead. We shrink the coordinates ever so slightly by
-        // epsilon to prevent this from happening.
-
-        // Zero and one
-        O :: E;
-        I :: 1 - E;
-
-
-        P0_X :: float.[O, I, I, O];
-        P0_Y :: float.[O, O, I, I];
-
-        P1_X :: float.[I, I, O, O];
-        P1_Y :: float.[O, I, I, O];
-
-        P2_X :: float.[I, O, O, I];
-        P2_Y :: float.[I, I, O, O];
-
-        P3_X :: float.[O, O, I, I];
-        P3_Y :: float.[I, O, O, I];
-
-
-        found := false;
-        p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y: float;
-
-        occupied_rotated := occupied;
-        
-        for rotation: 0..3 {
-            for y_row, y: EDGES {
-                for val, x: y_row {
-                    if val == occupied_rotated {
-                        found = true;
-
-                        p0_x = (x + P0_X[rotation]) / cast(float, y_row.count);
-                        p0_y = (y + P0_Y[rotation]) / cast(float, EDGES.count);
-
-                        p1_x = (x + P1_X[rotation]) / cast(float, y_row.count);
-                        p1_y = (y + P1_Y[rotation]) / cast(float, EDGES.count);
-
-                        p2_x = (x + P2_X[rotation]) / cast(float, y_row.count);
-                        p2_y = (y + P2_Y[rotation]) / cast(float, EDGES.count);
-
-                        p3_x = (x + P3_X[rotation]) / cast(float, y_row.count);
-                        p3_y = (y + P3_Y[rotation]) / cast(float, EDGES.count);
-
-                        break rotation;
-                    }
+                if !success || !filled[index] {
+                    occupied |= edge;
+                } else {
+                    position.component[NORMAL_INDEX] += NORMAL;
+                    success, index := get_3d_index(position, size);
+                    if success && filled[index] occupied |= edge;
                 }
             }
 
-            last_two := occupied_rotated >> 6;
-            occupied_rotated <<= 2;
-            occupied_rotated |= last_two;
-        }
-        assert(found);
+            check_edge( 1,  0, XP);
+            check_edge(-1,  0, XN);
+            check_edge( 0,  1, YP);
+            check_edge( 0, -1, YN);
 
-        origin := to_vector3(it);
-        outline_uvs := Vector2.[
-            .{p0_x, p0_y},
-            .{p1_x, p1_y},
-            .{p2_x, p2_y},
-            .{p0_x, p0_y},
-            .{p2_x, p2_y},
-            .{p3_x, p3_y}
-        ];
+            check_corner :: ($x_offset: s32, $y_offset: s32, $edges: Gridlike_Edge, $corner: Gridlike_Edge) #expand {
+                if occupied & edges return;
+                position := it;
+                position.component[X_AXIS_INDEX] += x_offset * X_AXIS;
+                position.component[Y_AXIS_INDEX] += y_offset * Y_AXIS;
+                success, index := get_3d_index(position, size);
+                if !success || !filled[index] {
+                    occupied |= corner;
+                } else {
+                    position.component[NORMAL_INDEX] += NORMAL;
+                    success, index := get_3d_index(position, size);
+                    if success && filled[index] occupied |= corner;
+                }
+            }
 
-        for i: 0..5 {
-            index := xx Cube_Vertex.Y_POSITIVE + i;
-            append(*vertices, *frame_arena).* = .{
-                position = origin + CUBE_VERTICES[index],
-                uv = CUBE_UVS[index],
-                viewed_offset = .{it.x, it.y + 1, it.z},
-                outline_uv = outline_uvs[i]
-            };
+            check_corner( 1,  1, XP | YP, XP_YP);
+            check_corner(-1,  1, XN | YP, XN_YP);
+            check_corner(-1, -1, XN | YN, XN_YN);
+            check_corner( 1, -1, XP | YN, XP_YN);
+
+            E :: 0.0001;
+            // this epsilon value is to correct for when the uvs get rounded
+            // incorrectly due to vertex varying interpolation. Because we're
+            // doing nearest-neighbor interpolation for the bitmap, this might
+            // cause the pixel value from an adjacent part of the bitmap to be
+            // read instead. We shrink the coordinates ever so slightly by
+            // epsilon to prevent this from happening.
+
+            // Zero and one
+            O :: E;
+            I :: 1 - E;
+
+
+            P0_X :: float.[O, I, I, O];
+            P0_Y :: float.[O, O, I, I];
+
+            P1_X :: float.[I, I, O, O];
+            P1_Y :: float.[O, I, I, O];
+
+            P2_X :: float.[I, O, O, I];
+            P2_Y :: float.[I, I, O, O];
+
+            P3_X :: float.[O, O, I, I];
+            P3_Y :: float.[I, O, O, I];
+
+            found := false;
+            p0_x, p0_y, p1_x, p1_y, p2_x, p2_y, p3_x, p3_y: float;
+
+            occupied_rotated := occupied;
+            
+            for rotation: 0..3 {
+                for y_row, y: EDGES {
+                    for val, x: y_row {
+                        if val == occupied_rotated {
+                            found = true;
+
+                            p0_x = (x + P0_X[rotation]) / cast(float, y_row.count);
+                            p0_y = (y + P0_Y[rotation]) / cast(float, EDGES.count);
+
+                            p1_x = (x + P1_X[rotation]) / cast(float, y_row.count);
+                            p1_y = (y + P1_Y[rotation]) / cast(float, EDGES.count);
+
+                            p2_x = (x + P2_X[rotation]) / cast(float, y_row.count);
+                            p2_y = (y + P2_Y[rotation]) / cast(float, EDGES.count);
+
+                            p3_x = (x + P3_X[rotation]) / cast(float, y_row.count);
+                            p3_y = (y + P3_Y[rotation]) / cast(float, EDGES.count);
+
+                            break rotation;
+                        }
+                    }
+                }
+
+                last_two := occupied_rotated >> 6;
+                occupied_rotated <<= 2;
+                occupied_rotated |= last_two;
+            }
+            assert(found);
+
+
+            origin := to_vector3(it);
+            outline_uvs := Vector2.[
+                .{p0_x, p0_y},
+                .{p1_x, p1_y},
+                .{p2_x, p2_y},
+                .{p0_x, p0_y},
+                .{p2_x, p2_y},
+                .{p3_x, p3_y}
+            ];
+
+            for i: 0..5 {
+                index := xx face + i;
+                append(*vertices, *frame_arena).* = .{
+                    position = origin + CUBE_VERTICES[index],
+                    uv = CUBE_UVS[index],
+                    viewed_offset = above,
+                    outline_uv = outline_uvs[i]
+                };
+            }
         }
+
+
+        check(.X_POSITIVE);
+        check(.X_NEGATIVE);
+
+        check(.Y_POSITIVE);
+        check(.Y_NEGATIVE);
+
+        check(.Z_POSITIVE);
+        check(.Z_NEGATIVE);
     }
 
     vertex_positions := alloc_view(arena, vertices.count, Vector3);
