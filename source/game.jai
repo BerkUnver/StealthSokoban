@@ -552,15 +552,16 @@ game_update : Game_Update : (
 
                     check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
                         in_bounds, index := get_3d_index(position, level_size);
-
+                        
+                        COLOR :: Vector4.{43.0/255.0, 42.0/255.0, 76.0/255.0, 1};
                         if !in_bounds {
                             if hidden || a_gridlike_is_here {
-                                for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], .{0,0,0,1});
+                                for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
                             }
                         } else {
                             if hidden && !a_gridlike_is_here && viewed[index] & .SEEN != 0 {
                                 if !is_a_gridlike_at(*level, index) {
-                                    for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], .{0,0,0,1});
+                                    for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
                                 }
                             }
                         }
