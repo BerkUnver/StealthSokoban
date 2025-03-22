@@ -208,6 +208,11 @@ get_mark :: (arena: *Memory_Arena) -> s64 {
     return arena.current;
 }
 
+scope_mark :: (arena: *Memory_Arena) #expand {
+    mark := get_mark(arena);
+    `defer restore_mark(arena, mark);
+}
+
 
 
 
@@ -421,4 +426,9 @@ local_to_global_direction :: (x: float, z: float, yaw: float64) -> Vector3i {
     }
 
     return dir;
+}
+
+get :: (str: string, $T: Type) -> T, string {
+    data := str.data;
+    return cast(*T, data).*, advance(str, size_of(T));
 }

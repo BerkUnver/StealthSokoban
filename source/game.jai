@@ -218,6 +218,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
 
+
         //
         // Now that the game_context is initted, we can init the game.
         //
@@ -662,6 +663,7 @@ game_update : Game_Update : (
                 draw_entities(_Exit, *exit_mesh);
                 draw_entities(_Player, *player_mesh);
 
+                
                 if editor.selected {
                     t := (cos(editor.selected_timer * TAU) + 1) / 2;
                     color := Vector4.{t, t, t, 1};
@@ -756,7 +758,6 @@ game_update : Game_Update : (
 
                     imm_flush();
                 }
-
                 
                 if !editor_imgui_disabled {
                     glDisable(GL_DEPTH_TEST);

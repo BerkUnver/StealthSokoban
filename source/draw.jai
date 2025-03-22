@@ -2,6 +2,10 @@ Mesh :: struct {
     vertex_positions: [] Vector3; // We store this information on the CPU so we can raycast against it.
     vao: GLuint;
     vbo: GLuint;
+    
+    indices_exist: bool;
+    index_ebo: GLuint;
+    index_count: u32;
 }
 
 
@@ -153,10 +157,68 @@ make_cuboid :: (vertices: [] Vector3, begin: Vector3, end: Vector3) -> [] Vector
 }
 
 
+
+load_mesh :: (path: string) -> Mesh {
+    using context.game_context;
+    Mesh_Header :: struct {
+        index_count: u32;
+        vertex_count: u32;
+    }
+
+    scope_mark(*frame_arena);
+
+    success, str := read_file(path, *frame_arena);
+    assert(success);
+
+    header:, str = get(str, Mesh_Header);
+    
+    index_chunk_size := header.index_count * size_of(u32);
+    vertex_chunk_size := header.vertex_count * size_of(Vector3);
+
+    file_data_size := index_chunk_size + vertex_chunk_size;
+    assert(xx str.count == file_data_size);
+
+    index_chunk_ptr := str.data;
+    vertex_chunk_ptr := index_chunk_ptr + index_chunk_size;
+
+
+    vao, vbo, ebo: GLuint;
+    glGenVertexArrays(1, *vao);
+    glGenBuffers(1, *vbo);
+    glGenBuffers(1, *ebo);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertex_chunk_size, vertex_chunk_ptr, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_chunk_size, index_chunk_ptr, GL_STATIC_DRAW);
+
+    using Layout_Location;
+    glEnableVertexAttribArray(xx POSITION);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
+    
+    glEnableVertexAttribArray(0);
+
+    // @TODO: Figure out what to do about mesh picking!
+    return .{
+        vao = vao,
+        vbo = vbo,
+        indices_exist = true,
+        index_ebo = ebo,
+        index_count = header.index_count
+    };
+}
+
+
 free :: (mesh: *Mesh) {
     using context.game_context;
     glDeleteVertexArrays(1, *mesh.vao);
-    glDeleteBuffers(1, *mesh.vbo);
+    if mesh.indices_exist {
+        buffers := GLuint.[mesh.vbo, mesh.index_ebo];
+        glDeleteBuffers(2, buffers.data);
+    } else {
+        glDeleteBuffers(1, *mesh.vbo);
+    }
 }
 
 
@@ -888,5 +950,9 @@ set_uniform_bitmap :: (name: *u8, unit_index: int, bitmap: GLuint, type: GLenum 
 bind_and_draw :: (mesh: *Mesh) {
     using context.game_context;
     glBindVertexArray(mesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+    if mesh.indices_exist {
+        glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, null);
+    } else {
+        glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+    }
 }

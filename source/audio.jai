@@ -30,7 +30,7 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
     riff_id:, str = get_chunk_id(str);
     assert(riff_id == "RIFF");
 
-    rest_of_file_size:, str = get_u32(str);
+    rest_of_file_size:, str = get(str, u32);
     assert(rest_of_file_size == str.count);
     
     wave_id:, str = get_chunk_id(str);
@@ -47,7 +47,7 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
                 assert(!has_format);
                 has_format = true;
                 format: WAVEFORMATEX = ---;
-                format_size:, str = get_u32(str);
+                format_size:, str = get(str, u32);
                 assert(str.count >= format_size);
                 if format_size == 16 {
                     memcpy(*format, str.data, format_size);
@@ -78,7 +78,7 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
             case "data";
                 assert(!has_samples);
                 has_samples = true;
-                data_size:, str = get_u32(str);
+                data_size:, str = get(str, u32);
                 samples.count = data_size;
                 samples.data = str.data;
                 padded_data_size := data_size;
@@ -97,10 +97,4 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
         base = base.data,
         data = .{samples.count / AUDIO_BYTES_PER_SAMPLE, xx samples.data}
     };
-}
-
-get_u32 :: (str: string) -> u32, string {
-    number := str.data; // @TODO: Check for big-endian
-    new_str := advance(str, 4);
-    return cast(*u32, number).*, new_str;
 }

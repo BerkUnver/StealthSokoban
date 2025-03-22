@@ -1,3 +1,7 @@
-* eol=lf
-*.md text
-*.jai text
+*.md eol=lf
+*.jai eol=lf
+*.gl eol=lf
+*.py eol=lf
+
+.gitignore eol=lf
+.gitattributes eol=lf
