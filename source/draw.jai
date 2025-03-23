@@ -157,8 +157,31 @@ make_cuboid :: (vertices: [] Vector3, begin: Vector3, end: Vector3) -> [] Vector
 }
 
 
+Imm_Vertex :: struct {
+    position: Vector3;
+    uv: Vector2;
+    color: Vector4;
+} #no_padding
 
-load_mesh :: (path: string) -> Mesh {
+
+Block_Vertex :: struct {
+    position: Vector3;
+    uv: Vector2;
+    viewed_offset: Vector3i;
+    outline_uv: Vector2;
+} #no_padding
+
+
+// This is the vertex format for the blender exporter mesh
+// file format. In the future, it might have certain sections
+// that are optional depending on what the mesh uses.
+My_Mesh_Vertex :: struct {
+    position: Vector3;
+    uv: Vector2;
+} #no_padding
+
+
+load_mesh :: (path: string, arena: *Memory_Arena) -> Mesh {
     using context.game_context;
     Mesh_Header :: struct {
         index_count: u32;
@@ -173,7 +196,7 @@ load_mesh :: (path: string) -> Mesh {
     header:, str = get(str, Mesh_Header);
     
     index_chunk_size := header.index_count * size_of(u32);
-    vertex_chunk_size := header.vertex_count * size_of(Vector3);
+    vertex_chunk_size := header.vertex_count * size_of(My_Mesh_Vertex);
 
     file_data_size := index_chunk_size + vertex_chunk_size;
     assert(xx str.count == file_data_size);
@@ -195,12 +218,18 @@ load_mesh :: (path: string) -> Mesh {
 
     using Layout_Location;
     glEnableVertexAttribArray(xx POSITION);
-    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(My_Mesh_Vertex), null);
+    glEnableVertexAttribArray(xx UV);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(My_Mesh_Vertex), *cast(*My_Mesh_Vertex, null).uv);
     
-    glEnableVertexAttribArray(0);
+    // @TODO: Get mesh picking to work in a SANE WAY.
+    vertex_positions := alloc_view(arena, header.index_count, Vector3);
+    for * vertex_positions {
+        it.* = cast(*My_Mesh_Vertex, vertex_chunk_ptr)[cast(*u32, index_chunk_ptr)[it_index]].position;
+    }
 
-    // @TODO: Figure out what to do about mesh picking!
     return .{
+        vertex_positions = vertex_positions,
         vao = vao,
         vbo = vbo,
         indices_exist = true,
@@ -241,15 +270,10 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
     glEnableVertexAttribArray(xx POSITION);
     glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
 
+    glEnableVertexAttribArray(xx UV);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+
     return .{vertex_positions = vertex_positions, vao = vao, vbo = vbo};
-}
-
-
-Block_Vertex :: struct {
-    position: Vector3;
-    uv: Vector2;
-    viewed_offset: Vector3i;
-    outline_uv: Vector2;
 }
 
 

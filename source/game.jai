@@ -216,7 +216,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         enemy_spawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        player_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
+        player_mesh = load_mesh("player.my_mesh", *permanent_arena);
 
 
         //
@@ -260,7 +260,7 @@ game_update : Game_Update : (
         // This causes us to use more memory than we should.
         
         // glClear up here so it doesn't happen after anyone does any debug drawing
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
@@ -405,7 +405,6 @@ game_update : Game_Update : (
             case .GAME;
                 glEnable(GL_DEPTH_TEST);
                 glEnable(GL_CULL_FACE);
-                glDepthFunc(GL_LESS);
                 glDisable(GL_BLEND);
 
                 //
@@ -508,22 +507,10 @@ game_update : Game_Update : (
 
 
                 //
-                // Draw the player
+                // Draw the mesh to conceal the invisible level parts
                 //
 
                 glEnable(GL_CULL_FACE);
-
-                glUseProgram(color_shader);
-                set_uniform("color", Player.COLOR);
-                for * _Player {
-                    matrix := world_to_camera * get_player_draw_info(it);
-                    set_uniform("projection", matrix);
-                    bind_and_draw(*player_mesh);
-                }
-
-                //
-                // Draw the mesh to conceal the invisible level parts
-                //
             
                 // Because this changes so frequently, it makes the most sense for me to draw this in immediate mode.
                 glUseProgram(imm_color_shader); 
@@ -583,8 +570,14 @@ game_update : Game_Update : (
                 //
 
                 // @TODO: Depth sorting. Possibly for when we need a real renderer.
+
                 glDepthFunc(GL_GREATER);
                 glEnable(GL_BLEND);
+                glEnable(GL_STENCIL_TEST);
+                glDepthMask(GL_FALSE);
+                glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+                glStencilMask(0xFF);
+                glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
                 glUseProgram(occlusion_shader);
                 
@@ -592,6 +585,14 @@ game_update : Game_Update : (
                 // set_uniform("projection", translate(world_to_camera, to_vector3(entrance.position)));
                 // set_uniform("color", Vector4.{ENTRANCE_COLOR.x, ENTRANCE_COLOR.y, ENTRANCE_COLOR.z, 0.5});
                 // bind_and_draw(*entrance_mesh);
+
+                set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
+                for * _Player {
+                    matrix := world_to_camera * get_player_draw_info(it);
+                    set_uniform("projection", matrix);
+                    bind_and_draw(*player_mesh);
+                }
+
                 
                 set_uniform("color", Vector4.{Exit.COLOR.x, Exit.COLOR.y, Exit.COLOR.z, 0.5});
                 for * _Exit {
@@ -599,8 +600,19 @@ game_update : Game_Update : (
                     bind_and_draw(*exit_mesh);
                 }
 
+                glDepthFunc(GL_LESS);
+                glDepthMask(GL_TRUE);
+                glDisable(GL_STENCIL_TEST);
+                
+                //
+                // Draw the player
+                //
 
-                set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
+                // We draw the player after so the player always draws on top
+                // of the exit.
+
+                glUseProgram(color_shader);
+                set_uniform("color", Player.COLOR);
                 for * _Player {
                     matrix := world_to_camera * get_player_draw_info(it);
                     set_uniform("projection", matrix);

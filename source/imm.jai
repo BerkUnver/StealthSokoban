@@ -1,13 +1,7 @@
-Vertex :: struct {
-    position: Vector3;
-    uv: Vector2;
-    color: Vector4;
-}
-
 Imm_State :: struct {
     vao: GLuint;
     vbo: GLuint;
-    vertices: [2400] Vertex;
+    vertices: [2400] Imm_Vertex;
     vertex_count: u32;
 
     // @TODO: Should we store the shader on here instead of setting it explicitly with OpenGL?
@@ -28,18 +22,18 @@ imm_init :: () -> Imm_State {
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, byte_count(vertices), null, GL_STREAM_DRAW); // Allocate the buffer
     
-    v: *Vertex;
+    v: *Imm_Vertex;
 
     // @Speed make this SOA
     using Layout_Location;
     glEnableVertexAttribArray(xx POSITION);
-    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.position);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Imm_Vertex), *v.position);
 
     glEnableVertexAttribArray(xx UV);
-    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.uv);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Imm_Vertex), *v.uv);
 
     glEnableVertexAttribArray(xx COLOR);
-    glVertexAttribPointer(xx COLOR, 4, GL_FLOAT, GL_FALSE, size_of(Vertex), *v.color);
+    glVertexAttribPointer(xx COLOR, 4, GL_FLOAT, GL_FALSE, size_of(Imm_Vertex), *v.color);
 
     return imm_state;
 }
@@ -50,7 +44,7 @@ imm_flush :: () {
     using context.game_context;
     
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Vertex) * vertex_count, vertices.data);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Imm_Vertex) * vertex_count, vertices.data);
 
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count);
@@ -58,7 +52,7 @@ imm_flush :: () {
 }
 
 
-imm_vertex_ptr :: () -> *Vertex {
+imm_vertex_ptr :: () -> *Imm_Vertex {
     using context.game_context.imm_state;
     if vertex_count == vertices.count imm_flush();
     v := *vertices[vertex_count];

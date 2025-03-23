@@ -286,9 +286,9 @@ main :: () {
         WGL_COLOR_BITS_ARB,                 24,
         WGL_ALPHA_BITS_ARB,                 0,
         WGL_DEPTH_BITS_ARB,                 24,
+        WGL_STENCIL_BITS_ARB,               8,
 
         // @Investigate I think we can omit the ones that can be zero
-        WGL_STENCIL_BITS_ARB,               0,
         WGL_ACCUM_BITS_ARB,                 0,
         WGL_AUX_BUFFERS_ARB,                0,
         WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB,   1,
