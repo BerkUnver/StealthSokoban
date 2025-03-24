@@ -213,7 +213,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
         enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0, 0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0, 0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
-        enemy_spawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
@@ -468,7 +468,8 @@ game_update : Game_Update : (
                     set_uniform("color", 0.5 * color);
                     bind_and_draw(*enemy_nose_mesh);
                 }
-                
+
+
                 set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
                 for mutual_annihilations {
                     set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
@@ -476,15 +477,13 @@ game_update : Game_Update : (
                 }
 
 
-                draw_entities :: (e: [] $T/Entity, mesh: *Mesh) #expand {
-                    set_uniform("color", T.COLOR);
-                    for * e {
-                        set_uniform("model_to_world", entity_mesh_to_world_matrix(*level, it));
-                        bind_and_draw(mesh);
-                    }
+                for * _Enemy_Spawner {
+                    matrix, color := get_enemy_spawner_draw_info(it); 
+                    set_uniform("projection", world_to_camera * matrix);
+                    set_uniform("color", color);
+                    bind_and_draw(*enemy_spawner_mesh);
                 }
 
-                draw_entities(_Enemy_Spawner, *enemy_spawner_mesh);
 
                 //
                 // Draw things that always appear
@@ -660,6 +659,14 @@ game_update : Game_Update : (
                     bind_and_draw(*enemy_nose_mesh);
                 }
 
+               
+                for * _Enemy_Spawner {
+                    matrix, color := get_enemy_spawner_draw_info(it); 
+                    set_uniform("projection", world_to_camera * matrix);
+                    set_uniform("color", color);
+                    bind_and_draw(*enemy_spawner_mesh);
+                }
+
 
                 draw_entities :: (e: [] $T/Entity, mesh: *Mesh) #expand {
                     set_uniform("color", T.COLOR);
@@ -670,7 +677,6 @@ game_update : Game_Update : (
                     }
                 }
 
-                draw_entities(_Enemy_Spawner, *enemy_spawner_mesh);
                 draw_entities(_Entrance, *entrance_mesh);
                 draw_entities(_Exit, *exit_mesh);
                 draw_entities(_Player, *player_mesh);

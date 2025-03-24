@@ -1,23 +1,76 @@
+import bmesh
 import bpy
 import bpy_extras
 import struct
 
 
 class ToExport():
-    def __init__(self, object, mesh, mesh_to_world):
-        self.object = object
+    def __init__(self, obj, mesh, mesh_to_world):
+        self.obj = obj
         self.mesh = mesh
         self.mesh_to_world = mesh_to_world
 
 
 def export_my_mesh(context, operator):
+    bm = bmesh.new()
+    dependency_graph = context.evaluated_depsgraph_get()
+    
+    for obj in context.scene.collection.all_objects:
+        if obj.type == "MESH":
+            n = len(bm.verts)
+            bm.from_object(obj, dependency_graph)
+            bmesh.ops.transform(bm, verts=bm.verts[n:], matrix=obj.matrix_world)
+
+    bmesh.ops.triangulate(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new("Export Mesh")
+    bm.to_mesh(mesh)
+
+        
+    if not mesh.uv_layers or len(mesh.uv_layers) == 0:
+        operator.report({"ERROR"}, "There's a mesh without uv layers in this scene. We don't support that.")
+        return {"CANCELLED"}
+        meshes
+
+    if len(mesh.uv_layers) > 1:
+        operator.report({"ERROR"}, "There's a mesh with more than 1 uv layer in the scene. We don't support that.")
+        return {"CANCELLED"}
+
+    uvs = mesh.uv_layers[0].uv
+
+    data = bytearray()
+
+    index_count = len(mesh.loop_triangles)
+    vertex_count = len(mesh.loops)
+    s = struct.pack("<II", index_count, vertex_count)
+    data.extend(s)
+
+    for i in range(vertex_count):
+        loop = mesh.loops[i]
+        position = mesh.vertices[loop.vertex_index].co
+        uv = uvs[i].vector
+
+        s = struct.pack("<5f", position.x, position.z, position.y, uv.x, uv.y)
+        data.extend(s)
+    
+    f = open(operator.filepath, "wb")
+    f.write(data)
+    f.close()
+
+    return {"FINISHED"}
+
+"""
+def export_my_mesh(context, operator):
     to_export_array = []
     
-    for object in context.scene.collection.all_objects:
-        if object.type == "MESH":
-            to_export_array.append(ToExport(object, object.to_mesh(), object.matrix_world))
+    for obj in context.scene.collection.all_objects:
+        if obj.type == "MESH":
+            bm = bmesh.new()
+            bm.from_object(obj)
+            bmesh.ops.transform(bm, verts = bm.verts, matrix=obj.matrix_world)
+            mesh = bpy.data.meshes.new()
+            bm.to_mesh(mesh)
+            to_export_array.append(ToExport(obj, mesh, obj.matrix_world))
             # TODO: Filter out hidden meshes
-    
 
     data = bytearray()
     vertex_count = 0
@@ -46,6 +99,7 @@ def export_my_mesh(context, operator):
         if not to_export.mesh.uv_layers:
             operator.report({"ERROR"}, "There's a mesh without uv layers in this scene. We don't support that.")
             return {"CANCELLED"}
+            meshes
 
         if len(to_export.mesh.uv_layers) > 1:
             operator.report({"ERROR"}, "There's a mesh with more than 1 uv layer in the scene. We don't support that.")
@@ -67,7 +121,7 @@ def export_my_mesh(context, operator):
     f.close()
 
     return {"FINISHED"}
-
+"""
 
 class MyMeshExporter(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "export.my_mesh_exporter"

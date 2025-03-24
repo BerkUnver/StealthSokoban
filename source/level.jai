@@ -174,6 +174,19 @@ vector3i_to_facing :: (v: Vector3i) -> Facing {
     return 0;
 }
 
+facing_to_matrix4 :: (f: Facing) -> Matrix4 {
+    rotation: float;
+    if f == {
+        case .X_POSITIVE;
+        case .Z_NEGATIVE; rotation = PI / 2;
+        case .X_NEGATIVE; rotation = PI;
+        case .Z_POSITIVE; rotation = -PI / 2;
+        case; assert(false);
+    }
+    
+    return make_y_rotation_matrix(Matrix4, -rotation);
+}
+
 
 facing_right :: inline (f: Facing) -> Facing {
     return (f - 1 + Facing.COUNT) % Facing.COUNT;
@@ -216,6 +229,9 @@ Enemy :: struct {
 
     desired_position: Vector3i; @NoSerialize // Only used when we are updating all the enemies.
 }
+
+LEFT_ENEMY_COLOR :: Vector4.{0, 68.0 / 255.0, 166.0 / 255.0, 1};
+RIGHT_ENEMY_COLOR :: Vector4.{1, 0, 0, 1};
 
 
 Enemy_Spawner_Type :: enum {
@@ -850,24 +866,17 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
             color_weight = weight;
     }
     
-    rotation: float;
-    if enemy.facing == {
-        case .X_POSITIVE;
-        case .Z_NEGATIVE; rotation = PI / 2;
-        case .X_NEGATIVE; rotation = PI;
-        case .Z_POSITIVE; rotation = -PI / 2;
-    }
     
-    matrix = matrix * make_y_rotation_matrix(Matrix4, -rotation);
+    matrix = matrix * facing_to_matrix4(enemy.facing);
     matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0.5, 0.5}) * matrix;
 
 
     color: Vector4;
     if #complete enemy.favored_direction == {
         case .LEFT;
-            color = .{0, 68.0 / 255.0, 166.0 / 255.0, 1};
+            color = LEFT_ENEMY_COLOR;
         case .RIGHT;
-            color = .{1, 0, 0, 1};
+            color = RIGHT_ENEMY_COLOR;
     };
 
     return matrix, color;
@@ -891,6 +900,25 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
             scale = Matrix4.{_44 = 1}; // @Temporary Add a way to prevent the player from drawing
     }
     return make_translation_matrix4(to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5}) * scale;
+}
+
+
+get_enemy_spawner_draw_info :: (enemy_spawner: Enemy_Spawner) -> model_to_world: Matrix4, color: Vector4 {
+    color: Vector4;
+    if #complete enemy_spawner.enemy_spawner_type == {
+        case .ALTERNATING;
+            color = .{0, 0.5, 0, 1}; // @TODO: We should have alternating stripes or something on the enemy spawner
+        case .ALL_RIGHT;
+            color = RIGHT_ENEMY_COLOR;
+            color.xyz /= 2;
+        case .ALL_LEFT;
+            color = LEFT_ENEMY_COLOR;
+            color.xyz /= 2;
+    }
+
+    matrix := facing_to_matrix4(enemy_spawner.facing);
+    matrix = make_translation_matrix4(to_vector3(enemy_spawner.position) + Vector3.{0.5, 0, 0.5}) * matrix;
+    return matrix, color;
 }
 
 

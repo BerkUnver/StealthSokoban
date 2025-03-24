@@ -211,6 +211,12 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
         return matrix;
     }
 
+    enemy_spawner := as(e, Enemy_Spawner);
+    if enemy_spawner {
+        matrix, _ := get_enemy_spawner_draw_info(enemy_spawner);
+        return matrix;
+    }
+
     player := as(e, Player);
     if player return get_player_draw_info(player);
 
