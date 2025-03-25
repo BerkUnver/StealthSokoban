@@ -50,7 +50,7 @@ Game_Context :: struct {
         imm_text_shader: GLuint;
         imm_saturation_value_shader: GLuint;
         imm_hue_shader: GLuint;
-        game_gridlike_shader: GLuint;
+        gameplay_gridlike_shader: GLuint;
         editor_gridlike_shader: GLuint;
         color_shader: GLuint;
         wireframe_shader: GLuint;
@@ -84,18 +84,23 @@ Game_Memory :: struct {
 
 Game :: struct { 
     mode: Game_Mode;
+
     level: Level;
+    // Right now, the EDITOR and GAMEPLAY mode both use this member to store their
+    // level state. When we switch modes, we just reload the level based on the
+    // level index.
+
     editor: Editor;
     editor_level_index: int;
     editor_imgui_disabled: bool;
-    game_level_index: int;
+    gameplay_level_index: int;
     level_arena: Memory_Arena;
 
     time_elapsed: float64;
 }
 
 Game_Mode :: enum {
-    GAME;
+    GAMEPLAY;
     EDITOR;
 }
 
@@ -195,7 +200,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         imm_text_shader = load_shader("shaders/imm_text.gl");
         imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
         imm_hue_shader = load_shader("shaders/imm_hue.gl");
-        game_gridlike_shader = load_shader("shaders/gridlike.gl", "#define GAME\n");
+        gameplay_gridlike_shader = load_shader("shaders/gridlike.gl", "#define GAMEPLAY\n");
         editor_gridlike_shader = load_shader("shaders/gridlike.gl");
         color_shader = load_shader("shaders/color.gl");
         wireframe_shader = load_shader("shaders/wireframe.gl");
@@ -283,8 +288,8 @@ game_update : Game_Update : (
                 free_level(*level, *level_arena);
                 
                 if #complete mode == {
-                    case .GAME;    set_mode(*game, .EDITOR);
-                    case .EDITOR; set_mode(*game, .GAME);
+                    case .GAMEPLAY;    set_mode(*game, .EDITOR);
+                    case .EDITOR; set_mode(*game, .GAMEPLAY);
                 }
                 continue;
             }
@@ -297,21 +302,21 @@ game_update : Game_Update : (
             
 
             if #complete mode == {
-                case .GAME;
+                case .GAMEPLAY;
                     change_level :: (dir: int) #expand {
                         free_level(*level, *level_arena);
-                        old_index := game_level_index;
-                        game_level_index = (game_level_index + dir + LEVELS.count) % LEVELS.count;
+                        old_index := gameplay_level_index;
+                        gameplay_level_index = (gameplay_level_index + dir + LEVELS.count) % LEVELS.count;
                         
-                        success := load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena);
-                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena);
+                        success := load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena);
+                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena);
 
                         if !success{
-                            log(.ERROR, "Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[game_level_index]);
-                            game_level_index = old_index;
-                            assert(load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena));
+                            log(.ERROR, "Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[gameplay_level_index]);
+                            gameplay_level_index = old_index;
+                            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena));
 
-                            assert(load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena));
+                            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena));
                         }
                     }
 
@@ -325,7 +330,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    level_handle_input(*level, *level_arena, it);
+                    gameplay_handle_input(*level, *level_arena, it);
 
                 case .EDITOR;
                     imgui_capturing_input := 
@@ -376,8 +381,8 @@ game_update : Game_Update : (
         if #complete mode == {
             case .EDITOR;
                 editor_update(*level, *editor, mouse, input.keys_down, dt);
-            case .GAME;
-                level_update(*level, dt);
+            case .GAMEPLAY;
+                gameplay_level_update(*level, dt);
         }
 
 
@@ -403,7 +408,7 @@ game_update : Game_Update : (
         //          -berk, 2025 - 26 - 2
         
         if #complete mode == {
-            case .GAME;
+            case .GAMEPLAY;
                 glEnable(GL_DEPTH_TEST);
                 glEnable(GL_CULL_FACE);
                 glDisable(GL_BLEND);
@@ -419,7 +424,7 @@ game_update : Game_Update : (
 
                 world_to_camera := get_game_camera_matrix(*level);
 
-                glUseProgram(game_gridlike_shader);
+                glUseProgram(gameplay_gridlike_shader);
                 
                 set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
                 set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
@@ -865,11 +870,11 @@ game_update : Game_Update : (
 set_mode :: (using game: *Game, new_mode: Game_Mode) {
     mode = new_mode;
     if #complete new_mode == {
-        case .GAME;
-            assert(load_level_part_1_deserialize(LEVELS[game_level_index], *level, *level_arena));
-            // Not every serialized level is a valid game level.
+        case .GAMEPLAY;
+            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena));
+            // Not every serialized level is a valid gameplay level.
             // (Player entity could be missing, Entrance entity could be missing, etc.)
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[game_level_index], *level, .GAME, *level_arena));
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena));
         case .EDITOR;
             if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, *level_arena) {
                 load_level_part_1_new(*level, *level_arena);

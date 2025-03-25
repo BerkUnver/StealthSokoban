@@ -12,7 +12,7 @@ uniform sampler2D outline_bitmap;
 uniform mat4 projection;
 uniform vec4 color;
 
-#ifdef GAME
+#ifdef GAMEPLAY
 uniform usamplerBuffer viewed;
 uniform ivec3 viewed_size;
 uniform ivec3 viewed_position;
@@ -22,7 +22,7 @@ uniform ivec3 viewed_position;
 OUTIN vec2 fragment_uv;
 OUTIN vec2 fragment_outline_uv;
 
-#ifdef GAME
+#ifdef GAMEPLAY
 OUTIN float fragment_brightness;
 #endif
 
@@ -30,7 +30,7 @@ OUTIN float fragment_brightness;
 // @Speed figure out how to optimize branching
 void main() {
 #ifdef VERTEX_SHADER
-#ifdef GAME
+#ifdef GAMEPLAY
     ivec3 viewed_coord = viewed_position + vertex_viewed_offset;
     
     int index;
@@ -73,7 +73,7 @@ void main() {
 
     fragment_color = color * bitmap_color;
     fragment_color.rgb *= outline_brightness * edge_brightness;
-#ifdef GAME
+#ifdef GAMEPLAY
     fragment_color.rgb *= fragment_brightness;
 #endif
 #endif

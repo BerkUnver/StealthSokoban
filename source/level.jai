@@ -723,7 +723,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             }
             return true;
 
-        case .GAME;
+        case .GAMEPLAY;
             level_position, level_size = get_block_extents(_Block);
             size_1d := level_size.x * level_size.y * level_size.z;
             // @Hack @Speed @Memory
@@ -731,7 +731,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             // Right now, the serialization system will allocate as many elements as was serialized for an array.
             // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
             // dynamically allocate memory while the a level is running, and we can easily know how much memory the
-            // game will ever use (when we're in the GAME mode. When we're in the EDITOR mode, do whatever you want.)
+            // game will ever use (when we're in the GAMEPLAY mode. When we're in the EDITOR mode, do whatever you want.)
             alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
 
             // Count up all the entities so we can allocate an array big enough
@@ -1009,7 +1009,7 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
 }
 
 
-level_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
+gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
     using context.game_context;
 
     if event.key == #char " " {
@@ -1420,7 +1420,7 @@ get_game_camera_matrix :: (using level: *Level) -> Matrix4 {
 }
 
 
-level_update :: (using level: *Level, dt: float) {
+gameplay_level_update :: (using level: *Level, dt: float) {
     using context.game_context;
 
     player := *_Player[0];
