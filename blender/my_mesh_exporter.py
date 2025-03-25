@@ -10,7 +10,7 @@ class ToExport():
         self.mesh = mesh
         self.mesh_to_world = mesh_to_world
 
-
+"""
 def export_my_mesh(context, operator):
     bm = bmesh.new()
     dependency_graph = context.evaluated_depsgraph_get()
@@ -57,19 +57,13 @@ def export_my_mesh(context, operator):
     f.close()
 
     return {"FINISHED"}
-
 """
 def export_my_mesh(context, operator):
     to_export_array = []
     
     for obj in context.scene.collection.all_objects:
         if obj.type == "MESH":
-            bm = bmesh.new()
-            bm.from_object(obj)
-            bmesh.ops.transform(bm, verts = bm.verts, matrix=obj.matrix_world)
-            mesh = bpy.data.meshes.new()
-            bm.to_mesh(mesh)
-            to_export_array.append(ToExport(obj, mesh, obj.matrix_world))
+            to_export_array.append(ToExport(obj, obj.to_mesh(), obj.matrix_world))
             # TODO: Filter out hidden meshes
 
     data = bytearray()
@@ -121,7 +115,7 @@ def export_my_mesh(context, operator):
     f.close()
 
     return {"FINISHED"}
-"""
+
 
 class MyMeshExporter(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
     bl_idname = "export.my_mesh_exporter"

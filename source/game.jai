@@ -112,7 +112,8 @@ LEVELS :: string.[
     "levels/chocolate_bar.level",
     "levels/bridge.level",
     "levels/prison_escape.level",
-    "levels/enemies_intro.level"
+    "levels/enemies_intro.level",
+    "levels/enemies_advanced.level",
 ];
 
 
@@ -479,7 +480,7 @@ game_update : Game_Update : (
 
                 for * _Enemy_Spawner {
                     matrix, color := get_enemy_spawner_draw_info(it); 
-                    set_uniform("projection", world_to_camera * matrix);
+                    set_uniform("model_to_world", matrix);
                     set_uniform("color", color);
                     bind_and_draw(*enemy_spawner_mesh);
                 }
