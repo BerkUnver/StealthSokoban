@@ -743,7 +743,19 @@ load_bitmap :: (file_name: string) -> GLuint {
     w, h, channels: s32;
     data := stbi_load_from_memory(str.data, xx str.count, *w, *h, *channels, 0);
     defer stbi_image_free(data);
-    assert(channels == 4);
+    
+    internal_format: GLint;
+    format: GLenum;
+
+    if channels == 3 {
+        internal_format = GL_RGB8;
+        format = GL_RGB;
+    } else if channels == 4 {
+        internal_format = GL_RGBA8;
+        format = GL_RGBA;
+    } else {
+        assert(false);
+    }
 
     bitmap: GLuint;
     glGenTextures(1, *bitmap);
@@ -751,11 +763,11 @@ load_bitmap :: (file_name: string) -> GLuint {
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
-        GL_RGBA8,
+        internal_format,
         xx w,
         xx h,
         0,
-        GL_RGBA,
+        format,
         GL_UNSIGNED_BYTE,
         data
     );

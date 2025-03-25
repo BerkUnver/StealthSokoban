@@ -133,10 +133,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         context.base = context_base.*;
         context.game_context = *game_memory.game_context;
         
-        abc_data := int.[1, 2];
-        abc := [] int.{2, abc_data.data};
-        die := abc[3];
-
         using context.game_context;
 
         frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
@@ -624,8 +620,9 @@ game_update : Game_Update : (
                 // We draw the player after so the player always draws on top
                 // of the exit.
 
-                glUseProgram(color_shader);
+                glUseProgram(color_and_bitmap_shader);
                 set_uniform("color", Player.COLOR);
+                set_uniform_bitmap("bitmap", 0, player_bitmap);
                 for * _Player {
                     matrix := world_to_camera * get_player_draw_info(it);
                     set_uniform("projection", matrix);
@@ -693,7 +690,15 @@ game_update : Game_Update : (
 
                 draw_entities(_Entrance, *entrance_mesh);
                 draw_entities(_Exit, *exit_mesh);
-                draw_entities(_Player, *player_mesh);
+
+                glUseProgram(color_and_bitmap_shader);
+                set_uniform("color", Player.COLOR);
+                set_uniform_bitmap("bitmap", 0, player_bitmap);
+                for * _Player {
+                    matrix := world_to_camera * get_player_draw_info(it);
+                    set_uniform("projection", matrix);
+                    bind_and_draw(*player_mesh);
+                }
 
                 
                 if editor.selected {
