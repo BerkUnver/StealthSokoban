@@ -4,13 +4,6 @@ import bpy_extras
 import struct
 
 
-class ToExport():
-    def __init__(self, obj, mesh, mesh_to_world):
-        self.obj = obj
-        self.mesh = mesh
-        self.mesh_to_world = mesh_to_world
-
-"""
 def export_my_mesh(context, operator):
     bm = bmesh.new()
     dependency_graph = context.evaluated_depsgraph_get()
@@ -21,7 +14,6 @@ def export_my_mesh(context, operator):
             bm.from_object(obj, dependency_graph)
             bmesh.ops.transform(bm, verts=bm.verts[n:], matrix=obj.matrix_world)
 
-    bmesh.ops.triangulate(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new("Export Mesh")
     bm.to_mesh(mesh)
 
@@ -39,11 +31,28 @@ def export_my_mesh(context, operator):
 
     data = bytearray()
 
-    index_count = len(mesh.loop_triangles)
+    # @TODO: The way we are exporting vertices is not very efficient.
+    # It exports each vertex of each face as a unique vertex. In
+    # Blender, faces can be non-triangular. This allows us to have,
+    # for example, 4 verts per face instead of 6. However, this is
+    # still not very good. The actual way to do this is to figure out
+    # what vertices are identical and collapse those into one vertex.
+    # I don't know if there is a way to do this with the Blender API
+    # or if we have to do it ourselves.
+    #           -berk, 2025 - 3 - 24
+    
+    index_count = len(mesh.loop_triangles) * 3
     vertex_count = len(mesh.loops)
     s = struct.pack("<II", index_count, vertex_count)
     data.extend(s)
-
+    
+    # Pack indices
+    for triangle in mesh.loop_triangles:
+        s = struct.pack("<3I", *triangle.loops)
+        data.extend(s)
+            
+    
+    # Pack vertices
     for i in range(vertex_count):
         loop = mesh.loops[i]
         position = mesh.vertices[loop.vertex_index].co
@@ -51,64 +60,6 @@ def export_my_mesh(context, operator):
 
         s = struct.pack("<5f", position.x, position.z, position.y, uv.x, uv.y)
         data.extend(s)
-    
-    f = open(operator.filepath, "wb")
-    f.write(data)
-    f.close()
-
-    return {"FINISHED"}
-"""
-def export_my_mesh(context, operator):
-    to_export_array = []
-    
-    for obj in context.scene.collection.all_objects:
-        if obj.type == "MESH":
-            to_export_array.append(ToExport(obj, obj.to_mesh(), obj.matrix_world))
-            # TODO: Filter out hidden meshes
-
-    data = bytearray()
-    vertex_count = 0
-    index_count = 0
-    
-    print(f"Mesh count: {len(to_export_array)}")
-    
-    for to_export in to_export_array:
-        vertex_count += len(to_export.mesh.loops)
-        index_count += len(to_export.mesh.loop_triangles)
-    index_count *= 3 # 3 verts per triangle
-    
-    print(f"Index count: {index_count}")
-    print(f"Vertex count: {vertex_count}")
-    
-    s = struct.pack("<II", index_count, vertex_count)
-    data.extend(s)
-    
-    for to_export in to_export_array:
-        for tri in to_export.mesh.loop_triangles:
-            s = struct.pack("<3I", *tri.loops)
-            data.extend(s)
-        
-    for to_export in to_export_array:
-        vertex_count = len(to_export.mesh.loops)
-        if not to_export.mesh.uv_layers:
-            operator.report({"ERROR"}, "There's a mesh without uv layers in this scene. We don't support that.")
-            return {"CANCELLED"}
-            meshes
-
-        if len(to_export.mesh.uv_layers) > 1:
-            operator.report({"ERROR"}, "There's a mesh with more than 1 uv layer in the scene. We don't support that.")
-            return {"CANCELLED"}
-
-        uvs = to_export.mesh.uv_layers[0].uv
-        for i in range(vertex_count):
-            loop = to_export.mesh.loops[i]
-            uv = uvs[i].vector
-            
-            vertex = to_export.mesh.vertices[loop.vertex_index]
-            position = to_export.mesh_to_world @ vertex.co
-            
-            s = struct.pack("<5f", position.x, position.z, position.y, uv.x, uv.y)
-            data.extend(s)
     
     f = open(operator.filepath, "wb")
     f.write(data)
