@@ -23,6 +23,7 @@
 - Put sound on a separate thread
 - Switch to using the Jai standard allocator
 - Move the Editor struct into the level struct
+- Make a generic texture format that we can just rip into memory efficiently
 
 
 # Platform

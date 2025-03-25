@@ -70,6 +70,7 @@ Game_Context :: struct {
         enemy_annihilation_mesh: Mesh;
         enemy_spawner_mesh: Mesh;
         player_mesh: Mesh;
+        player_bitmap: GLuint;
         entrance_mesh: Mesh;
         exit_mesh: Mesh;
     };
@@ -126,11 +127,15 @@ NEAR_PLANE :: 0.1;
 FAR_PLANE :: 1000.0;
 
 #program_export "game_init"
-game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
+game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data) #no_context {
     game_memory := cast(*Game_Memory, data.game_memory);
     push_context {
-
+        context.base = context_base.*;
         context.game_context = *game_memory.game_context;
+        
+        abc_data := int.[1, 2];
+        abc := [] int.{2, abc_data.data};
+        die := abc[3];
 
         using context.game_context;
 
@@ -223,6 +228,7 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
+        player_bitmap = load_bitmap("player.tga");
 
 
         //
@@ -241,12 +247,14 @@ game_init : Game_Init_Proc : (data: *Game_Init_Data) #no_context {
 
 #program_export "game_update"
 game_update : Game_Update : (
+    context_base: *Context_Base,
     game_memory_: *void, 
     input: Input,
     time_elapsed_: float64
 ) #no_context {
+    game_memory := cast(*Game_Memory, game_memory_);
     push_context {
-        game_memory := cast(*Game_Memory, game_memory_);
+        context.base = context_base.*;
         context.game_context = *game_memory.game_context;
 
         using game_memory;

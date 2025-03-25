@@ -497,7 +497,7 @@ main :: () {
         permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
     };
 
-    game_init(*data);
+    game_init(*context.base, *data);
 
     get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_Get_Audio_Samples {
         game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
@@ -581,7 +581,7 @@ main :: () {
         
         AUDIO_BYTES_TO_WRITE :: AUDIO_BUFFER_SIZE_IN_BYTES / 20; // 1.5 frames of audio data
 
-        game_update(game_memory, input, time_elapsed);
+        game_update(*context.base, game_memory, input, time_elapsed);
         windows.input_event_count = 0;
 
         // @TODO: All this audio stuff should be done on a separate thread.
@@ -657,4 +657,3 @@ set_console_text_color :: (color: Console_Text_Color) {
         case .GREEN; SetConsoleTextAttribute(windows.stdout, FOREGROUND_GREEN);
     }
 }
-

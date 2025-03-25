@@ -29,6 +29,7 @@ OS_Procedures :: struct {
     set_console_text_color: (Console_Text_Color);
 }
 
+
 Game_Init_Data :: struct {
     game_memory: *void;
     gl_extension_loader: (*u8) -> *void #c_call;
@@ -38,19 +39,37 @@ Game_Init_Data :: struct {
     permanent_arena_memory: *void;
 }
 
-Game_Init_Proc :: #type (init: *Game_Init_Data) #no_context;
+// :ContextBase
+// We need to carry over the Context_Base (@TODO the entire exe context) from the 
+// exe because it has stuff in it that helps us print stack traces correctly.
+// Runtime_Support is copied between both the exe and dll. If we don't copy the
+// context, things get really weird with things sometimes being called from the 
+// dll and sometimes the exe, and stack traces are bugged, get printed out twice,
+// etc.
+
+// @TODO: Figure out why kernel-level exception backtraces are bugged. Likely the
+// Runtime_Support_Crash_Handler code for backtraces does not work in dlls.
+
+Game_Init_Proc :: #type (
+    context_base: *Context_Base, // :ContextBase
+    init: *Game_Init_Data
+) #no_context;
+
 
 Game_Update :: #type (
+    context_base: *Context_Base, // :ContextBase
     game_memory: *void,
     input: Input,
     time_elapsed: float64
 ) #no_context;
+
 
 Game_Get_Audio_Samples :: #type (
     game_memory_void_ptr: *void,
     samples_played: int, // How many samples we played since the previous update
     buffer: [] s16
 ) #no_context;
+
 
 Input :: struct {
     keys_down: *[Key.COUNT] bool; // :BitArray
