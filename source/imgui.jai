@@ -12,7 +12,7 @@ Imgui_State :: struct {
     test_toggle: bool;
     test_color := Vector4.{0.8, 0.5, 0.2, 1};
     test_enum: enum { ZERO; ONE; TWO; }
-    test_struct: struct {a: bool; b: bool;}
+    test_struct: struct {a: struct {a_a: bool; a_b: bool;} b: struct {b_a: bool; b_b: bool;}}
     events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
     event_count: int;
     mouse: Vector2;
@@ -154,13 +154,13 @@ imgui_init :: () -> Imgui_State {
 
     zoom_in_matrix := Matrix4_Identity;
     zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
-    zoom_in_matrix._22 /= INNER_WINDOW_H / 2;
-    imgui_to_camera = make_translation_matrix4(.{-1, -1, 0}) * zoom_in_matrix;
+    zoom_in_matrix._22 /= -INNER_WINDOW_H / 2;
+    imgui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
 
     zoom_out_matrix := Matrix4_Identity;
     zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
-    zoom_out_matrix._22 *= INNER_WINDOW_H / 2;
-    camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, 1, 0});
+    zoom_out_matrix._22 *= -INNER_WINDOW_H / 2;
+    camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
 
     return imgui_state;
 }
@@ -283,7 +283,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 }
 
 
-color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location, id: u64 = 0) {
+color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location, id: u64 = 0) -> height: float {
     using context.game_context;
     using context.game_context.imgui_state;
 
@@ -296,19 +296,15 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     head.x += margin;
 
     bar_width := size.x - 2 * margin;
-    
-    alpha_position := head;
-    alpha_size := Vector2.{bar_width, bar_height};
-    
-    head.y += bar_height + margin;
+   
 
-    hue_position := head;
-    hue_size := Vector2.{bar_width, bar_height};
+
+
+    sample_position := head;
+    sample_size := Vector2.{bar_width, bar_height};
 
     head.y += bar_height + margin;
-     
-    // sv: saturation and value
-    
+
     sv_position := head;
     sv_size := Vector2.{bar_width, bar_width};
 
@@ -319,10 +315,23 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 
     head.y += sv_size.y + margin;
 
-    sample_position := head;
-    sample_size := Vector2.{bar_width, bar_height};
+    hue_position := head;
+    hue_size := Vector2.{bar_width, bar_height};
+    hue_x0 := hue_position.x;
+    hue_y0 := hue_position.y;
+    hue_x1 := hue_position.x + hue_size.x;
+    hue_y1 := hue_position.y + hue_size.y;
 
-    
+    head.y += bar_height + margin;
+
+    alpha_position := head;
+    alpha_size := Vector2.{bar_width, bar_height};
+
+    head.y += bar_height + margin;
+
+
+
+
     // Store what we expect the values to be, then reassign them
     // when we check input if they change.
     hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
@@ -332,9 +341,14 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
         hue = data.sv.hue;
     }
 
+
+    // :ReversedValue imgui is now drawn y-down, but we want saturation to go from 0 at the
+    // bottom y value (greatest) and 1 at the top high value (least). So, we have to reverse
+    // the y value.
+
     sv_cursor := Vector2.{
         lerp(sv_x0, sv_x1, saturation),
-        lerp(sv_y0, sv_y1, value)
+        lerp(sv_y0, sv_y1, 1 - value) // :ReversedValue
     };
 
     
@@ -358,7 +372,12 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
 
     glUseProgram(imm_hue_shader);
     set_uniform("projection", imgui_to_camera);
-    imm_quad_with_uvs(hue_position, hue_size);
+    imm_vertex(.{hue_x0, hue_y0, 0}, .{0, 0});
+    imm_vertex(.{hue_x1, hue_y0, 0}, .{1, 0});
+    imm_vertex(.{hue_x1, hue_y1, 0}, .{1, 1});
+    imm_vertex(.{hue_x0, hue_y0, 0}, .{0, 0});
+    imm_vertex(.{hue_x0, hue_y1, 0}, .{0, 1});
+    imm_vertex(.{hue_x1, hue_y1, 0}, .{1, 1});
     imm_flush();
 
     slider(*hue, hue_position, hue_size, loc=loc, id=1);
@@ -372,7 +391,7 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
             clamp(*sv_cursor.y, sv_y0, sv_y1);
 
             saturation = (sv_cursor.x - sv_x0) / (sv_x1 - sv_x0);
-            value = (sv_cursor.y - sv_y0) / (sv_y1 - sv_y0);
+            value = 1.0 - (sv_cursor.y - sv_y0) / (sv_y1 - sv_y0); // :ReversedValue
             
             color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
 
@@ -440,7 +459,12 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     glUseProgram(imm_saturation_value_shader);
     set_uniform("projection", imgui_to_camera);
     set_uniform("hue", hue);
-    imm_quad_with_uvs(sv_position, sv_size);
+    imm_vertex(.{sv_x0, sv_y0, 0}, .{0, 1});
+    imm_vertex(.{sv_x1, sv_y0, 0}, .{1, 1});
+    imm_vertex(.{sv_x1, sv_y1, 0}, .{1, 0});
+    imm_vertex(.{sv_x0, sv_y0, 0}, .{0, 1});
+    imm_vertex(.{sv_x1, sv_y1, 0}, .{1, 0});
+    imm_vertex(.{sv_x0, sv_y1, 0}, .{0, 0});
     imm_flush();
 
     glUseProgram(imm_color_shader);
@@ -449,6 +473,8 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, HIGHLIGHT_COLOR);
     imm_quad(sv_cursor_vbar_position, sv_cursor_vbar_size, HIGHLIGHT_COLOR);
     imm_flush();
+
+    return head.y;
 }
 
 
@@ -509,7 +535,7 @@ enum_selector :: (val: *void, info: *Type_Info_Enum, position: Vector2, size: Ve
 
     member_center_x := (position.x + left_button_position.x) / 2;
     text_x: float = round(member_center_x - text_length(member_text, font) / 2);
-    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+    text_y: float = round(position.y + size.y / 2 + font.ascender / 2);
 
     draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
 }
@@ -564,7 +590,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     imm_flush();
 
     text_x: float = round(position.x + size.x / 2 - text_length(label, font) / 2);
-    text_y: float = round(position.y + size.y / 2 - font.ascender / 2);
+    text_y: float = round(position.y + size.y / 2 + font.ascender / 2);
     draw_text(label, .{text_x, text_y}, font, color);
 
     return clicked;
@@ -584,14 +610,14 @@ imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #ca
 }
 
 
-imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, loc: Source_Code_Location, id: u64) {
+imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, loc: Source_Code_Location, id: u64) -> end_y: float {
     using context.game_context;
     using context.game_context.imgui_state;
     scope_widget(loc, id);
 
     font := *consolas;
     margin := font.ascender * 0.2;
-    indent := font.ascender * 4;
+    indent := font.ascender * 2;
 
     if info.type == {
         case .STRUCT;
@@ -606,7 +632,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                 if contains(it.notes, "NoEditor") continue; // @Speed!
                 
                 label_x := round(position.x + margin);
-                label_y := round(y + field_size.y / 2 - font.ascender / 2);
+                label_y := round(y + field_size.y / 2 + font.ascender / 2);
 
                 value_x := draw_text(it.name, .{label_x, label_y}, font, HIGHLIGHT_COLOR);
                 value_y := y;
@@ -620,24 +646,27 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                     value_size.x -= indent;
                 }
                 
-                imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, loc, xx it_index);
-
-                y += field_size.y;
+                y = imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, loc, xx it_index);
             }
+            return y;
         case .BOOL;
             toggle(val, position, field_size, loc);
+            return position.y + field_size.y;
         case .ENUM;
             enum_info := cast(*Type_Info_Enum, info);
             enum_selector(val, enum_info, position, field_size, loc, 0);
+            return position.y + field_size.y;
         case .INTEGER; #through;
         case .FLOAT; #through;
         case .STRING; #through;
         case .ARRAY;
             // @TODO: Implement editors for these
             assert(false);
+            return 0;
 
         case;
             // These should never be exposed to the editor.
             assert(false);
+            return 0;
     }
 }

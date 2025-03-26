@@ -89,7 +89,7 @@ load_font :: (file_name: string) -> Font {
         y_start := y + glyph_height - 1;
         for 0..glyph_height-1 {
             src := it * glyph_width;
-            dest := (y_start - it) * FONT_BITMAP_WIDTH + x;
+            dest := it * FONT_BITMAP_WIDTH + x;
             memcpy(bitmap_data + dest, face.glyph.bitmap.buffer + src, glyph_width);
         }
 
@@ -104,7 +104,7 @@ load_font :: (file_name: string) -> Font {
             },
             bearing = .{
                 xx face.glyph.bitmap_left,
-                xx -(xx glyph_height - face.glyph.bitmap_top),
+                xx face.glyph.bitmap_top,
             },
             advance = xx face.glyph.advance.x / 64.0 // Advance is stored in 1/64ths pixels.
         };

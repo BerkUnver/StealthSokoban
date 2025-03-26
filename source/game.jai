@@ -279,7 +279,8 @@ game_update : Game_Update : (
         
         imgui_state.event_count = 0;
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
-        imgui_position := Vector2.{0, INNER_WINDOW_H - 800};
+        
+        imgui_position := Vector2.{0, 0};
         imgui_size := Vector2.{400, 800};
         
         // Instead of using different focusing systems for the editor and imgui,
@@ -803,25 +804,19 @@ game_update : Game_Update : (
 
                     
                     font := *consolas;
-                    position := imgui_position;
-                    position.y += imgui_size.y;
-                    toggle_height := font.ascender * 2;
-                    position.y -= toggle_height;
 
+                    position := imgui_position;
+                    toggle_height := font.ascender * 2;
                     size := Vector2.{imgui_size.x, toggle_height};
 
                     imgui_for_value(*imgui_state.test_toggle, position, size);
-                
-                    position.y -= get_color_selector_height(imgui_size.x, toggle_height);
-                    color_selector(*imgui_state.test_color, position, size, toggle_height);
+                    position.y += toggle_height;
 
-                    position.y -= toggle_height;
+                    position.y = color_selector(*imgui_state.test_color, position, size, toggle_height);
+
                     imgui_for_value(*imgui_state.test_enum, position, size);
-                    
-                    position.y -= toggle_height;
-                    button("Test Button", position, size);
+                    position.y += toggle_height;
 
-                    position.y -= toggle_height;
                     imgui_for_value(*imgui_state.test_struct, position, size);
                 }
 
