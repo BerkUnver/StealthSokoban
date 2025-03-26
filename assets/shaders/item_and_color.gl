@@ -7,17 +7,12 @@ layout(location=0) out vec4 fragment_color;
 uniform usamplerBuffer viewed;
 uniform ivec3 viewed_position;
 uniform ivec3 viewed_size;
+uniform mat4 world_to_camera;
 
 uniform mat4 model_to_world;
-uniform mat4 world_to_camera;
 uniform vec4 color;
 
-#ifdef UNVIEWED_COLOR
-uniform vec4 unviewed_color;
-#endif
-
 OUTIN vec3 fragment_position;
-
 
 void main() {
 #ifdef VERTEX_SHADER
@@ -31,18 +26,14 @@ void main() {
     
     
     uint filled = texelFetch(viewed, index).r;
-    
+
     if ((filled & VIEW_STATE_VISIBLE) != 0u) {
-        fragment_color = vec4((float(gl_FrontFacing) * color).rgb, 1.0);
+        fragment_color = color;
     } else if ((filled & VIEW_STATE_SEEN) != 0u) {
         fragment_color = color;
         fragment_color.rgb *= SEEN_BRIGHTNESS;
     } else {
-#ifdef UNVIEWED_COLOR
-        fragment_color = unviewed_color;
-#else
         discard;
-#endif
     }
 #endif
 }

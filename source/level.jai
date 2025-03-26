@@ -116,7 +116,6 @@ Player :: struct {
         }
     }; @NoSerialize
     // You need "using vars: ...", otherwise the compiler won't let you put a note here.
-
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -846,7 +845,9 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
 }
 
 
-get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, color: Vector4 {
+get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, bitmap: GLuint {
+    using context.game_context;
+
     color_weight: float;
     matrix := Matrix4_Identity;
     if #complete enemy.state == {
@@ -867,19 +868,20 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     }
     
     
-    matrix = matrix * facing_to_matrix4(enemy.facing);
+    // Let's not do this until player rotation is working.
+    // matrix = matrix * facing_to_matrix4(enemy.facing);
     matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0.5, 0.5}) * matrix;
 
-
-    color: Vector4;
+    
+    bitmap: GLuint;
     if #complete enemy.favored_direction == {
         case .LEFT;
-            color = LEFT_ENEMY_COLOR;
+            bitmap = enemy_left_bitmap;
         case .RIGHT;
-            color = RIGHT_ENEMY_COLOR;
+            bitmap = enemy_right_bitmap;
     };
 
-    return matrix, color;
+    return matrix, bitmap;
 }
 
 
@@ -1379,7 +1381,7 @@ get_game_camera_matrix :: (using level: *Level) -> Matrix4 {
     offset_matrix: Matrix4;
     position_matrix: Matrix4;
     
-    NEAR_DISTANCE :: 40.0;
+    NEAR_DISTANCE :: 30.0;
     FAR_DISTANCE :: 60.0;
 
     get_player_camera :: (distance: float) #expand {

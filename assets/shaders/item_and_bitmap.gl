@@ -1,0 +1,44 @@
+// This entire shader is mostly a @Copypasta from item.gl
+
+#ifdef VERTEX_SHADER
+layout(location=LOC_POSITION) in vec3 vertex_position;
+layout(location=LOC_UV) in vec2 vertex_uv;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform usamplerBuffer viewed;
+uniform ivec3 viewed_position;
+uniform ivec3 viewed_size;
+uniform mat4 world_to_camera;
+
+uniform mat4 model_to_world;
+uniform sampler2D bitmap;
+
+OUTIN vec3 fragment_position;
+OUTIN vec2 fragment_uv;
+
+void main() {
+#ifdef VERTEX_SHADER
+    fragment_uv = vertex_uv;
+    vec4 world_position = model_to_world * vec4(vertex_position, 1.0);
+    fragment_position = world_position.xyz;
+    gl_Position = world_to_camera * world_position;
+#else
+    int index;
+    bool success = get_3d_index(ivec3(floor(fragment_position)) - viewed_position, viewed_size, index);
+    if (!success) discard;
+    
+    
+    uint filled = texelFetch(viewed, index).r;
+
+    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
+        fragment_color = texture(bitmap, fragment_uv);
+    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
+        fragment_color = texture(bitmap, fragment_uv);
+        fragment_color.rgb *= SEEN_BRIGHTNESS;
+    } else {
+        discard;
+    }
+#endif
+}

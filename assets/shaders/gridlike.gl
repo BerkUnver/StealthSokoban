@@ -19,8 +19,8 @@ uniform ivec3 viewed_position;
 #endif
 
 
-OUTIN vec2 fragment_uv;
-OUTIN vec2 fragment_outline_uv;
+centroid OUTIN vec2 fragment_uv;
+centroid OUTIN vec2 fragment_outline_uv;
 
 #ifdef GAMEPLAY
 OUTIN float fragment_brightness;

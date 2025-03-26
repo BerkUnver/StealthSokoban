@@ -54,19 +54,21 @@ Game_Context :: struct {
         editor_gridlike_shader: GLuint;
         color_shader: GLuint;
         wireframe_shader: GLuint;
-        color_and_bitmap_shader: GLuint;
-        item_shader: GLuint;
-        unviewed_color_item_shader: GLuint;
+        bitmap_shader: GLuint;
+        item_and_color_shader: GLuint;
+        item_and_bitmap_shader: GLuint;
         occlusion_shader: GLuint;
-        gridlike_bitmap: GLuint;
-        gridlike_outline_bitmap: GLuint;
+
 
         consolas: Font;
 
         footstep: Wav;
 
+        gridlike_bitmap: GLuint;
+        gridlike_outline_bitmap: GLuint;
         enemy_mesh: Mesh;
-        enemy_nose_mesh: Mesh; // This is very @Temporary. This will go away once mesh loading works.
+        enemy_left_bitmap: GLuint;
+        enemy_right_bitmap: GLuint;
         enemy_annihilation_mesh: Mesh;
         enemy_spawner_mesh: Mesh;
         player_mesh: Mesh;
@@ -205,9 +207,9 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         editor_gridlike_shader = load_shader("shaders/gridlike.gl");
         color_shader = load_shader("shaders/color.gl");
         wireframe_shader = load_shader("shaders/wireframe.gl");
-        color_and_bitmap_shader = load_shader("shaders/color_and_bitmap.gl");
-        item_shader = load_shader("shaders/item.gl");
-        unviewed_color_item_shader = load_shader("shaders/item.gl", "#define UNVIEWED_COLOR\n");
+        bitmap_shader = load_shader("shaders/bitmap.gl");
+        item_and_color_shader = load_shader("shaders/item_and_color.gl");
+        item_and_bitmap_shader = load_shader("shaders/item_and_bitmap.gl");
         occlusion_shader = load_shader("shaders/occlusion.gl");
 
         consolas = load_font("consolas.ttf");
@@ -216,9 +218,10 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         gridlike_bitmap = load_bitmap("gridlike.tga");
         gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
-
-        enemy_mesh = make_cuboid_vertex_mesh(.{-0.3, -0.3, -0.3}, .{0.3, 0.3, 0.3}, *permanent_arena);
-        enemy_nose_mesh = make_cuboid_vertex_mesh(Vector3.{0.3, 0, 0} - Vector3.{0.08, 0.08, 0.08}, Vector3.{0.3, 0, 0} + Vector3.{0.08, 0.08, 0.08}, *permanent_arena);
+        
+        enemy_mesh = load_mesh("enemy.my_mesh", *permanent_arena);
+        enemy_left_bitmap = load_bitmap("enemy_left.tga");
+        enemy_right_bitmap = load_bitmap("enemy_right.tga");
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
@@ -451,33 +454,21 @@ game_update : Game_Update : (
                     bind_and_draw(*it.mesh);
                 }
 
+
+
                 //
-                // Draw things that only appear when seen
+                // Draw the other level elements
                 //
 
-                glDisable(GL_CULL_FACE);
-
-                set_uniforms_for_item_shaders :: () #expand {
+                set_item_shader_uniforms :: () #expand {
                     set_uniform("viewed_position", level_position);
                     set_uniform("viewed_size", level_size);
                     set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
-                    set_uniform("viewed", cast(s32, 0));
                     set_uniform("world_to_camera", world_to_camera);
                 }
 
-                glUseProgram(item_shader);
-                set_uniforms_for_item_shaders();
-
-                for * _Enemy {
-                    matrix, color := get_enemy_draw_info(*level, it);
-                    set_uniform("model_to_world", matrix);
-
-                    set_uniform("color", color);
-                    bind_and_draw(*enemy_mesh);
-
-                    set_uniform("color", 0.5 * color);
-                    bind_and_draw(*enemy_nose_mesh);
-                }
+                glUseProgram(item_and_color_shader);
+                set_item_shader_uniforms();
 
 
                 set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
@@ -494,25 +485,33 @@ game_update : Game_Update : (
                     bind_and_draw(*enemy_spawner_mesh);
                 }
 
-
-                //
-                // Draw things that always appear
-                //
-
-                glUseProgram(unviewed_color_item_shader);
-                set_uniforms_for_item_shaders();
-
-                draw_unviewed_item :: (position: Vector3i, mesh: *Mesh, color: Vector4, unviewed_color: Vector4) {
-                    using context.game_context;
-                    model_to_world := make_translation_matrix4(to_vector3(position));
-                    set_uniform("model_to_world", model_to_world);
-                    set_uniform("color", color);
-                    set_uniform("unviewed_color", unviewed_color);
-                    bind_and_draw(mesh);
-                }
                 
-                for * _Entrance draw_unviewed_item(it.position, *entrance_mesh, Entrance.COLOR, Entrance.COLOR / 2);
-                for * _Exit draw_unviewed_item(it.position, *exit_mesh, Exit.COLOR, Exit.COLOR / 2);
+                set_uniform("color", Entrance.COLOR);
+                for * _Entrance {
+                    model_to_world := make_translation_matrix4(to_vector3(it.position));
+                    set_uniform("model_to_world", model_to_world);
+                    bind_and_draw(*entrance_mesh);
+                }
+
+
+                set_uniform("color", Exit.COLOR);
+                for * _Exit {
+                    model_to_world := make_translation_matrix4(to_vector3(it.position));
+                    set_uniform("model_to_world", model_to_world);
+                    bind_and_draw(*exit_mesh);
+                }
+
+
+                glUseProgram(item_and_bitmap_shader);
+                set_item_shader_uniforms();
+
+                for * _Enemy {
+                    matrix, bitmap := get_enemy_draw_info(*level, it);
+                    set_uniform("model_to_world", matrix);
+                    set_uniform_bitmap("bitmap", 1, bitmap);
+                    bind_and_draw(*enemy_mesh);
+                }
+
 
 
                 //
@@ -620,8 +619,7 @@ game_update : Game_Update : (
                 // We draw the player after so the player always draws on top
                 // of the exit.
 
-                glUseProgram(color_and_bitmap_shader);
-                set_uniform("color", Player.COLOR);
+                glUseProgram(bitmap_shader);
                 set_uniform_bitmap("bitmap", 0, player_bitmap);
                 for * _Player {
                     matrix := world_to_camera * get_player_draw_info(it);
@@ -657,20 +655,6 @@ game_update : Game_Update : (
 
                 glUseProgram(color_shader);
 
-                for * _Enemy {
-                    matrix, color := get_enemy_draw_info(*level, it);
-                    set_uniform("projection", world_to_camera * matrix);
-                    
-                    // @Copypasta from the ordinary enemy drawing code.
-                    // Eventually enemies will just be one mesh anyway.
-                    set_uniform("color", color);
-                    bind_and_draw(*enemy_mesh);
-
-                    set_uniform("color", 0.5 * color);
-                    bind_and_draw(*enemy_nose_mesh);
-                }
-
-               
                 for * _Enemy_Spawner {
                     matrix, color := get_enemy_spawner_draw_info(it); 
                     set_uniform("projection", world_to_camera * matrix);
@@ -691,8 +675,20 @@ game_update : Game_Update : (
                 draw_entities(_Entrance, *entrance_mesh);
                 draw_entities(_Exit, *exit_mesh);
 
-                glUseProgram(color_and_bitmap_shader);
-                set_uniform("color", Player.COLOR);
+            
+                glUseProgram(bitmap_shader);
+
+                for * _Enemy {
+                    matrix, bitmap := get_enemy_draw_info(*level, it);
+                    set_uniform("projection", world_to_camera * matrix);
+                    
+                    // @Copypasta from the ordinary enemy drawing code.
+                    // Eventually enemies will just be one mesh anyway.
+                    set_uniform_bitmap("bitmap", 0, bitmap);
+                    bind_and_draw(*enemy_mesh);
+                }
+
+
                 set_uniform_bitmap("bitmap", 0, player_bitmap);
                 for * _Player {
                     matrix := world_to_camera * get_player_draw_info(it);
