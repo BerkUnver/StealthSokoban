@@ -281,7 +281,7 @@ game_update : Game_Update : (
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         
         imgui_position := Vector2.{0, 0};
-        imgui_size := Vector2.{400, 800};
+        imgui_size := Vector2.{600, INNER_WINDOW_H};
         
         // Instead of using different focusing systems for the editor and imgui,
         // we could have a #caller_location-based focusing system for everything,
@@ -345,16 +345,11 @@ game_update : Game_Update : (
                         !editor_imgui_disabled
                      && editor.mode == .IDLE 
                      && (imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse));
-
-                    if imgui_capturing_input {
-                        assert(imgui_state.event_count < imgui_state.events.count);
-                        imgui_state.events[imgui_state.event_count] = it;
-                        imgui_state.event_count += 1;
-                        continue;
-                    }
-
-                    if it.key == .TAB && it.down {
-                        editor_imgui_disabled = !editor_imgui_disabled;
+                    
+                    // Is it weird that I manually make these higher-priority than the imgui?
+                    if it.key == #char "S" && input.keys_down.*[Key.CTRL] && it.down {
+                        serialize_level(*level);
+                        log(.OK, "Serialized level.\n");
                         continue;
                     }
 
@@ -369,6 +364,18 @@ game_update : Game_Update : (
                         editor_level_index = (editor_level_index + 1) % LEVELS.count;
                         free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
+                        continue;
+                    }
+
+                    if imgui_capturing_input {
+                        assert(imgui_state.event_count < imgui_state.events.count);
+                        imgui_state.events[imgui_state.event_count] = it;
+                        imgui_state.event_count += 1;
+                        continue;
+                    }
+
+                    if it.key == .TAB && it.down {
+                        editor_imgui_disabled = !editor_imgui_disabled;
                         continue;
                     }
 
@@ -802,22 +809,23 @@ game_update : Game_Update : (
                     imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
                     imm_flush();
 
-                    
-                    font := *consolas;
+                    if editor.selected {
+                        // glEnable(GL_SCISSOR_TEST);
+                        // glScissor(
+                        //     xx imgui_position.x,
+                        //     xx (INNER_WINDOW_H - imgui_size.y - imgui_position.y),
+                        //     xx imgui_size.x,
+                        //     xx imgui_size.y
+                        // );
 
-                    position := imgui_position;
-                    toggle_height := font.ascender * 2;
-                    size := Vector2.{imgui_size.x, toggle_height};
+                        font := *consolas;
+                        toggle_height := font.ascender * 2;
+                        size := Vector2.{imgui_size.x, toggle_height};
 
-                    imgui_for_value(*imgui_state.test_toggle, position, size);
-                    position.y += toggle_height;
-
-                    position.y = color_selector(*imgui_state.test_color, position, size, toggle_height);
-
-                    imgui_for_value(*imgui_state.test_enum, position, size);
-                    position.y += toggle_height;
-
-                    imgui_for_value(*imgui_state.test_struct, position, size);
+                        e := get_entity(*level, editor.selected);
+                        type := ENTITIES[e.type];
+                        imgui_for_value(e, type, imgui_position, size);
+                    }
                 }
 
         }

@@ -254,9 +254,9 @@ Enemy_Spawner :: struct {
 Block :: struct {
     using #as e: Entity;
 
-    size: Vector3i;
+    size: Vector3i; @NoEditor
     filled: [] bool; // :BitArray
-    color: Vector4;
+    color: Vector4; @Color
     moveable: bool;
     mesh: Mesh; @NoSerialize
     // @TODO Make a bit array data structure for better cache coherency
@@ -266,7 +266,7 @@ Block :: struct {
 Door :: struct {
     using #as e: Entity;
 
-    size: Vector3i;
+    size: Vector3i; @NoEditor
     filled: [] bool; // :BitArray
     mesh: Mesh; @NoSerialize
 

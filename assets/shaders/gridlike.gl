@@ -68,7 +68,7 @@ void main() {
 #define GRID_THICKNESS 0.0625
     if (fragment_uv.x < GRID_THICKNESS || (1 - GRID_THICKNESS) < fragment_uv.x
      || fragment_uv.y < GRID_THICKNESS || (1 - GRID_THICKNESS) < fragment_uv.y) {
-        edge_brightness = 0.8;
+        edge_brightness = 0.9;
     }
 
     fragment_color = color * bitmap_color;

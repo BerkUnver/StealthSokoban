@@ -86,10 +86,9 @@ load_font :: (file_name: string) -> Font {
         // to where we want it to load out of along with a stride instead of
         // copying it?
         
-        y_start := y + glyph_height - 1;
         for 0..glyph_height-1 {
             src := it * glyph_width;
-            dest := it * FONT_BITMAP_WIDTH + x;
+            dest := (y + it) * FONT_BITMAP_WIDTH + x;
             memcpy(bitmap_data + dest, face.glyph.bitmap.buffer + src, glyph_width);
         }
 

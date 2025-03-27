@@ -77,12 +77,6 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
 
-    if event.key == #char "S" && keys_down.*[Key.CTRL] && event.down {
-        serialize_level(level);
-        log(.OK, "Serialized level.\n");
-        return;
-    }
-
     if editor.mode == {
         case .IDLE;
             mouse_start := editor.camera_position;

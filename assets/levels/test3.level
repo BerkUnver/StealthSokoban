@@ -148,6 +148,8 @@ types
 				z -4
 				;
 			;
+		enemy_spawner_type 1
+		facing 1
 		;
 		e
 			position
@@ -155,6 +157,8 @@ types
 				z -4
 				;
 			;
+		enemy_spawner_type 1
+		facing 1
 		;
 	]
 	_Entrance 1[

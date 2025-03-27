@@ -169,7 +169,7 @@ imgui_init :: () -> Imgui_State {
 toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
     using context.game_context;
     using context.game_context.imgui_state;
-
+    
     state := scope_widget(loc, id);
 
     font := *consolas;
@@ -283,27 +283,27 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 }
 
 
-color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height: float, loc := #caller_location, id: u64 = 0) -> height: float {
+color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) -> height: float {
     using context.game_context;
     using context.game_context.imgui_state;
 
     state, data := scope_widget(loc, id);
 
 
-    margin := bar_height * 0.2;
+    margin := field_size.y * 0.2;
 
     head := position;
     head.x += margin;
 
-    bar_width := size.x - 2 * margin;
+    bar_width := field_size.x - 2 * margin;
    
 
 
 
     sample_position := head;
-    sample_size := Vector2.{bar_width, bar_height};
+    sample_size := Vector2.{bar_width, field_size.y};
 
-    head.y += bar_height + margin;
+    head.y += field_size.y + margin;
 
     sv_position := head;
     sv_size := Vector2.{bar_width, bar_width};
@@ -316,18 +316,18 @@ color_selector :: (color: *Vector4, position: Vector2, size: Vector2, bar_height
     head.y += sv_size.y + margin;
 
     hue_position := head;
-    hue_size := Vector2.{bar_width, bar_height};
+    hue_size := Vector2.{bar_width, field_size.y};
     hue_x0 := hue_position.x;
     hue_y0 := hue_position.y;
     hue_x1 := hue_position.x + hue_size.x;
     hue_y1 := hue_position.y + hue_size.y;
 
-    head.y += bar_height + margin;
+    head.y += field_size.y + margin;
 
     alpha_position := head;
-    alpha_size := Vector2.{bar_width, bar_height};
+    alpha_size := Vector2.{bar_width, field_size.y};
 
-    head.y += bar_height + margin;
+    head.y += field_size.y + margin;
 
 
 
@@ -610,7 +610,7 @@ imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #ca
 }
 
 
-imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, loc: Source_Code_Location, id: u64) -> end_y: float {
+imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) -> end_y: float {
     using context.game_context;
     using context.game_context.imgui_state;
     scope_widget(loc, id);
@@ -630,6 +630,15 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                 if !can_serialize_member(it, greatest_offset) continue;
                 greatest_offset = it.offset_in_bytes;
                 if contains(it.notes, "NoEditor") continue; // @Speed!
+
+                if it.type.type == {
+                    case .INTEGER; #through;
+                    case .FLOAT; #through;
+                    case .STRING; #through;
+                    case .ARRAY;
+                        // @TODO: Implement editors for these
+                        continue;
+                }
                 
                 label_x := round(position.x + margin);
                 label_y := round(y + field_size.y / 2 + font.ascender / 2);
@@ -638,15 +647,26 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                 value_y := y;
                 
                 value_position := Vector2.{value_x, value_y};
-                value_size := field_size;
+                value_size := Vector2.{
+                    position.x + field_size.x - value_x,
+                    field_size.y
+                };
+
+
 
                 if it.type.type == .STRUCT {
                     value_position.y += field_size.y;
                     value_position.x += indent;
                     value_size.x -= indent;
                 }
-                
-                y = imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, loc, xx it_index);
+
+                if it.type == type_info(Vector4) && contains(it.notes, "Color") {
+                    y = color_selector(val + it.offset_in_bytes, value_position, value_size, loc, xx it_index);
+                } else {
+                    new_y := imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, loc, xx it_index);
+                    if new_y < y + field_size.y y = field_size.y;
+                    else y = new_y;
+                }
             }
             return y;
         case .BOOL;
@@ -670,3 +690,16 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
             return 0;
     }
 }
+
+/*
+vertical_scroll_begin :: (scroll: *float, position: Vector2, size: Vector2) -> start_y: float {
+    using context.game_context;
+    using context.game_context.imgui_state;
+    glEnable(GL_SCISSOR_TEST);
+}
+
+
+vertical_scroll_end :: (scroll: *float, end_height: float) {
+    glDisable(GL_SCISSOR_TEST);
+}
+*/
