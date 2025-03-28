@@ -1,26 +1,27 @@
-// @TODO: Generate Entity_Type and in the metaprogram.
-
-ENTITIES :: *Type_Info_Struct.[
-    type_info(Block),
-    type_info(Door),
-    type_info(Enemy),
-    type_info(Enemy_Spawner),
-    type_info(Player),
-    type_info(Entrance),
-    type_info(Exit)
-];
-
-
 Entity_Type :: enum {
     // I cannot figure out how to get #insert to generate these...
     Block;
     Door;
     Enemy;
     Enemy_Spawner;
+    Enemy_Despawner;
     Player;
     Entrance;
     Exit;
 }
+
+
+ENTITIES :: #insert -> string {
+    buf: [4096] u8 = ---;
+    sb := make_string_builder(buf);
+    print(*sb, "*Type_Info_Struct.[\n");
+    for type_info(Entity_Type).names {
+        print(*sb, "    type_info(%),\n", it);
+    }
+    print(*sb, "];\n");
+    return get_string(*sb);
+}
+
 
 Entity_Id :: #type,distinct u32; // Literally just an index
 
@@ -166,6 +167,27 @@ get_entity :: (using level: *Level, eid: Entity_Id) -> *Entity {
 }
 
 
+iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand {
+    `it_index := -1; // It doesn't make sense to use this here
+    `it: *Entity = null;
+    #assert flags == 0;
+    
+    // @Speed This generates more code EVERY TIME this macro
+    // is invoked! This might kill compile times!
+    #insert -> string {
+        buf: [4096] u8 = ---;
+        sb := make_string_builder(buf);
+        for ENTITIES {
+            print(*sb, "for * e: types._% {\n", it.name);
+            print(*sb, "    it = e;\n");
+            print(*sb, "    #insert body;\n");
+            print(*sb, "}\n");
+        }
+        return get_string(*sb);
+    }
+}
+
+
 // The below is an experiment.
 // I want to see what happens if we can make sane default behavior for all
 // entities, but then be able to go in here and put per-entity code if we 
@@ -178,28 +200,25 @@ get_entity :: (using level: *Level, eid: Entity_Id) -> *Entity {
 entity_mesh :: (e: *Entity) -> *Mesh {
     using context.game_context;
 
-    block := as(e, Block);
-    if block return *block.mesh;
-    
-    door := as(e, Door);
-    if door return *door.mesh;
+    if #complete e.type == {
+        case .Block;
+            return *as(e, Block).mesh;
+        case .Door;
+            return *as(e, Door).mesh;
+        case .Player;
+            return *player_mesh;
+        case .Exit;
+            return *exit_mesh;
+        case .Entrance;
+            return *entrance_mesh;
+        case .Enemy;
+            return *enemy_mesh;
+        case .Enemy_Spawner;
+            return *enemy_spawner_mesh;
+        case .Enemy_Despawner;
+            return *enemy_despawner_mesh;
+    }
 
-    player := as(e, Player);
-    if player return *player_mesh;
-
-    exit := as(e, Exit);
-    if exit return *exit_mesh;
-
-    entrance := as(e, Entrance);
-    if entrance return *entrance_mesh;
-
-    enemy := as(e, Enemy);
-    if enemy return *enemy_mesh;
-
-    spawner := as(e, Enemy_Spawner);
-    if spawner return *enemy_spawner_mesh;
-
-    assert(false);
     return null;
 }
 
@@ -221,25 +240,4 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
     if player return get_player_draw_info(player);
 
     return make_translation_matrix4(to_vector3(e.position));
-}
-
-
-iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand {
-    `it_index := -1; // It doesn't make sense to use this here
-    `it: *Entity = null;
-    #assert flags == 0;
-    
-    // @Speed This generates more code EVERY TIME this macro
-    // is invoked! This might kill compile times!
-    #insert -> string {
-        buf: [4096] u8 = ---;
-        sb := make_string_builder(buf);
-        for ENTITIES {
-            print(*sb, "for * e: types._% {\n", it.name);
-            print(*sb, "    it = e;\n");
-            print(*sb, "    #insert body;\n");
-            print(*sb, "}\n");
-        }
-        return get_string(*sb);
-    }
 }

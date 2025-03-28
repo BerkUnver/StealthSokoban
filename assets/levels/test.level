@@ -52,25 +52,10 @@ types
 			;
 		filled 3[ 1 1 1 ]
 		color
-			z 1
+			z 0.70077669620513916
 			w 1
 			;
 		moveable 1
-		;
-	]
-	_Enemy 2[
-		e
-			position
-				x -1
-				z 2
-				;
-			;
-		;
-		e
-			position
-				z 2
-				;
-			;
 		;
 	]
 	_Enemy_Spawner 1[
@@ -81,6 +66,14 @@ types
 				;
 			;
 		facing 2
+		;
+	]
+	_Enemy_Despawner 1[
+		e
+			position
+				x -1
+				;
+			;
 		;
 	]
 	_Entrance 1[

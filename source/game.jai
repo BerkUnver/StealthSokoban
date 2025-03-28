@@ -71,6 +71,7 @@ Game_Context :: struct {
         enemy_right_bitmap: GLuint;
         enemy_annihilation_mesh: Mesh;
         enemy_spawner_mesh: Mesh;
+        enemy_despawner_mesh: Mesh;
         player_mesh: Mesh;
         player_bitmap: GLuint;
         entrance_mesh: Mesh;
@@ -224,6 +225,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_right_bitmap = load_bitmap("enemy_right.tga");
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
+        enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
@@ -420,7 +422,7 @@ game_update : Game_Update : (
         // where you output "render commands" into a buffer, that then get sorted and drawn. That is
         // too much complication for this initial phase of development, so I'm okay with doing this.
 
-        //          -berk, 2025 - 26 - 2
+        //          -berk, 2025 - 2 - 26
         
         if #complete mode == {
             case .GAMEPLAY;
@@ -493,23 +495,21 @@ game_update : Game_Update : (
                     bind_and_draw(*enemy_spawner_mesh);
                 }
 
+
+                draw_entities :: (entities: [] $T/Entity, mesh: *Mesh) #expand {
+                    set_uniform("color", T.COLOR);
+                    for * entities {
+                        model_to_world := make_translation_matrix4(to_vector3(it.position));
+                        set_uniform("model_to_world", model_to_world);
+                        bind_and_draw(mesh);
+                    }
+                }
+
+                draw_entities(_Entrance, *entrance_mesh);
+                draw_entities(_Exit, *exit_mesh);
+                draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
+
                 
-                set_uniform("color", Entrance.COLOR);
-                for * _Entrance {
-                    model_to_world := make_translation_matrix4(to_vector3(it.position));
-                    set_uniform("model_to_world", model_to_world);
-                    bind_and_draw(*entrance_mesh);
-                }
-
-
-                set_uniform("color", Exit.COLOR);
-                for * _Exit {
-                    model_to_world := make_translation_matrix4(to_vector3(it.position));
-                    set_uniform("model_to_world", model_to_world);
-                    bind_and_draw(*exit_mesh);
-                }
-
-
                 glUseProgram(item_and_bitmap_shader);
                 set_item_shader_uniforms();
 
@@ -519,7 +519,6 @@ game_update : Game_Update : (
                     set_uniform_bitmap("bitmap", 1, bitmap);
                     bind_and_draw(*enemy_mesh);
                 }
-
 
 
                 //
@@ -682,6 +681,7 @@ game_update : Game_Update : (
 
                 draw_entities(_Entrance, *entrance_mesh);
                 draw_entities(_Exit, *exit_mesh);
+                draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
             
                 glUseProgram(bitmap_shader);

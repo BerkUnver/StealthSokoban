@@ -44,11 +44,6 @@ Level :: struct {
     viewed: [] View_State; @NoSerialize
 
     
-    // @Cleanup maybe how we do an enemy update should look more like how we do a
-    // player movement update.
-    desired_enemy_moves: [] Desired_Enemy_Move; @NoSerialize
-    enemy_move_results: [] Enemy_Move_Result; @NoSerialize
-
     // These are stored SOA because we don't want to touch these at the same time.
     // @TODO 3d arrays are stored x-major, then z, then y.
     // This makes sense from the perspective of wanting to be
@@ -218,15 +213,14 @@ Enemy :: struct {
     favored_direction: Favored_Direction;
     facing: Facing;
 
-    // Only used when we check if pushing blocks should have also pushed an enemy
-    should_be_pushed: bool; @NoSerialize
-    mutual_annihilation_state: enum u8 {
+    desired_state: enum u8 {
         ALIVE;
-        PRIMARY;
-        SECONDARY;
+        PRIMARY_ANNIHILATOR;
+        SECONDARY_ANNIHILATOR;
     }; @NoSerialize
 
-    desired_position: Vector3i; @NoSerialize // Only used when we are updating all the enemies.
+    desired_position: Vector3i; @NoSerialize
+    // Temporary variable that's only used when enemies are pushed/pulled or the enemy wants to move.
 }
 
 LEFT_ENEMY_COLOR :: Vector4.{0, 68.0 / 255.0, 166.0 / 255.0, 1};
@@ -251,6 +245,12 @@ Enemy_Spawner :: struct {
 }
 
 
+Enemy_Despawner :: struct {
+    using #as e: Entity;
+    COLOR :: Vector4.{1, 1, 1, 1};
+}
+
+
 Block :: struct {
     using #as e: Entity;
 
@@ -258,8 +258,8 @@ Block :: struct {
     filled: [] bool; // :BitArray
     color: Vector4; @Color
     moveable: bool;
-    mesh: Mesh; @NoSerialize
-    // @TODO Make a bit array data structure for better cache coherency
+    mesh: Mesh; @NoSerialize // :BitArray
+    desired_position: Vector3i; @NoSerialize // Temporary variable that's only used when the block is pushed / pulled
 }
 
 
@@ -767,8 +767,6 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             viewed = alloc_view(arena, size_1d, View_State);
             doors = alloc_view(arena, size_1d, Entity_Id);
             collision = alloc_view(arena, size_1d, Entity_Id);
-            enemy_move_results = alloc_view(arena, size_1d, Enemy_Move_Result);
-            desired_enemy_moves = alloc_view(arena, size_1d, Desired_Enemy_Move);
             mutual_annihilations = reserve_array(arena, size_1d / 2 + 1, Mutual_Annihilation);
 
             for * _Block {  
@@ -1011,6 +1009,90 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
 }
 
 
+try_to_use_block_and_enemy_desired_positions :: (using level: *Level) -> bool {
+    using context.game_context;
+
+    for * _Enemy {
+        it.desired_state = .ALIVE;
+    }
+
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    next_collision := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Entity_Id);
+
+    for * block: _Block {
+        offset := block.desired_position - level_position;
+
+        for :iterate_vector3i block.size {
+            if !block.filled[it_index] continue;
+            in_bounds, index := get_3d_index(it + offset, level_size);
+            if !in_bounds return false;
+            if next_collision[index] != 0 return false;
+
+            next_collision[index] = block.eid;
+        }
+    }
+
+    
+    for * enemy: _Enemy {
+        in_bounds, index := get_3d_index(enemy.desired_position, level_position, level_size);
+
+        if !in_bounds {
+            return false;
+        }
+
+        eid := next_collision[index];
+        if eid == 0 {
+            next_collision[index] = enemy.eid;
+            continue;
+        }
+
+
+        e := get_entity(level, eid);
+        if e.type == {
+            case .Enemy;
+                other_enemy := as(e, Enemy);
+                // The enemy in the collision will be the primary entity. The secondary ones just won't get added.
+                other_enemy.desired_state = .PRIMARY_ANNIHILATOR;
+                enemy.desired_state = .SECONDARY_ANNIHILATOR;
+            case .Block;
+                return false;
+        }
+    }
+    
+    // If we got this far, that means the move succeeded. Update everything to reflect it.
+
+    // @Speed just have two separate allocations that we swap back and forth?
+    memcpy(collision.data, next_collision.data, byte_count(collision));
+
+    for * _Block {
+        it.position = it.desired_position;
+    }
+
+    for * _Enemy {
+        it.position = it.desired_position;
+    }
+
+    for * _Enemy {
+        if #complete it.desired_state == {
+            case .ALIVE;
+            case .PRIMARY_ANNIHILATOR;
+                in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                assert(collision[index] == it.eid);
+                append_no_resize(*mutual_annihilations, .{position = it.position});
+                collision[index] = 0;
+                delete_entity(level, it.eid);
+                it_index -= 1; // :DeleteEntityInLoop
+            case .SECONDARY_ANNIHILATOR;
+                delete_entity(level, it.eid);
+                it_index -= 1; // :DeleteEntityInLoop
+        }
+    }
+
+    return true;
+}
+
+
 gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
     using context.game_context;
 
@@ -1108,27 +1190,8 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         case; return;
     }
  
-    // This code took a while to put together and likely is only going to get more complex.
-
-    // When the player moves, either the entire move needs to succeed at once or fail at once.
-    // When the player pushes or pulls a block, a lot about the game state needs to change.
-    // If we're trying to update the game state and we find out that the move the player is
-    // trying to make is illegal, then we need to undo all the changes we made to the game
-    // state while determining if that move is legal.
-
-    // Right now, I am just removing all the blocks from the collision map, updating them,
-    // re-adding them to the collision map, and undoing all of that if it turns out one of
-    // the blocks is overlapping with something.
-    
-    // If we are not _very_ careful, this could get messy really quickly.
-    // Possibly consider investigating an alternate strategy that does not touch the core
-    // game state until we _know_ we can make a move, then do the update.
-
-    //          -berk, 2025 - 1 - 22
-
     // @TODO Add pulling blocks next to you, not just in the opposite direction of where
     // you are moving (I'm pretty sure we want this)
-
 
     player := *_Player[0];
     new_player_position := player.position + push_direction;
@@ -1183,10 +1246,16 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
             pulled_block = null;
         }
 
+        for * _Block {
+            if it == pushed_block || it == pulled_block {
+                it.desired_position = it.position + push_direction;
+            } else {
+                it.desired_position = it.position;
+            }
+        }
 
         for * _Enemy {
-            it.should_be_pushed = false;
-            it.mutual_annihilation_state = .ALIVE;
+            it.desired_position = it.position;
         }
 
         push_enemies :: (block: *Block) -> bool #expand {
@@ -1215,7 +1284,7 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
                     e := get_entity(level, eid);
                     if e.type == {
                         case .Enemy;
-                            as(e, Enemy).should_be_pushed = true;
+                            as(e, Enemy).desired_position += push_direction;
                         case .Block;
                             assert(e != block);
                             succeeded = false;
@@ -1237,93 +1306,8 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         }
 
 
-        // Now, begin populating the collision map and look for overlaps.
+        if !try_to_use_block_and_enemy_desired_positions(level) return;
 
-        mark := get_mark(*frame_arena);
-        defer restore_mark(*frame_arena, mark);
-        next_collision := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Entity_Id);
-
-        for * block: _Block {
-            offset := block.position - level_position;
-            if block == pushed_block || block == pulled_block {
-                assert(block.moveable);
-                offset += push_direction;
-            }
-
-            for :iterate_vector3i block.size {
-                if !block.filled[it_index] continue;
-                in_bounds, index := get_3d_index(it + offset, level_size);
-                
-                // We did early-out checks above that should guarantee both of these to be true.
-                assert(in_bounds);
-                assert(next_collision[index] == 0);
-
-                next_collision[index] = block.eid;
-            }
-        }
-
-        
-        for * _Enemy {
-            position := it.position;
-            if it.should_be_pushed {
-                position += push_direction;
-            }
-
-            in_bounds, index := get_3d_index(position, level_position, level_size);
-
-            if !in_bounds {
-                return;
-            }
-
-            eid := next_collision[index];
-            if eid == 0 {
-                next_collision[index] = it.eid;
-                continue;
-            }
-
-            e := get_entity(level, eid);
-            if e.type == {
-                case .Enemy;
-                    enemy := as(e, Enemy);
-                    enemy.mutual_annihilation_state = .PRIMARY;
-                    it.mutual_annihilation_state = .SECONDARY;
-                case .Block;
-                    return;
-            }
-        }
-        
-        // If we got this far, that means the move succeeded. Update everything to reflect it.
-
-        // @Speed just have two separate allocations that we swap back and forth?
-        memcpy(collision.data, next_collision.data, byte_count(collision));
-
-        for * _Block {
-            if it == pushed_block || it == pulled_block {
-                it.position += push_direction;
-            }
-        }
-
-        for * _Enemy {
-            if it.should_be_pushed {
-                it.position += push_direction;
-            }
-        }
-
-        for * _Enemy {
-            if #complete it.mutual_annihilation_state == {
-                case .ALIVE;
-                case .PRIMARY;
-                    in_bounds, index := get_3d_index(it.position, level_position, level_size);
-                    assert(collision[index] == it.eid);
-                    append_no_resize(*mutual_annihilations, .{position = it.position});
-                    collision[index] = 0;
-                    delete_entity(level, it.eid);
-                    it_index -= 1; // :DeleteEntityInLoop
-                case .SECONDARY;
-                    delete_entity(level, it.eid);
-                    it_index -= 1; // :DeleteEntityInLoop
-            }
-        }
 
         set_player_position(level, new_player_position);
         play_sound(level, *footstep);
@@ -1339,8 +1323,8 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
             e := get_entity(level, colliding_eid);
             if e.type == .Enemy {
                 append_no_resize(*mutual_annihilations, .{position = player.position});
-                delete_entity(level, e.eid);
                 collision[pushed_index] = 0;
+                delete_entity(level, e.eid);
                 set_state(player, .DEAD);
                 return;
             }
@@ -1568,7 +1552,24 @@ gameplay_level_update :: (using level: *Level, dt: float) {
     if enemy_timer >= ENEMY_TICK_TIME {
         enemy_timer = fmod_cycling(enemy_timer, ENEMY_TICK_TIME);
 
-        memset(desired_enemy_moves.data, xx Desired_Enemy_Move.EMPTY, byte_count(desired_enemy_moves));
+        
+        // Run the Enemy_Despawner update BEFORE we do enemy movement.
+        // That way, only enemies that were already in a grid cell get despawned.
+        for * _Enemy_Despawner {
+            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+            assert(in_bounds);
+
+            eid := collision[index];
+            if !eid continue;
+            
+            e := get_entity(level, eid);
+            enemy := as(e, Enemy);
+            if !enemy continue;
+            
+            collision[index] = 0;
+            delete_entity(level, eid);
+        }
+
 
         can_move_to :: (using level: *Level, position: Vector3i) -> bool {
             if !is_colliding_below(level, position) return false;
@@ -1580,7 +1581,14 @@ gameplay_level_update :: (using level: *Level, dt: float) {
             return true;
         }
 
-        for * _Enemy {  
+        for * _Enemy {
+            // It's okay to set this up here.
+            // All enemies that we want to be deleted will be deleted when
+            // try_to_use_block_and_enemy_desired_positions is called.
+
+            it.moving_from = to_vector3(it.position);
+            it.state = .MOVING;
+
             desired_direction := facing_to_vector3i(it.facing);
 
             if can_move_to(level, it.position + desired_direction) {
@@ -1627,60 +1635,14 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                     }
                 }
             }
-
-            in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
-            assert(in_bounds);
-            
-            if #complete desired_enemy_moves[index] == {
-                case .EMPTY;
-                    desired_enemy_moves[index] = .WILL_BE_FILLED;
-                case .WILL_BE_FILLED;
-                    desired_enemy_moves[index] = .MUTUAL_ANNIHILATION;
-                case .MUTUAL_ANNIHILATION;
-                    // Do nothing because this enemy will be destroyed too.
-            }
         }
+
+        for * _Block it.desired_position = it.position;
+        // @Speed this does a bunch of extra checks that we don't need to do, such as against blocks.
+        // Is there a way we can remove this?
+        assert(try_to_use_block_and_enemy_desired_positions(level));
+
        
-        
-        // @Speed this is very dumb that this array is so big.
-        memset(enemy_move_results.data, xx Enemy_Move_Result.NOTHING, byte_count(enemy_move_results));
-
-        // Remove all the enemies from the collision to make sure that when we reinsert them, all of the old ones
-        // have been cleaned up. Otherwise, if we cleared the filled[index] of the old enemy position,
-        // a new enemy could already be there!
-        for * _Enemy {
-            in_bounds, index := get_3d_index(it.position, level_position, level_size);
-            assert(in_bounds);
-            assert(collision[index] == it.eid);
-            collision[index] = 0;
-        }
-
-        for * _Enemy {  
-            in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
-            assert(in_bounds);
-
-            if #complete desired_enemy_moves[index] == {
-                case .EMPTY;
-                    assert(false);
-
-                case .WILL_BE_FILLED;
-                    it.state = .MOVING;
-                    it.moving_from = to_vector3(it.position);
-                    it.position = it.desired_position;
-                    assert(collision[index] == 0);
-                    collision[index] = it.eid;
-
-                case .MUTUAL_ANNIHILATION;
-                    if enemy_move_results[index] == .NOTHING {
-                        enemy_move_results[index] = .MUTUAL_ANNIHILATION_HAPPENED;
-                        append_no_resize(*mutual_annihilations, .{position = it.desired_position});
-                    }
-                    delete_entity(level, it.eid);
-                    it_index -= 1; // :DeleteEntityInLoop
-                    // so the loop respects that we've deleted the entity.
-            }
-        }
-
 
         // Now that Enemies have moved, we can run enemy spawner code.
 
