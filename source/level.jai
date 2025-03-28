@@ -41,6 +41,7 @@ Level :: struct {
     
     doors: [] Entity_Id; @NoSerialize // Only Door entities should be put in here.
     collision: [] Entity_Id; @NoSerialize
+    desired_collision: [] Entity_Id; @NoSerialize
     viewed: [] View_State; @NoSerialize
 
     
@@ -111,6 +112,7 @@ Player :: struct {
         }
     }; @NoSerialize
     // You need "using vars: ...", otherwise the compiler won't let you put a note here.
+    desired_position: Vector3i; @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -767,6 +769,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             viewed = alloc_view(arena, size_1d, View_State);
             doors = alloc_view(arena, size_1d, Entity_Id);
             collision = alloc_view(arena, size_1d, Entity_Id);
+            desired_collision = alloc_view(arena, size_1d, Entity_Id);
             mutual_annihilations = reserve_array(arena, size_1d / 2 + 1, Mutual_Annihilation);
 
             for * _Block {  
@@ -1009,16 +1012,15 @@ get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
 }
 
 
-try_to_use_block_and_enemy_desired_positions :: (using level: *Level) -> bool {
+// This takes in all the entities that have a "desired_position", and tries to apply them.
+use_desired_positions :: (using level: *Level) -> bool {
     using context.game_context;
+
+    memset(desired_collision.data, 0, byte_count(desired_collision));
 
     for * _Enemy {
         it.desired_state = .ALIVE;
     }
-
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    next_collision := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Entity_Id);
 
     for * block: _Block {
         offset := block.desired_position - level_position;
@@ -1027,23 +1029,23 @@ try_to_use_block_and_enemy_desired_positions :: (using level: *Level) -> bool {
             if !block.filled[it_index] continue;
             in_bounds, index := get_3d_index(it + offset, level_size);
             if !in_bounds return false;
-            if next_collision[index] != 0 return false;
+            if desired_collision[index] != 0 return false;
 
-            next_collision[index] = block.eid;
+            desired_collision[index] = block.eid;
         }
     }
 
     
-    for * enemy: _Enemy {
-        in_bounds, index := get_3d_index(enemy.desired_position, level_position, level_size);
+    for * _Enemy {
+        in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
 
         if !in_bounds {
             return false;
         }
 
-        eid := next_collision[index];
+        eid := desired_collision[index];
         if eid == 0 {
-            next_collision[index] = enemy.eid;
+            desired_collision[index] = it.eid;
             continue;
         }
 
@@ -1052,18 +1054,57 @@ try_to_use_block_and_enemy_desired_positions :: (using level: *Level) -> bool {
         if e.type == {
             case .Enemy;
                 other_enemy := as(e, Enemy);
-                // The enemy in the collision will be the primary entity. The secondary ones just won't get added.
+                // The enemy in the collision will be the PRIMARY_ANNIHILATOR.
+                // The secondary ones aren't ever added to the collision map.
                 other_enemy.desired_state = .PRIMARY_ANNIHILATOR;
-                enemy.desired_state = .SECONDARY_ANNIHILATOR;
+                it.desired_state = .SECONDARY_ANNIHILATOR;
             case .Block;
                 return false;
         }
     }
-    
-    // If we got this far, that means the move succeeded. Update everything to reflect it.
+   
 
-    // @Speed just have two separate allocations that we swap back and forth?
-    memcpy(collision.data, next_collision.data, byte_count(collision));
+
+    // If we got to here, then that means the move is valid and we can do the update.
+
+
+
+    temp := collision;
+    collision = desired_collision;
+    desired_collision = temp;
+    
+
+    // If there's an enemy where the player is, even if that enemy is to be mutually annihilated,
+    // then the player has died.
+
+    player := *_Player[0];
+    if !(flags & .DEBUG_MOVEMENT) {
+        if #complete player.state == {
+            case .SPAWNING; #through;
+            case .GROUND; #through;
+            case .FALLING; #through;
+            case .RESPAWN_PAUSE;
+                player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
+                assert(player_in_bounds);
+                if collision[player_index] {
+                    e := get_entity(level, collision[player_index]);
+                    if e.type == {
+                        case .Enemy;
+                            set_state(player, .DEAD);
+                        
+                        case .Block;
+                            // :PlayerInsideBlock
+
+                        case;
+                            assert(false);
+                    }
+                }
+
+            case .DEAD; #through;
+            case .DEAD_PAUSE;
+                // Don't do anything because the player has already died.
+        }
+    }
 
     for * _Block {
         it.position = it.desired_position;
@@ -1305,21 +1346,21 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
             if !push_enemies(pulled_block) return;
         }
 
+        
+        if !use_desired_positions(level) return;
 
-        if !try_to_use_block_and_enemy_desired_positions(level) return;
-
+        assert(player.state != .DEAD);
+        // There's no way you could walk into mutually annhilating enemies while
+        // you're pushing a block, because the only way a mutual annihilation could
+        // happen is if an enemy is pushed by the block you're pushing into another
+        // enemy. There is no way that can happen in the square directly in front
+        // of you.
 
         set_player_position(level, new_player_position);
         play_sound(level, *footstep);
 
         colliding_eid := collision[pushed_index];
         if colliding_eid {
-            // There's no way you could walk into mutually annhilating enemies while
-            // you're pushing a block, because the only way a mutual annihilation could
-            // happen is if an enemy is pushed by the block you're pushing into another
-            // enemy. There is no way that can happen in the square directly in front
-            // of you. As such, we don't need to check for that.
-
             e := get_entity(level, colliding_eid);
             if e.type == .Enemy {
                 append_no_resize(*mutual_annihilations, .{position = player.position});
@@ -1582,10 +1623,6 @@ gameplay_level_update :: (using level: *Level, dt: float) {
         }
 
         for * _Enemy {
-            // It's okay to set this up here.
-            // All enemies that we want to be deleted will be deleted when
-            // try_to_use_block_and_enemy_desired_positions is called.
-
             it.moving_from = to_vector3(it.position);
             it.state = .MOVING;
 
@@ -1638,9 +1675,11 @@ gameplay_level_update :: (using level: *Level, dt: float) {
         }
 
         for * _Block it.desired_position = it.position;
+
+
         // @Speed this does a bunch of extra checks that we don't need to do, such as against blocks.
         // Is there a way we can remove this?
-        assert(try_to_use_block_and_enemy_desired_positions(level));
+        if !use_desired_positions(level) return;
 
        
 
@@ -1694,41 +1733,6 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                 } else {
                     it.alternating_direction = .LEFT;
                 }
-            }
-        }
-
-        if !(flags & .DEBUG_MOVEMENT) {
-            if #complete player.state == {
-                case .SPAWNING; #through;
-                case .GROUND; #through;
-                case .FALLING; #through;
-                case .RESPAWN_PAUSE;
-                    player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
-                    assert(player_in_bounds);
-                    if collision[player_index] {
-                        e := get_entity(level, collision[player_index]);
-                        if e.type == {
-                            case .Enemy;
-                                collision[player_index] = 0;
-                                delete_entity(level, e.eid);
-                                append_no_resize(*mutual_annihilations, .{position = player.position});
-
-
-                                // Is it bad that we're killing the player here, then doing the player update later in this procedure?
-                                // My general policy is only one state update per frame to prevent bugs.
-                                set_state(player, .DEAD);
-                            
-                            case .Block;
-                                // :PlayerInsideBlock
-
-                            case;
-                                assert(false);
-                        }
-                    }
-
-                case .DEAD; #through;
-                case .DEAD_PAUSE;
-                    // Don't do anything because the player has already died.
             }
         }
     }

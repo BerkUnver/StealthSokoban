@@ -58,14 +58,23 @@ types
 		moveable 1
 		;
 	]
-	_Enemy_Spawner 1[
+	_Enemy_Spawner 2[
 		e
 			position
 				x 2
 				z 2
 				;
 			;
+		enemy_spawner_type 1
 		facing 2
+		;
+		e
+			position
+				z 4
+				;
+			;
+		enemy_spawner_type 2
+		facing 3
 		;
 	]
 	_Enemy_Despawner 1[
