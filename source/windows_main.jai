@@ -52,38 +52,27 @@ main :: () {
                         key = xx keycode;
                     } else if 0x6f < keycode && keycode <= 0x7B {
                         key = xx (xx Key.F_BASE + keycode - 0x6f);
-                    } else if keycode == VK_LEFT {
-                        key = .LEFT_ARROW;
-                    } else if keycode == VK_UP {
-                        key = .UP_ARROW;
-                    } else if keycode == VK_RIGHT {
-                        key = .RIGHT_ARROW;
-                    } else if keycode == VK_DOWN {
-                        key = .DOWN_ARROW;
-                    } else if keycode == VK_BACK {
-                        key = .BACKSPACE;
-                    } else if keycode == VK_DELETE {
-                        key = .DELETE;
-                    } else if keycode == VK_OEM_3 {
-                        key = .TILDE;
-                    } else if keycode == VK_OEM_4 {
-                        key = #char "[";
-                    } else if keycode == VK_OEM_6 {
-                        key = #char "]";
-                    } else if keycode == VK_OEM_PLUS {
-                        key = #char "=";
-                    } else if keycode == VK_OEM_MINUS {
-                        key = #char "-";
-                    } else if keycode == VK_TAB {
-                        key = .TAB;    
-                    // @TODO: Properly handle left and right alts, shifts, and ctrls.
-                    } else if keycode == VK_SHIFT {
-                        key = .SHIFT;
-                    } else if keycode == VK_CONTROL {
-                        key = .CTRL;
-                    } else return;
-                    // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
-
+                    } else if keycode == {
+                        case VK_LEFT;       key = .LEFT_ARROW;
+                        case VK_UP;         key = .UP_ARROW;
+                        case VK_RIGHT;      key = .RIGHT_ARROW;
+                        case VK_DOWN;       key = .DOWN_ARROW;
+                        case VK_BACK;       key = .BACKSPACE;
+                        case VK_DELETE;     key = .DELETE;
+                        case VK_OEM_3;      key = .TILDE;
+                        case VK_RETURN;     key = .ENTER;
+                        case VK_OEM_4;      key = #char "[";
+                        case VK_OEM_6;      key = #char "]";
+                        case VK_OEM_PLUS;   key = #char "=";
+                        case VK_OEM_MINUS;  key = #char "-";
+                        case VK_TAB;        key = .TAB;    
+                            // @TODO: Properly handle left and right alts, shifts, and ctrls.
+                        case VK_SHIFT;      key = .SHIFT;
+                        case VK_CONTROL;    key = .CTRL;
+                        case;
+                            return;
+                            // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
+                    }
                     append_input_event(.{down=down, key=key});
                 }
 

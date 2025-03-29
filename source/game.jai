@@ -809,6 +809,14 @@ game_update : Game_Update : (
                     imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
                     imm_flush();
 
+                    font := *consolas;
+                    item_height := font.ascender * 2;
+
+                    item_size := Vector2.{imgui_size.x, item_height};
+                    head := imgui_position;
+                    string_entry(head, item_size, *imgui_state.test_string, *imgui_state.test_string_count);
+                    head.y += item_height;
+
                     if editor.selected {
                         // glEnable(GL_SCISSOR_TEST);
                         // glScissor(
@@ -817,14 +825,9 @@ game_update : Game_Update : (
                         //     xx imgui_size.x,
                         //     xx imgui_size.y
                         // );
-
-                        font := *consolas;
-                        toggle_height := font.ascender * 2;
-                        size := Vector2.{imgui_size.x, toggle_height};
-
                         e := get_entity(*level, editor.selected);
                         type := ENTITIES[e.type];
-                        imgui_for_value(e, type, imgui_position, size);
+                        imgui_for_value(e, type, head, item_size);
                     }
                 }
 

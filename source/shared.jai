@@ -111,6 +111,7 @@ Key :: enum {
     CTRL;
     TILDE;
     TAB;
+    ENTER;
     COUNT;
 }
 

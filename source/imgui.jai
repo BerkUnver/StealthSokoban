@@ -13,7 +13,13 @@ Imgui_State :: struct {
     test_color := Vector4.{0.8, 0.5, 0.2, 1};
     test_enum: enum { ZERO; ONE; TWO; }
     test_struct: struct {a: struct {a_a: bool; a_b: bool;} b: struct {b_a: bool; b_b: bool;}}
-    events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
+    test_string: [STRING_ENTRY_MAX_COUNT] u8;
+    test_string[0] = #char "T";
+    test_string[1] = #char "E";
+    test_string[2] = #char "S";
+    test_string[3] = #char "T";
+    test_string_count := 4;
+    events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event; // :DynamicArray
     event_count: int;
     mouse: Vector2;
    
@@ -122,10 +128,11 @@ BACKGROUND_COLOR :: Vector4.{0, 0, 0, 1};
 
 
 Active_Widget_Data :: struct {
-    selected: enum {
+    type: enum {
         SV;
         SLIDER;
         BUTTON;
+        STRING_ENTRY;
     }
     union {
         sv: struct {
@@ -139,6 +146,11 @@ Active_Widget_Data :: struct {
         }
         slider: struct {
             mouse_offset_x: float;
+        }
+        string_entry: struct {
+            // :DynamicArray
+            str: [STRING_ENTRY_MAX_COUNT] u8;
+            str_count: int;
         }
     }
 }
@@ -166,6 +178,47 @@ imgui_init :: () -> Imgui_State {
 }
 
 
+imgui_draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> end_x: float {
+    using context.game_context;
+
+    glUseProgram(imm_text_shader);
+    
+    set_uniform_bitmap("bitmap", 0, font.bitmap);
+    set_uniform("projection", imgui_state.imgui_to_camera);
+    
+    x := position.x;
+    y := position.y;
+
+    for str {
+        if it == #char " " {
+            x += font.space_advance;
+        } else {
+            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
+            using glyph := *font.glyphs[it - VALID_ASCII_START];
+
+            x0 := x + bearing.x;
+            y0 := y - bearing.y;
+            x1 := x0 + size.x;
+            y1 := y0 + size.y;
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, color);
+            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, color);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, color);
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, color);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, color);
+            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, color);
+
+            x += advance;
+        }
+    }
+
+    imm_flush();
+
+    return x;
+}
+
+
 toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
     using context.game_context;
     using context.game_context.imgui_state;
@@ -175,10 +228,10 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     font := *consolas;
     margin := font.ascender * 0.2;
     
-    outline_outer_width := round(font.ascender * 1.5);
+    outline_outer_width := font.ascender * 1.5;
     outline_outer_size := Vector2.{outline_outer_width, outline_outer_width};
 
-    outline_inner_width := round(font.ascender * 1.3);
+    outline_inner_width := font.ascender * 1.3;
     outline_inner_size := Vector2.{outline_inner_width, outline_inner_width};
 
     toggle_center := Vector2.{
@@ -186,8 +239,8 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
         position.y + size.y / 2
     };
     
-    outline_outer_position := round(toggle_center - outline_outer_size / 2);
-    outline_inner_position := round(toggle_center - outline_inner_size / 2);
+    outline_outer_position := toggle_center - outline_outer_size / 2;
+    outline_inner_position := toggle_center - outline_inner_size / 2;
     
     if state == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
         for [] Input_Event.{event_count, events.data} {
@@ -200,15 +253,15 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
 
-    imm_quad(outline_outer_position, outline_outer_size, HIGHLIGHT_COLOR);
-    imm_quad(outline_inner_position, outline_inner_size, BACKGROUND_COLOR);
+    imm_quad(round(outline_outer_position), round(outline_outer_size), HIGHLIGHT_COLOR);
+    imm_quad(round(outline_inner_position), round(outline_inner_size), BACKGROUND_COLOR);
     imm_flush();
 
     if val.* {
-        selected_width := round(font.ascender * 0.9);
+        selected_width := font.ascender * 0.9;
         selected_size := Vector2.{selected_width, selected_width};
-        selected_position := round(toggle_center - selected_size / 2);
-        imm_quad(selected_position, selected_size, HIGHLIGHT_COLOR);
+        selected_position := toggle_center - selected_size / 2;
+        imm_quad(round(selected_position), round(selected_size), HIGHLIGHT_COLOR);
     }
 
     imm_flush();
@@ -226,7 +279,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
     if state == {
         case .ACTIVE;
             using data;
-            assert(selected == .SLIDER);
+            assert(type == .SLIDER);
 
             end_x := position.x + size.x;
 
@@ -261,9 +314,10 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
                 for [] Input_Event.{event_count, events.data} {
                     if it.key == .MOUSE_LEFT_BUTTON && it.down {
                         activate(.{
-                            selected = .SLIDER,
+                            type = .SLIDER,
                             slider = .{mouse_offset_x = cursor_x - mouse.x}
                         });
+                        break;
                     }
                 }
             }
@@ -341,7 +395,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
     
     if state == .ACTIVE {
-        assert(data.selected == .SV);
+        assert(data.type == .SV);
         hue = data.sv.hue;
     }
 
@@ -389,7 +443,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     if state == {
         case .ACTIVE;
-            assert(data.selected == .SV);
+            assert(data.type == .SV);
             sv_cursor = mouse + data.sv.mouse_offset;
             clamp(*sv_cursor.x, sv_x0, sv_x1);
             clamp(*sv_cursor.y, sv_y0, sv_y1);
@@ -423,12 +477,13 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
                 for [] Input_Event.{event_count, events.data} {
                     if it.key == .MOUSE_LEFT_BUTTON && it.down {
                         activate(.{
-                            selected = .SV,
+                            type = .SV,
                             sv = .{
                                 mouse_offset = sv_cursor - mouse,
                                 hue = hue
                             }
                         });
+                        break;
                     }
                 }
             }
@@ -550,10 +605,10 @@ enum_selector :: (
 
     member_text := info.names[member_index];
     
-    text_x := round(left_button_position.x - margin - text_length(member_text, font));
-    text_y: float = round(position.y + size.y / 2 + font.ascender / 2);
+    text_x := left_button_position.x - margin - text_length(member_text, font);
+    text_y := position.y + size.y / 2 + font.ascender / 2;
 
-    draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
+    imgui_draw_text(member_text, round(Vector2.{text_x, text_y}), font, DULL_COLOR);
 }
 
 
@@ -568,7 +623,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
 
     if state == {
         case .ACTIVE;
-            assert(data.selected == .BUTTON);
+            assert(data.type == .BUTTON);
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
                     deactivate();
@@ -582,7 +637,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
                 for [] Input_Event.{event_count, events.data} {
                     if it.key == .MOUSE_LEFT_BUTTON && it.down {
                         activate(.{
-                            selected = .BUTTON
+                            type = .BUTTON
                         });
                         clicked = true;
                         break;
@@ -605,12 +660,128 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
     imm_flush();
 
-    text_x: float = round(position.x + size.x / 2 - text_length(label, font) / 2);
-    text_y: float = round(position.y + size.y / 2 + font.ascender / 2);
-    draw_text(label, .{text_x, text_y}, font, color);
+    text_x := position.x + size.x / 2 - text_length(label, font) / 2;
+    text_y := position.y + size.y / 2 + font.ascender / 2;
+    imgui_draw_text(label, round(Vector2.{text_x, text_y}), font, color);
 
     return clicked;
 }
+
+
+STRING_ENTRY_MAX_COUNT :: 128;
+string_entry :: (
+    position: Vector2,
+    size: Vector2,
+    str: *[STRING_ENTRY_MAX_COUNT] u8,
+    str_count: *int,
+    loc := #caller_location,
+    id: u64 = 0
+) -> entered: bool {
+    using context.game_context;
+    using context.game_context.imgui_state;
+    assert(str_count.* <= str.count);
+
+    state, data := scope_widget(loc, id);
+
+    font := *consolas;
+    margin := font.ascender * 0.2;
+
+    inner_height := font.ascender * 1.5;
+
+    outer_size := Vector2.{
+        size.x,
+        inner_height + margin * 2
+    };
+
+    outer_position := Vector2.{
+        position.x,
+        position.y + size.y / 2 - outer_size.y / 2
+    };
+
+    inner_size := Vector2.{
+        size.x - margin * 2,
+        inner_height
+    };
+
+    inner_position := Vector2.{
+        outer_position.x + margin,
+        outer_position.y + margin
+    };
+
+    text_position := Vector2.{
+        position.x + margin,
+        position.y + size.y / 2 + font.ascender / 2
+    };
+
+    color := DULL_COLOR;
+    entered := false;
+    string_to_draw: string;
+    // @TODO: CHECK THE WIDGET STATE AGAIN AFTER WE HANDLE INPUTS TO DETERMINE WHAT THESE VARIABLES SHOULD BE.
+    // If we are active and become inactive, we should assume we can't touch "data" anymore".
+
+    if state == {
+        case .ACTIVE;
+            assert(data.type == .STRING_ENTRY);
+
+            mouse_outside := !inside(outer_position, outer_size, mouse);
+            for [] Input_Event.{event_count, events.data} {
+                if !it.down continue;
+
+                if it.key == .ENTER || (mouse_outside && it.key == .MOUSE_LEFT_BUTTON) {
+                    memcpy(str.data, data.string_entry.str.data, data.string_entry.str_count);
+                    str_count.* = data.string_entry.str_count;
+                    deactivate();
+                    event_count = 0;
+                    entered = true;
+                    break;
+                }
+
+                if (#char " " <= it.key && it.key <= #char "~") && data.string_entry.str_count < data.string_entry.str.count {
+                    data.string_entry.str[data.string_entry.str_count] = xx it.key;
+                    data.string_entry.str_count += 1;
+                    continue;
+                }
+
+                if it.key == .DELETE || it.key == .BACKSPACE {
+                    if data.string_entry.str_count > 0 data.string_entry.str_count -= 1;
+                    continue;
+                }
+            }
+
+            color = HIGHLIGHT_COLOR;
+            string_to_draw = .{data.string_entry.str_count, data.string_entry.str.data};
+
+        case .NO_ONE;
+            string_to_draw = .{str_count.*, str.data};
+            if inside(outer_position, outer_size, mouse) {
+                for [] Input_Event.{event_count, events.data} {
+                    if it.down && it.key == .MOUSE_LEFT_BUTTON {    
+                        data: Active_Widget_Data;
+                        data.type = .STRING_ENTRY;
+                        memcpy(data.string_entry.str.data, str.data, str_count.*);
+                        data.string_entry.str_count = str_count.*;
+                        activate(data);
+                        break;
+                    }
+                }
+            }
+    }
+
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_to_camera);
+    imm_quad(outer_position, outer_size, color);
+    imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
+    imm_flush();
+    
+    // @TODO: Push a new scissor, or find some way to cut off the text we draw.
+    imgui_draw_text(string_to_draw, text_position, font, color);
+    
+
+    return entered;
+}
+
+
 
 imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) {
     imgui_for_value(val, type_info(T), position, field_size, loc, id);
@@ -647,10 +818,10 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                         continue;
                 }
                 
-                label_x := round(position.x + margin);
-                label_y := round(y + field_size.y / 2 + font.ascender / 2);
+                label_x := position.x + margin;
+                label_y := y + field_size.y / 2 + font.ascender / 2;
 
-                value_x := draw_text(it.name, .{label_x, label_y}, font, HIGHLIGHT_COLOR);
+                value_x := imgui_draw_text(it.name, round(Vector2.{label_x, label_y}), font, HIGHLIGHT_COLOR);
                 value_y := y;
                 
                 value_position := Vector2.{value_x, value_y};

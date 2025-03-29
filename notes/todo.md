@@ -15,7 +15,6 @@
 # Editor
 - Undo / Redo
 - An actual dragging widget
-- Finish IMGUI (crank session for this?)
 - Bulk selection
 - Entity instantiation popup where you type the name of the entity you want
 - Level goto popup where you type the name of the level you want to go to
