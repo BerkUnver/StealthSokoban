@@ -76,7 +76,7 @@ this_is_the_active_widget :: () -> bool {
 }
 
 
-scope_widget :: (loc: Source_Code_Location, id: u64) -> Widget_State, *Active_Widget_Data #expand {
+scope_widget :: (loc: Source_Code_Location, id: u64) #expand {
     using context.game_context.imgui_state;
     assert(current_widget_id_count < current_widget_id.count);
     
@@ -95,11 +95,15 @@ scope_widget :: (loc: Source_Code_Location, id: u64) -> Widget_State, *Active_Wi
         current_widget_id_count -= 1;
         assert(old_count == current_widget_id_count);
     }
+}
 
-    if !active_widget_exists        return .NO_ONE, null;
-    if !this_is_the_active_widget() return .NOT_ME, null;
 
-    return .ACTIVE, *active_widget_data;
+// Only call from within "scope_widget"
+get_widget_state :: () -> Widget_State {
+    using context.game_context.imgui_state;
+    if !active_widget_exists        return .NO_ONE;
+    if !this_is_the_active_widget() return .NOT_ME;
+    return .ACTIVE;
 }
 
 
@@ -223,7 +227,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     using context.game_context;
     using context.game_context.imgui_state;
     
-    state := scope_widget(loc, id);
+    scope_widget(loc, id);
 
     font := *consolas;
     margin := font.ascender * 0.2;
@@ -242,7 +246,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     outline_outer_position := toggle_center - outline_outer_size / 2;
     outline_inner_position := toggle_center - outline_inner_size / 2;
     
-    if state == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
+    if get_widget_state() == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
         for [] Input_Event.{event_count, events.data} {
             if it.key == .MOUSE_LEFT_BUTTON && it.down {
                 val.* = !val.*;
@@ -272,23 +276,10 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
     using context.game_context;
     using context.game_context.imgui_state;
 
-    state, data := scope_widget(loc, id);
+    scope_widget(loc, id);
 
-    cursor_x := position.x + size.x * value.*;
-
-    if state == {
+    if get_widget_state() == {
         case .ACTIVE;
-            using data;
-            assert(type == .SLIDER);
-
-            end_x := position.x + size.x;
-
-            epsilon := 0.0;
-            if strictly_less_than_1 epsilon = 0.001;
-
-            cursor_x = clamp(mouse.x + data.slider.mouse_offset_x, position.x, end_x - epsilon);
-            value.* = (cursor_x - position.x) / (end_x - position.x);
-
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
                     deactivate();
@@ -301,6 +292,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 
         case .NO_ONE;
             cursor_width := size.x * 0.04;
+            cursor_x := position.x + size.x * value.*;
             cursor_position := Vector2.{
                 cursor_x - cursor_width / 2,
                 position.y
@@ -321,6 +313,23 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
                     }
                 }
             }
+    }
+
+    cursor_x: float;
+    if #complete get_widget_state() == {
+        case .ACTIVE;
+            assert(active_widget_data.type == .SLIDER);
+
+            end_x := position.x + size.x;
+
+            epsilon := 0.0;
+            if strictly_less_than_1 epsilon = 0.001;
+
+            cursor_x = clamp(mouse.x + active_widget_data.slider.mouse_offset_x, position.x, end_x - epsilon);
+            value.* = (cursor_x - position.x) / (end_x - position.x);
+        case .NOT_ME; #through;
+        case .NO_ONE;
+            cursor_x = position.x + size.x * value.*;
     }
 
     bar_width := size.y * 0.1;
@@ -345,7 +354,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     using context.game_context;
     using context.game_context.imgui_state;
 
-    state, data := scope_widget(loc, id);
+    scope_widget(loc, id);
 
     font := *consolas;
     margin := font.ascender * 0.2;
@@ -389,27 +398,10 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
 
 
-
-    // Store what we expect the values to be, then reassign them
-    // when we check input if they change.
-    hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
-    
-    if state == .ACTIVE {
-        assert(data.type == .SV);
-        hue = data.sv.hue;
-    }
-
-
     // :ReversedValue imgui is now drawn y-down, but we want saturation to go from 0 at the
     // bottom y value (greatest) and 1 at the top high value (least). So, we have to reverse
     // the y value.
 
-    sv_cursor := Vector2.{
-        lerp(sv_x0, sv_x1, saturation),
-        lerp(sv_y0, sv_y1, 1 - value) // :ReversedValue
-    };
-
-    
     // @TODO: Draw a little alpha checkerboard texture underneath this.
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
@@ -425,7 +417,6 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     imm_vertex(.{alpha_x0, alpha_y1, 0}, .{1, 1, 1, 1});
     imm_flush();
 
-
     slider(*color.w, alpha_position, alpha_size, loc=loc, id=0);
 
     glUseProgram(imm_hue_shader);
@@ -438,21 +429,19 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     imm_vertex(.{hue_x1, hue_y1, 0}, .{1, 1});
     imm_flush();
 
+    hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
+    
+    if get_widget_state() == .ACTIVE {
+        assert(active_widget_data.type == .SV);
+        hue = active_widget_data.sv.hue;
+    }
+
+
     slider(*hue, hue_position, hue_size, loc=loc, id=1);
     color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
 
-    if state == {
+    if get_widget_state() == {
         case .ACTIVE;
-            assert(data.type == .SV);
-            sv_cursor = mouse + data.sv.mouse_offset;
-            clamp(*sv_cursor.x, sv_x0, sv_x1);
-            clamp(*sv_cursor.y, sv_y0, sv_y1);
-
-            saturation = (sv_cursor.x - sv_x0) / (sv_x1 - sv_x0);
-            value = 1.0 - (sv_cursor.y - sv_y0) / (sv_y1 - sv_y0); // :ReversedValue
-            
-            color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
-
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
                     deactivate();
@@ -462,6 +451,11 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
             }
 
         case .NO_ONE;
+            sv_cursor := Vector2.{
+                lerp(sv_x0, sv_x1, saturation),
+                lerp(sv_y0, sv_y1, 1 - value) // :ReversedValue
+            };
+
             sv_cursor_size := bar_width * 0.045;
             sv_cursor_position := Vector2.{
                 sv_cursor.x - sv_cursor_size,
@@ -489,6 +483,26 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
             }
     }
 
+    sv_cursor: Vector2;
+
+    if #complete get_widget_state() == {
+        case .ACTIVE;
+            assert(active_widget_data.type == .SV);
+            sv_cursor = mouse + active_widget_data.sv.mouse_offset;
+            clamp(*sv_cursor.x, sv_x0, sv_x1);
+            clamp(*sv_cursor.y, sv_y0, sv_y1);
+
+            saturation = (sv_cursor.x - sv_x0) / (sv_x1 - sv_x0);
+            value = 1.0 - (sv_cursor.y - sv_y0) / (sv_y1 - sv_y0); // :ReversedValue
+            
+            color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
+        case .NOT_ME; #through;
+        case .NO_ONE;
+            sv_cursor = Vector2.{
+                lerp(sv_x0, sv_x1, saturation),
+                lerp(sv_y0, sv_y1, 1 - value) // :ReversedValue
+            };
+    }
 
     sv_cursor_offset_big := bar_width * 0.02;
     sv_cursor_offset_small := bar_width * 0.005;
@@ -596,7 +610,7 @@ enum_selector :: (
         member_index = (member_index - 1 + info.values.count) % info.values.count;
     }
 
-    if button(">", right_button_position, button_size, loc=loc, 1) {
+    if button(">", right_button_position, button_size, loc=loc, id=1) {
         member_index = (member_index + 1) % info.values.count;
     }
     
@@ -616,14 +630,12 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     using context.game_context;
     using context.game_context.imgui_state;
 
-    state, data := scope_widget(loc, id);
+    scope_widget(loc, id);
 
     clicked := false;
-    color := HIGHLIGHT_COLOR;
 
-    if state == {
+    if get_widget_state() == {
         case .ACTIVE;
-            assert(data.type == .BUTTON);
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
                     deactivate();
@@ -631,7 +643,6 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
                     break;
                 }
             }
-            color = DULL_COLOR;
         case .NO_ONE;
             if inside(position, size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
@@ -644,6 +655,16 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
                     }
                 }
             }
+    }
+
+    color: Vector4;
+    if #complete get_widget_state() == {
+        case .ACTIVE;
+            assert(active_widget_data.type == .BUTTON);
+            color = DULL_COLOR;
+        case .NO_ONE; #through;
+        case .NOT_ME;
+            color = HIGHLIGHT_COLOR;
     }
     
 
@@ -681,7 +702,7 @@ string_entry :: (
     using context.game_context.imgui_state;
     assert(str_count.* <= str.count);
 
-    state, data := scope_widget(loc, id);
+    scope_widget(loc, id);
 
     font := *consolas;
     margin := font.ascender * 0.2;
@@ -713,46 +734,38 @@ string_entry :: (
         position.y + size.y / 2 + font.ascender / 2
     };
 
-    color := DULL_COLOR;
-    entered := false;
-    string_to_draw: string;
-    // @TODO: CHECK THE WIDGET STATE AGAIN AFTER WE HANDLE INPUTS TO DETERMINE WHAT THESE VARIABLES SHOULD BE.
-    // If we are active and become inactive, we should assume we can't touch "data" anymore".
-
-    if state == {
+    entered: bool;
+    if get_widget_state() == {
         case .ACTIVE;
-            assert(data.type == .STRING_ENTRY);
+            using active_widget_data;
+            assert(type == .STRING_ENTRY);
 
             mouse_outside := !inside(outer_position, outer_size, mouse);
             for [] Input_Event.{event_count, events.data} {
                 if !it.down continue;
 
                 if it.key == .ENTER || (mouse_outside && it.key == .MOUSE_LEFT_BUTTON) {
-                    memcpy(str.data, data.string_entry.str.data, data.string_entry.str_count);
-                    str_count.* = data.string_entry.str_count;
+                    memcpy(str.data, string_entry.str.data, string_entry.str_count);
+                    str_count.* = string_entry.str_count;
                     deactivate();
                     event_count = 0;
                     entered = true;
                     break;
                 }
 
-                if (#char " " <= it.key && it.key <= #char "~") && data.string_entry.str_count < data.string_entry.str.count {
-                    data.string_entry.str[data.string_entry.str_count] = xx it.key;
-                    data.string_entry.str_count += 1;
+                if (#char " " <= it.key && it.key <= #char "~") && string_entry.str_count < string_entry.str.count {
+                    string_entry.str[string_entry.str_count] = xx it.key;
+                    string_entry.str_count += 1;
                     continue;
                 }
 
                 if it.key == .DELETE || it.key == .BACKSPACE {
-                    if data.string_entry.str_count > 0 data.string_entry.str_count -= 1;
+                    if string_entry.str_count > 0 string_entry.str_count -= 1;
                     continue;
                 }
             }
 
-            color = HIGHLIGHT_COLOR;
-            string_to_draw = .{data.string_entry.str_count, data.string_entry.str.data};
-
         case .NO_ONE;
-            string_to_draw = .{str_count.*, str.data};
             if inside(outer_position, outer_size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
                     if it.down && it.key == .MOUSE_LEFT_BUTTON {    
@@ -765,6 +778,20 @@ string_entry :: (
                     }
                 }
             }
+    }
+
+    
+    color: Vector4;
+    string_to_draw: string;
+
+    if #complete get_widget_state() == {
+        case .ACTIVE;
+            color = HIGHLIGHT_COLOR;
+            string_to_draw = .{active_widget_data.string_entry.str_count, active_widget_data.string_entry.str.data};
+        case .NOT_ME; #through;
+        case .NO_ONE;
+            color = DULL_COLOR;
+            string_to_draw = .{str_count.*, str.data};
     }
 
 
@@ -817,7 +844,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                         // @TODO: Implement editors for these
                         continue;
                 }
-                
+               
                 label_x := position.x + margin;
                 label_y := y + field_size.y / 2 + font.ascender / 2;
 
