@@ -305,12 +305,6 @@ game_update : Game_Update : (
             }
 
 
-            if it.key == #char "T" && it.down {
-                test();
-                continue;
-            }
-            
-
             if #complete mode == {
                 case .GAMEPLAY;
                     change_level :: (dir: int) #expand {
@@ -373,6 +367,11 @@ game_update : Game_Update : (
                         assert(imgui_state.event_count < imgui_state.events.count);
                         imgui_state.events[imgui_state.event_count] = it;
                         imgui_state.event_count += 1;
+                        continue;
+                    }
+
+                    if it.key == #char "T" && it.down {
+                        test();
                         continue;
                     }
 

@@ -153,6 +153,7 @@ Active_Widget_Data :: struct {
         }
         string_entry: struct {
             // :DynamicArray
+            cursor: int;
             str: [STRING_ENTRY_MAX_COUNT] u8;
             str_count: int;
         }
@@ -754,13 +755,35 @@ string_entry :: (
                 }
 
                 if (#char " " <= it.key && it.key <= #char "~") && string_entry.str_count < string_entry.str.count {
-                    string_entry.str[string_entry.str_count] = xx it.key;
+                    for #v2 < string_entry.cursor..string_entry.str_count-1 {
+                        string_entry.str[it + 1] = string_entry.str[it];
+                    }
+                    string_entry.str[string_entry.cursor] = xx it.key;
                     string_entry.str_count += 1;
+                    string_entry.cursor += 1;
+
                     continue;
                 }
 
                 if it.key == .DELETE || it.key == .BACKSPACE {
-                    if string_entry.str_count > 0 string_entry.str_count -= 1;
+                    if string_entry.str_count > 0 {
+                        start := ifx string_entry.cursor > 0 then string_entry.cursor else 1;
+                        for start..string_entry.str_count-1 {
+                            string_entry.str[it - 1] = string_entry.str[it];
+                        }
+                        string_entry.str_count -= 1;
+                        if string_entry.cursor > 0 string_entry.cursor -= 1;
+                    }
+                    continue;
+                }
+
+                if it.key == .LEFT_ARROW {
+                    if string_entry.cursor > 0 string_entry.cursor -= 1;
+                    continue;
+                }
+
+                if it.key == .RIGHT_ARROW {
+                    if string_entry.cursor < string_entry.str_count string_entry.cursor += 1;
                     continue;
                 }
             }
@@ -773,6 +796,7 @@ string_entry :: (
                         data.type = .STRING_ENTRY;
                         memcpy(data.string_entry.str.data, str.data, str_count.*);
                         data.string_entry.str_count = str_count.*;
+                        data.string_entry.cursor = str_count.*;
                         activate(data);
                         break;
                     }
@@ -799,11 +823,27 @@ string_entry :: (
     set_uniform("projection", imgui_to_camera);
     imm_quad(outer_position, outer_size, color);
     imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
+
+    if current_widget_state == .ACTIVE {
+        using active_widget_data;
+
+        cursor_width := margin;
+        cursor_position := Vector2.{
+            text_position.x + text_length(.{string_entry.cursor, string_entry.str.data}, font) - cursor_width / 2,
+            text_position.y - font.ascender * 1.1
+        };
+        cursor_size := Vector2.{
+            cursor_width,
+            font.ascender * 1.2
+        };
+
+        imm_quad(cursor_position, cursor_size, color);
+    }
+
     imm_flush();
     
     // @TODO: Push a new scissor, or find some way to cut off the text we draw.
     imgui_draw_text(string_to_draw, text_position, font, color);
-    
 
     return entered;
 }
