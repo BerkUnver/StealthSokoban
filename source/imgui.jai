@@ -23,8 +23,7 @@ Imgui_State :: struct {
     event_count: int;
     mouse: Vector2;
    
-    // Do not read from these directly. Use the functions below.
-
+    
     // This is kind of confusing so I will attempt to explain it.
     // We need a way to uniquely identify widgets so we can store
     // what widget is active. Using just #caller_location is not 
@@ -42,6 +41,8 @@ Imgui_State :: struct {
     current_widget_loc: Source_Code_Location;
     current_widget_id: [64] u64; // :DynamicArray
     current_widget_id_count: int;
+
+    current_widget_state: Widget_State;
 
     active_widget_exists: bool;
     active_widget_loc: Source_Code_Location;
@@ -65,17 +66,6 @@ operator == :: (a: Source_Code_Location, b: Source_Code_Location) -> bool {
 }
 
 
-this_is_the_active_widget :: () -> bool {
-    using context.game_context.imgui_state;
-    assert(active_widget_exists);
-    // @Speed we could store if the current branch of widgets we are in is one where the
-    // active widget could exist and check only what we need to check.
-    return current_widget_loc == active_widget_loc
-        && current_widget_id_count == active_widget_id_count
-        && memcmp(current_widget_id.data, active_widget_id.data, current_widget_id_count * size_of(type_of(current_widget_id.data.*))) == 0;
-}
-
-
 scope_widget :: (loc: Source_Code_Location, id: u64) #expand {
     using context.game_context.imgui_state;
     assert(current_widget_id_count < current_widget_id.count);
@@ -91,38 +81,48 @@ scope_widget :: (loc: Source_Code_Location, id: u64) #expand {
     old_count := current_widget_id_count;
     current_widget_id_count += 1;
 
+    old_current_widget_state := current_widget_state;
+
+    if !active_widget_exists {
+        current_widget_state = .NO_ONE;
+    } else {
+        // @Speed we could figure out if we're in the same branch of the stack as the currently active widget, and if so, then set a flag.
+        // Then, if the flag is set, we can just check the most recent id to determine if this is the active widget. If the flag is not set,
+        // then we know for sure that this is not the active widget.
+        if current_widget_loc == active_widget_loc
+        && current_widget_id_count == active_widget_id_count
+        && memcmp(current_widget_id.data, active_widget_id.data, current_widget_id_count * size_of(type_of(current_widget_id.data.*))) == 0 {
+            current_widget_state = .ACTIVE;
+        } else {
+            current_widget_state = .NOT_ME;
+        }
+    }
+
     `defer {
         current_widget_id_count -= 1;
         assert(old_count == current_widget_id_count);
+        current_widget_state = old_current_widget_state;
     }
-}
-
-
-// Only call from within "scope_widget"
-get_widget_state :: () -> Widget_State {
-    using context.game_context.imgui_state;
-    if !active_widget_exists        return .NO_ONE;
-    if !this_is_the_active_widget() return .NOT_ME;
-    return .ACTIVE;
 }
 
 
 activate :: (data: Active_Widget_Data) {
     using context.game_context.imgui_state;
-    assert(!active_widget_exists);
+    assert(!active_widget_exists && current_widget_state == .NO_ONE);
     active_widget_exists = true;
     active_widget_loc = current_widget_loc;
     active_widget_id_count = current_widget_id_count;
     memcpy(active_widget_id.data, current_widget_id.data, current_widget_id_count * size_of(type_of(current_widget_id.data.*)));
     active_widget_data = data;
+    current_widget_state = .ACTIVE;
 }
 
 
 deactivate :: () {
     using context.game_context.imgui_state;
-    assert(active_widget_exists);
-    assert(this_is_the_active_widget());
+    assert(active_widget_exists && current_widget_state == .ACTIVE);
     active_widget_exists = false;
+    current_widget_state = .NO_ONE;
 }
 
 
@@ -246,7 +246,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     outline_outer_position := toggle_center - outline_outer_size / 2;
     outline_inner_position := toggle_center - outline_inner_size / 2;
     
-    if get_widget_state() == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
+    if current_widget_state == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
         for [] Input_Event.{event_count, events.data} {
             if it.key == .MOUSE_LEFT_BUTTON && it.down {
                 val.* = !val.*;
@@ -278,7 +278,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 
     scope_widget(loc, id);
 
-    if get_widget_state() == {
+    if current_widget_state == {
         case .ACTIVE;
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
@@ -316,7 +316,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
     }
 
     cursor_x: float;
-    if #complete get_widget_state() == {
+    if #complete current_widget_state == {
         case .ACTIVE;
             assert(active_widget_data.type == .SLIDER);
 
@@ -431,7 +431,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     hue, saturation, value := rgb_to_hsv(color.x, color.y, color.z);
     
-    if get_widget_state() == .ACTIVE {
+    if current_widget_state == .ACTIVE {
         assert(active_widget_data.type == .SV);
         hue = active_widget_data.sv.hue;
     }
@@ -440,7 +440,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     slider(*hue, hue_position, hue_size, loc=loc, id=1);
     color.x, color.y, color.z = hsv_to_rgb(hue, saturation, value);
 
-    if get_widget_state() == {
+    if current_widget_state == {
         case .ACTIVE;
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
@@ -485,7 +485,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     sv_cursor: Vector2;
 
-    if #complete get_widget_state() == {
+    if #complete current_widget_state == {
         case .ACTIVE;
             assert(active_widget_data.type == .SV);
             sv_cursor = mouse + active_widget_data.sv.mouse_offset;
@@ -634,7 +634,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
 
     clicked := false;
 
-    if get_widget_state() == {
+    if current_widget_state == {
         case .ACTIVE;
             for [] Input_Event.{event_count, events.data} {
                 if it.key == .MOUSE_LEFT_BUTTON && !it.down {
@@ -658,7 +658,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     }
 
     color: Vector4;
-    if #complete get_widget_state() == {
+    if #complete current_widget_state == {
         case .ACTIVE;
             assert(active_widget_data.type == .BUTTON);
             color = DULL_COLOR;
@@ -735,7 +735,7 @@ string_entry :: (
     };
 
     entered: bool;
-    if get_widget_state() == {
+    if current_widget_state == {
         case .ACTIVE;
             using active_widget_data;
             assert(type == .STRING_ENTRY);
@@ -784,7 +784,7 @@ string_entry :: (
     color: Vector4;
     string_to_draw: string;
 
-    if #complete get_widget_state() == {
+    if #complete current_widget_state == {
         case .ACTIVE;
             color = HIGHLIGHT_COLOR;
             string_to_draw = .{active_widget_data.string_entry.str_count, active_widget_data.string_entry.str.data};
