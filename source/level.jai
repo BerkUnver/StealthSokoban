@@ -24,9 +24,15 @@ Level :: struct {
 
     // These members are only used by the NEAR and FAR camera states.
     // Maybe they should be in the Player struct?
+    
+    camera_focus_x: s32; @NoSerialize
+    camera_focus_z: s32; @NoSerialize
     camera_focus_old_x: float; @NoSerialize
     camera_focus_old_z: float; @NoSerialize
-    camera_focus_interp := 1.0; @NoSerialize
+    camera_focus_x_interp := 1.0; @NoSerialize
+    camera_focus_z_interp := 1.0; @NoSerialize
+
+    camera_landing_interp: float; @NoSerialize
 
     camera_pitch_ticks: s8 = 1; @NoSerialize
     camera_pitch_interp := 1.0; @NoSerialize
@@ -77,20 +83,19 @@ Camera_Mode :: enum {
 }
 
 
-Player_State :: enum {
+// I pulled this stuff out because I plan to eventually share it with the enemies.
+Playerlike_State :: enum {
     GROUND;
+    // MOVING;
     SPAWNING;
     FALLING;
     DEAD;
-    DEAD_PAUSE;
-    RESPAWN_PAUSE; 
 }
 
 
-Player :: struct {
-    using #as e: Entity;
-    state: Player_State; @NoSerialize
-    using vars: union {
+Playerlike :: struct {
+    state: Playerlike_State;
+    union { 
         spawning: struct {
             interp: float;
         }
@@ -101,18 +106,20 @@ Player :: struct {
         ground: struct {
             landing_interp: float;
         }
+        moving: struct {
+            from: Vector3i;
+            interp: float;
+        }
         dead: struct {
             interp: float;
         }
-        dead_pause: struct {
-            interp: float;
-        }
-        respawn_pause: struct {
-            interp: float;
-        }
-    }; @NoSerialize
-    // You need "using vars: ...", otherwise the compiler won't let you put a note here.
-    desired_position: Vector3i; @NoSerialize
+    }
+}
+
+
+Player :: struct {
+    using #as e: Entity;
+    using playerlike: Playerlike; @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -143,8 +150,10 @@ Facing :: enum u8 {
     Z_POSITIVE;
     X_NEGATIVE;
     Z_NEGATIVE;
-    COUNT;
 }
+FACING_COUNT :: Facing.X_NEGATIVE + 1;
+// This is separate from FACING because we want to expose
+// "facing" in the editor.
 
 
 facing_to_vector3i :: (f: Facing) -> Vector3i {
@@ -185,17 +194,17 @@ facing_to_matrix4 :: (f: Facing) -> Matrix4 {
 
 
 facing_right :: inline (f: Facing) -> Facing {
-    return (f - 1 + Facing.COUNT) % Facing.COUNT;
+    return (f - 1 + FACING_COUNT) % FACING_COUNT;
 }
 
 
 facing_left :: inline (f: Facing) -> Facing {
-    return (f + 1) % Facing.COUNT;
+    return (f + 1) % FACING_COUNT;
 }
 
 
 facing_opposite :: inline (f: Facing) -> Facing {
-    return (f + 2) % Facing.COUNT;
+    return (f + 2) % FACING_COUNT;
 }
 
 
@@ -224,6 +233,7 @@ Enemy :: struct {
     desired_position: Vector3i; @NoSerialize
     // Temporary variable that's only used when enemies are pushed/pulled or the enemy wants to move.
 }
+
 
 LEFT_ENEMY_COLOR :: Vector4.{0, 68.0 / 255.0, 166.0 / 255.0, 1};
 RIGHT_ENEMY_COLOR :: Vector4.{1, 0, 0, 1};
@@ -820,6 +830,8 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             player := make_entity(level, Player, arena);
             player.position = _Entrance[0].position;
             set_state(player, .SPAWNING);
+            camera_focus_x = player.position.x;
+            camera_focus_z = player.position.z;
 
             return true;
     }
@@ -888,19 +900,25 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
 
 get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
     scale: Matrix4;
+    position: Vector3;
     if #complete player.state == {
         case .GROUND; #through;
         case .FALLING;
             scale = Matrix4_Identity;
+            position = to_vector3(player.position);
+        /*
+        case .MOVING;
+            scale = Matrix4_Identity;
+            position = lerp(to_vector3(player.moving.from), to_vector3(player.position), player.moving.interp);
+        */
         case .SPAWNING;
             weight := player.spawning.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});
+            position = to_vector3(player.position);
         case .DEAD;
             weight := 1 - player.dead.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});
-        case .DEAD_PAUSE; #through;
-        case .RESPAWN_PAUSE;
-            scale = Matrix4.{_44 = 1}; // @Temporary Add a way to prevent the player from drawing
+            position = to_vector3(player.position);
     }
     return make_translation_matrix4(to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5}) * scale;
 }
@@ -932,7 +950,7 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
-set_state :: (player: *Player, state: Player_State) {
+set_state :: (player: *Player, state: Playerlike_State, old_position := Vector3i.{}) {
     if #complete state == {
         case .GROUND;
             if player.state == .FALLING {
@@ -954,61 +972,8 @@ set_state :: (player: *Player, state: Player_State) {
             player.dead.interp = 0;
         case .SPAWNING;
             player.spawning.interp = 0;
-        case .DEAD_PAUSE;
-            player.dead_pause.interp = 0;
-        case .RESPAWN_PAUSE;
-            player.respawn_pause.interp = 0;
     }
     player.state = state;
-}
-
-
-set_player_position :: (using level: *Level, position: Vector3i) {
-    player := *_Player[0];
-
-    if camera_mode == .NEAR || camera_mode == .FAR {
-        camera_position := get_camera_position_when_near_or_far(level);
-        camera_focus_old_x = camera_position.x;
-        camera_focus_old_z = camera_position.z;
-        camera_focus_interp = 0;
-    }
-
-    player.position = position;
-}
-
-
-// @TODO This will be Vector3.{0.5, 0.5, 0.5} off, fix this!
-get_camera_position_when_near_or_far :: (using level: *Level) -> Vector3 {
-    assert(camera_mode == .NEAR || camera_mode == .FAR);
-    player := *_Player[0];
-    position := to_vector3(player.position);
-
-    x, y, z: float;
-
-    x = lerp(camera_focus_old_x, position.x, camera_focus_interp);
-    z = lerp(camera_focus_old_z, position.z, camera_focus_interp);
-    
-    // @TODO: We may want to have different code depending on whether the player
-    // is moving upwards or downwards on a ladder vs falling. Handle those once
-    // ladders are in the game.
-    
-    if #complete player.state == {
-        case .GROUND;
-            y = position.y + 1.0 - player.ground.landing_interp;
-        case .FALLING;
-            if player.position.y <= player.falling.last_floor_y - 1 {
-                y = position.y + 1.0 - player.falling.interp;
-            } else {
-                y = xx player.falling.last_floor_y;
-            }
-        case .DEAD; #through;
-        case .SPAWNING; #through;
-        case .DEAD_PAUSE; #through;
-        case .RESPAWN_PAUSE;
-            y = position.y;
-    }
-
-    return .{x, y, z};
 }
 
 
@@ -1082,8 +1047,7 @@ use_desired_positions :: (using level: *Level) -> bool {
         if #complete player.state == {
             case .SPAWNING; #through;
             case .GROUND; #through;
-            case .FALLING; #through;
-            case .RESPAWN_PAUSE;
+            case .FALLING;
                 player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
                 assert(player_in_bounds);
                 if collision[player_index] {
@@ -1100,8 +1064,7 @@ use_desired_positions :: (using level: *Level) -> bool {
                     }
                 }
 
-            case .DEAD; #through;
-            case .DEAD_PAUSE;
+            case .DEAD;
                 // Don't do anything because the player has already died.
         }
     }
@@ -1208,7 +1171,8 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         if camera_mode == {
             case .NEAR; #through;
             case .FAR;
-                camera_focus_interp = 1;
+                camera_focus_x_interp = 1;
+                camera_focus_z_interp = 1;
         }
         return;
     }
@@ -1240,7 +1204,7 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
     if flags & .DEBUG_MOVEMENT {
         assert(player.state == .GROUND);
         if inside_bounding_box(new_player_position, level_position, level_size) {
-            set_player_position(level, new_player_position);
+            player.position = new_player_position;
             play_sound(level, *footstep);
         }
     } else if player.state == .GROUND { 
@@ -1355,8 +1319,8 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         // happen is if an enemy is pushed by the block you're pushing into another
         // enemy. There is no way that can happen in the square directly in front
         // of you.
-
-        set_player_position(level, new_player_position);
+        
+        player.position = new_player_position;
         play_sound(level, *footstep);
 
         colliding_eid := collision[pushed_index];
@@ -1402,23 +1366,67 @@ GAME_FRUSTUM :: #run -> Matrix4 {
 }
 
 
-get_game_camera_matrix :: (using level: *Level) -> Matrix4 {
-    offset_matrix: Matrix4;
-    position_matrix: Matrix4;
-    
+get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     NEAR_DISTANCE :: 30.0;
     FAR_DISTANCE :: 60.0;
+
+
+    player := *_Player[0];
+    
+    // I would rather just do this update whenever the player's position changes. However, 
+    // that made the camera logic rather confusing, and I want to be able to directly set
+    // the player's position normally, so I am putting it here.
+
+    if player.position.x != camera_focus_x {
+        camera_focus_old_x = lerp(camera_focus_old_x, cast(float, camera_focus_x), camera_focus_x_interp);
+        camera_focus_x = player.position.x;
+        camera_focus_x_interp = 0;
+    }
+
+    if player.position.z != camera_focus_z {
+        camera_focus_old_z = lerp(camera_focus_old_z, cast(float, camera_focus_z), camera_focus_z_interp);
+        camera_focus_z = player.position.z;
+        camera_focus_z_interp = 0;
+    }
+
 
     get_player_camera :: (distance: float) #expand {
         assert(camera_mode == .NEAR || camera_mode == .FAR);
         offset := Vector3.{0, 0, distance};
         offset_matrix = make_translation_matrix4(offset);
 
-        focus := get_camera_position_when_near_or_far(level);
+        position := to_vector3(player.position);
+
+        x, y, z: float;
+
+        x = lerp(camera_focus_old_x, position.x, camera_focus_x_interp);
+        z = lerp(camera_focus_old_z, position.z, camera_focus_z_interp);
+        
+        // @TODO: We may want to have different code depending on whether the player
+        // is moving upwards or downwards on a ladder vs falling. Handle those once
+        // ladders are in the game.
+        
+        if #complete player.state == {
+            case .GROUND;
+                y = position.y + 1.0 - player.ground.landing_interp;
+            case .FALLING;
+                if player.position.y <= player.falling.last_floor_y - 1 {
+                    y = position.y + 1.0 - player.falling.interp;
+                } else {
+                    y = xx player.falling.last_floor_y;
+                }
+            case .DEAD; #through;
+            case .SPAWNING;
+                y = position.y;
+        }
+
+        focus := Vector3.{x, y, z};
         position_matrix = make_translation_matrix4(-focus - Vector3.{0.5, 0.5, 0.5});
     }
 
 
+    offset_matrix: Matrix4;
+    position_matrix: Matrix4;
     if camera_mode == {
         case .NEAR;
             get_player_camera(NEAR_DISTANCE);
@@ -1462,7 +1470,8 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
     CAMERA_FOCUS_TIME :: 1.0 / 8.0;
     if camera_mode == .NEAR || camera_mode == .FAR {
-        camera_focus_interp = min(camera_focus_interp + dt / CAMERA_FOCUS_TIME, 1);
+        camera_focus_x_interp = min(camera_focus_x_interp + dt / CAMERA_FOCUS_TIME, 1);
+        camera_focus_z_interp = min(camera_focus_z_interp + dt / CAMERA_FOCUS_TIME, 1);
     }
     
     // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
@@ -1679,7 +1688,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
         // @Speed this does a bunch of extra checks that we don't need to do, such as against blocks.
         // Is there a way we can remove this?
-        if !use_desired_positions(level) return;
+        assert(use_desired_positions(level));
 
        
 
@@ -1784,7 +1793,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                     break;
                 }
 
-                set_player_position(level, new_position);
+                player.position = new_position;
 
                 if is_colliding_below(level, player.position) {
                     set_state(player, .GROUND);
@@ -1796,21 +1805,8 @@ gameplay_level_update :: (using level: *Level, dt: float) {
             DEAD_TIME :: SPAWNING_TIME;
             player.dead.interp += dt / DEAD_TIME;
             if player.dead.interp >= 1 {    
-                set_state(player, .DEAD_PAUSE);
-            }
-
-        case .DEAD_PAUSE;
-            TIME :: 0.2;
-            player.dead_pause.interp += dt / TIME;
-            if player.dead_pause.interp >= 1 {
                 entrance := *_Entrance[0];
                 player.position = entrance.position;
-                set_state(player, .RESPAWN_PAUSE);
-            }
-        case .RESPAWN_PAUSE;
-            TIME :: 0.2;
-            player.respawn_pause.interp += dt / TIME;
-            if player.respawn_pause.interp >= 1 {
                 set_state(player, .SPAWNING);
             }
     }

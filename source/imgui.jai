@@ -173,15 +173,19 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     state := scope_widget(loc, id);
 
     font := *consolas;
+    margin := font.ascender * 0.2;
     
     outline_outer_width := round(font.ascender * 1.5);
     outline_outer_size := Vector2.{outline_outer_width, outline_outer_width};
 
     outline_inner_width := round(font.ascender * 1.3);
     outline_inner_size := Vector2.{outline_inner_width, outline_inner_width};
-    
-    toggle_center := position + size / 2;
 
+    toggle_center := Vector2.{
+        position.x + size.x - margin - outline_outer_size.x / 2,
+        position.y + size.y / 2
+    };
+    
     outline_outer_position := round(toggle_center - outline_outer_size / 2);
     outline_inner_position := round(toggle_center - outline_inner_size / 2);
     
@@ -289,8 +293,8 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     state, data := scope_widget(loc, id);
 
-
-    margin := field_size.y * 0.2;
+    font := *consolas;
+    margin := font.ascender * 0.2;
 
     head := position;
     head.x += margin;
@@ -478,14 +482,27 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 }
 
 
-enum_selector :: (val: *$T, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
+enum_selector :: (
+    val: *$T,
+    position: Vector2,
+    size: Vector2,
+    loc := #caller_location,
+    id: u64 = 0
+) {
     INFO :: type_info(T);
     #assert type_of(INFO) == *Type_Info_Enum;
-    enum_selector(val, INFO, position, size, loc, id);
+    enum_selector(val, INFO, position, size, alignment, loc, id);
 }
 
 
-enum_selector :: (val: *void, info: *Type_Info_Enum, position: Vector2, size: Vector2, loc: Source_Code_Location, id: u64) {
+enum_selector :: (
+    val: *void,
+    info: *Type_Info_Enum,
+    position: Vector2,
+    size: Vector2,
+    loc: Source_Code_Location,
+    id: u64
+) {
     using context.game_context;
     using context.game_context.imgui_state;
 
@@ -493,7 +510,7 @@ enum_selector :: (val: *void, info: *Type_Info_Enum, position: Vector2, size: Ve
 
     font := *consolas;
     
-    margin := font.ascender * 0.3;
+    margin := font.ascender * 0.2;
     button_height := size.y - margin * 2;
     
     right_button_position := Vector2.{
@@ -532,9 +549,8 @@ enum_selector :: (val: *void, info: *Type_Info_Enum, position: Vector2, size: Ve
 
 
     member_text := info.names[member_index];
-
-    member_center_x := (position.x + left_button_position.x) / 2;
-    text_x: float = round(member_center_x - text_length(member_text, font) / 2);
+    
+    text_x := round(left_button_position.x - margin - text_length(member_text, font));
     text_y: float = round(position.y + size.y / 2 + font.ascender / 2);
 
     draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
@@ -595,15 +611,6 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
 
     return clicked;
 }
-
-
-get_color_selector_height :: (width: float, bar_height: float) -> float {
-    margin := bar_height * 0.2;
-
-    saturation_value_selector_height := width - margin * 2;
-    return margin + bar_height + margin + saturation_value_selector_height + margin + bar_height + margin + bar_height + margin;
-}
-
 
 imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) {
     imgui_for_value(val, type_info(T), position, field_size, loc, id);

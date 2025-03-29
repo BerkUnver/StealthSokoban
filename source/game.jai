@@ -283,7 +283,7 @@ game_update : Game_Update : (
         imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         
         imgui_position := Vector2.{0, 0};
-        imgui_size := Vector2.{600, INNER_WINDOW_H};
+        imgui_size := Vector2.{700, INNER_WINDOW_H};
         
         // Instead of using different focusing systems for the editor and imgui,
         // we could have a #caller_location-based focusing system for everything,
@@ -439,7 +439,7 @@ game_update : Game_Update : (
                 // determine which collision cell each vertex mapped to using just its
                 // position.
 
-                world_to_camera := get_game_camera_matrix(*level);
+                world_to_camera := get_gameplay_camera_matrix(*level);
 
                 glUseProgram(gameplay_gridlike_shader);
                 
