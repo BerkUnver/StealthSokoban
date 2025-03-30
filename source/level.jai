@@ -73,8 +73,6 @@ CAMERA_MAX_PITCH :: PI / 2;
 
 CAMERA_YAW_TICK_COUNT :: 12;
 
-    SPAWNING_TIME :: 0.2; @NoSerialize
-
 Camera_Mode :: enum {
     NEAR;
     FAR;
@@ -86,7 +84,7 @@ Camera_Mode :: enum {
 // I pulled this stuff out because I plan to eventually share it with the enemies.
 Playerlike_State :: enum {
     GROUND;
-    // MOVING;
+    MOVING;
     SPAWNING;
     FALLING;
     DEAD;
@@ -96,25 +94,30 @@ Playerlike_State :: enum {
 Playerlike :: struct {
     state: Playerlike_State;
     union { 
-        spawning: struct {
-            interp: float;
-        }
-        falling: struct {
-            interp: float;
-            last_floor_y: s32;
-        }
         ground: struct {
-            landing_interp: float;
+            landing_interp: float; // Used only by Player
         }
         moving: struct {
             from: Vector3i;
             interp: float;
         }
-        dead: struct {
+        spawning: struct {
             interp: float;
+        }
+        falling: struct {
+            interp: float;
+            last_floor_y: s32; // Used only by Player
+        }
+        dead: struct {
+            interp: float; // Used only by Player
         }
     }
 }
+
+
+PLAYERLIKE_FALLING_SPEED :: 4.0;
+PLAYERLIKE_MOVING_TIME :: 0.1;
+PLAYERLIKE_SPAWNING_TIME :: 0.2;
 
 
 Player :: struct {
@@ -134,14 +137,6 @@ Exit :: struct {
     using #as e: Entity;
     COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
 }
-
-
-Enemy_State :: enum u8 {
-    IDLE;
-    MOVING;
-    SPAWNING;
-}
-
 
 // I did this so we could have a concrete way to see what gameplay direction something is facing.
 // It might be better to just have a rotation quaternion on the entity. Let's see what happens.
@@ -214,13 +209,27 @@ Favored_Direction :: enum u8 {
 }
 
 
+Enemy_State :: enum u8 {
+    GROUND;
+    MOVING;
+    SPAWNING;
+    FALLING;
+}
+
+
 Enemy :: struct {
     using #as e: Entity;
+    
+    state: Enemy_State;
+    union {
+        moving: struct {
+            from: Vector3i;
+        }
+        falling: struct {
+            interp: float;
+        }
+    }
 
-    MOVING_TIME :: 0.1;
-
-    moving_from: Vector3; @NoSerialize
-    state: Enemy_State; @NoSerialize
     favored_direction: Favored_Direction;
     facing: Facing;
 
@@ -233,7 +242,6 @@ Enemy :: struct {
     desired_position: Vector3i; @NoSerialize
     // Temporary variable that's only used when enemies are pushed/pulled or the enemy wants to move.
 }
-
 
 LEFT_ENEMY_COLOR :: Vector4.{0, 68.0 / 255.0, 166.0 / 255.0, 1};
 RIGHT_ENEMY_COLOR :: Vector4.{1, 0, 0, 1};
@@ -861,23 +869,21 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
 get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, bitmap: GLuint {
     using context.game_context;
 
-    color_weight: float;
     matrix := Matrix4_Identity;
     if #complete enemy.state == {
-        case .IDLE;
-            color_weight = 1;
+        case .GROUND;
+        case .FALLING;  
+            matrix = make_translation_matrix4(Vector3.{0, 1 - enemy.falling.interp, 0});
 
         case .MOVING;
-            weight := level.enemy_timer / Enemy.MOVING_TIME;
+            weight := level.enemy_timer / PLAYERLIKE_MOVING_TIME;
             weight = weight * weight;
-            position := (to_vector3(enemy.position) - enemy.moving_from) * (1 - weight);
+            position := (to_vector3(enemy.position) - to_vector3(enemy.moving.from)) * (1 - weight);
             matrix = make_translation_matrix4(-position);
-            color_weight = 1;
 
         case .SPAWNING;
-            weight := level.enemy_timer / SPAWNING_TIME;
+            weight := level.enemy_timer / PLAYERLIKE_SPAWNING_TIME;
             matrix = make_scale_matrix4(.{weight, weight, weight});
-            color_weight = weight;
     }
     
     
@@ -906,11 +912,11 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
         case .FALLING;
             scale = Matrix4_Identity;
             position = to_vector3(player.position);
-        /*
         case .MOVING;
             scale = Matrix4_Identity;
-            position = lerp(to_vector3(player.moving.from), to_vector3(player.position), player.moving.interp);
-        */
+            position = to_vector3(player.position);
+            // Don't do player movement interp until block movement interp is also working.
+            // position = lerp(to_vector3(player.moving.from), to_vector3(player.position), player.moving.interp);
         case .SPAWNING;
             weight := player.spawning.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});
@@ -920,7 +926,7 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
             scale = make_scale_matrix4(.{weight, weight, weight});
             position = to_vector3(player.position);
     }
-    return make_translation_matrix4(to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5}) * scale;
+    return make_translation_matrix4(position + Vector3.{0.5, 0.5, 0.5}) * scale;
 }
 
 
@@ -950,8 +956,10 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
-set_state :: (player: *Player, state: Playerlike_State, old_position := Vector3i.{}) {
+set_state :: (player: *Player, state: Playerlike_State) {
     if #complete state == {
+        case .MOVING;
+            player.moving.interp = 0;
         case .GROUND;
             if player.state == .FALLING {
                 player.ground.landing_interp = player.falling.interp;
@@ -968,10 +976,11 @@ set_state :: (player: *Player, state: Playerlike_State, old_position := Vector3i
                 // This value shouldn't matter when player.falling.interp == 1.
                 player.falling.interp = 1;
             }
+
         case .DEAD;
             player.dead.interp = 0;
         case .SPAWNING;
-            player.spawning.interp = 0;
+            player.spawning.interp = 1;
     }
     player.state = state;
 }
@@ -1047,6 +1056,7 @@ use_desired_positions :: (using level: *Level) -> bool {
         if #complete player.state == {
             case .SPAWNING; #through;
             case .GROUND; #through;
+            case .MOVING; #through;
             case .FALLING;
                 player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
                 assert(player_in_bounds);
@@ -1075,6 +1085,12 @@ use_desired_positions :: (using level: *Level) -> bool {
 
     for * _Enemy {
         it.position = it.desired_position;
+        if is_colliding_below(level, it.position) {
+            it.state = .GROUND;
+        } else {
+            it.state = .FALLING;
+            it.falling.interp = 0;
+        }
     }
 
     for * _Enemy {
@@ -1289,7 +1305,8 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
                     e := get_entity(level, eid);
                     if e.type == {
                         case .Enemy;
-                            as(e, Enemy).desired_position += push_direction;
+                            enemy := as(e, Enemy);
+                            enemy.desired_position += push_direction;
                         case .Block;
                             assert(e != block);
                             succeeded = false;
@@ -1320,9 +1337,12 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         // enemy. There is no way that can happen in the square directly in front
         // of you.
         
+        set_state(player, .MOVING);
+        player.moving.from = player.position;
         player.position = new_player_position;
         play_sound(level, *footstep);
-
+    
+        // @TODO :Moving Continue doing the interp even if the player has died.
         colliding_eid := collision[pushed_index];
         if colliding_eid {
             e := get_entity(level, colliding_eid);
@@ -1333,10 +1353,6 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
                 set_state(player, .DEAD);
                 return;
             }
-        }
-
-        if !is_colliding_below(level, new_player_position) {
-            set_state(player, .FALLING);
         }
     }
     
@@ -1416,6 +1432,7 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
                     y = xx player.falling.last_floor_y;
                 }
             case .DEAD; #through;
+            case .MOVING; #through; // @TODO: Make this use the landing_interp.
             case .SPAWNING;
                 y = position.y;
         }
@@ -1632,8 +1649,9 @@ gameplay_level_update :: (using level: *Level, dt: float) {
         }
 
         for * _Enemy {
-            it.moving_from = to_vector3(it.position);
+            if it.state == .FALLING continue;
             it.state = .MOVING;
+            it.moving.from = it.position;
 
             desired_direction := facing_to_vector3i(it.facing);
 
@@ -1743,18 +1761,61 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                     it.alternating_direction = .LEFT;
                 }
             }
-        }
-    }
-    
-    if enemy_timer >= Enemy.MOVING_TIME {
-        for * _Enemy {
-            if it.state == .MOVING it.state = .IDLE;
+
+            if player.position == it.position {
+                set_state(player, .DEAD);
+                // @Cleanup do the state update when we do the player update so we don't have 
+                // the chance to change the player's state twice in one frame.
+            }
         }
     }
 
-    if enemy_timer >= SPAWNING_TIME {
+    for * _Enemy {
+        if #complete it.state == {
+            case .GROUND;
+            case .MOVING;
+                if enemy_timer >= PLAYERLIKE_MOVING_TIME it.state = .GROUND;
+            case .SPAWNING;
+                if enemy_timer >= PLAYERLIKE_SPAWNING_TIME it.state = .GROUND;
+            case .FALLING;
+                it.falling.interp += dt * PLAYERLIKE_FALLING_SPEED;
+                if it.falling.interp >= 1 {
+                    if is_colliding_below(level, it.position) {
+                        it.state = .GROUND;
+                        // @TODO: ACTUALLY HANDLE THE CASE OF WHEN A BLOCK IS PUSHED UNDERNEATH A FALLING ENEMY.
+                        // We want to change the Enemy state right away, instead of here.
+                    } else {
+                        new_position := it.position;
+                        new_position.y -= 1;
+                        if new_position.y < level_position.y {
+                            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                            assert(in_bounds);
+                            collision[index] = 0;
+                            delete_entity(level, it.eid);
+                            it_index -= 1; // :DeleteEntityInLoop
+                            continue;
+                        } else {
+                            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                            assert(in_bounds);
+                            collision[index] = 0;
+                            it.position = new_position;
+                            in_bounds, index = get_3d_index(new_position, level_position, level_size);
+                            collision[index] = it.eid;
+                        }
+                    }
+                }
+        }
+    }
+    
+    if enemy_timer >= PLAYERLIKE_MOVING_TIME {
         for * _Enemy {
-            if it.state == .SPAWNING it.state = .IDLE;
+            if it.state == .MOVING it.state = .GROUND;
+        }
+    }
+
+    if enemy_timer >= PLAYERLIKE_SPAWNING_TIME {
+        for * _Enemy {
+            if it.state == .SPAWNING it.state = .GROUND;
         }
     }
 
@@ -1764,25 +1825,34 @@ gameplay_level_update :: (using level: *Level, dt: float) {
         if it.interp > 1 remove it;
     }
 
-    FALLING_SPEED :: 4.0;
     if #complete player.state == {
+        case .GROUND;
+            player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt * PLAYERLIKE_FALLING_SPEED);
+
+        case .MOVING;
+            player.moving.interp += dt / PLAYERLIKE_MOVING_TIME;
+            if player.moving.interp >= 1 {
+                if is_colliding_below(level, player.position) {
+                    set_state(player, .GROUND);
+                } else {
+                    set_state(player, .FALLING);
+                }
+            }
+            
         case .SPAWNING;
-            player.spawning.interp += dt / SPAWNING_TIME;
+            player.spawning.interp += dt / PLAYERLIKE_SPAWNING_TIME;
             if player.spawning.interp >= 1 {
                 if is_colliding_below(level, player.position) {
                     set_state(player, .GROUND);
                 } else {
-                    // This one should never happen
+                    // This one should never happen in practice
                     set_state(player, .FALLING); 
                 }
             }
 
-        case .GROUND;
-            player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt * FALLING_SPEED);
-
         case .FALLING;
             assert(!(flags & .DEBUG_MOVEMENT));
-            player.falling.interp += dt * FALLING_SPEED;
+            player.falling.interp += dt * PLAYERLIKE_FALLING_SPEED;
             while player.falling.interp >= 1 {
                 player.falling.interp -= 1;
                 new_position := player.position;
@@ -1802,7 +1872,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
             }
 
         case .DEAD;
-            DEAD_TIME :: SPAWNING_TIME;
+            DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
             player.dead.interp += dt / DEAD_TIME;
             if player.dead.interp >= 1 {    
                 entrance := *_Entrance[0];
