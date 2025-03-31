@@ -523,6 +523,48 @@ types
 		facing 2
 		;
 	]
+	_Enemy_Despawner 5[
+		e
+			position
+				x 5
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			position
+				x 5
+				y 1
+				z 8
+				;
+			;
+		;
+		e
+			position
+				x 3
+				y 1
+				z 8
+				;
+			;
+		;
+		e
+			position
+				x 15
+				y 1
+				z 1
+				;
+			;
+		;
+		e
+			position
+				x 15
+				y 1
+				z 3
+				;
+			;
+		;
+	]
 	_Entrance 1[
 		e
 			position

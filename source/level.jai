@@ -151,7 +151,7 @@ Facing :: enum u8 {
     X_NEGATIVE;
     Z_NEGATIVE;
 }
-FACING_COUNT :: Facing.X_NEGATIVE + 1;
+FACING_COUNT :: Facing.Z_NEGATIVE + 1;
 // This is separate from FACING because we want to expose
 // "facing" in the editor.
 
@@ -882,7 +882,7 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     
     
     // Let's not do this until player rotation is working.
-    // matrix = matrix * facing_to_matrix4(enemy.facing);
+    matrix = matrix * facing_to_matrix4(enemy.facing);
     matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0.5, 0.5}) * matrix;
 
     
@@ -1596,7 +1596,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
     }
     */
 
-    ENEMY_TICK_TIME :: 1;
+    ENEMY_TICK_TIME :: 0.8;
     enemy_timer += dt;
 
     if enemy_timer >= ENEMY_TICK_TIME {
