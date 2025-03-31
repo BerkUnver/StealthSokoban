@@ -240,7 +240,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         using game_memory.game;
         level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
         
-        set_mode(*game, .GAMEPLAY);
+        set_mode(*game, .EDITOR);
         
         if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
