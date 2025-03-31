@@ -84,14 +84,19 @@ Camera_Mode :: enum {
 // I pulled this stuff out because I plan to eventually share it with the enemies.
 Playerlike_State :: enum {
     GROUND;
+    MOVING;
     SPAWNING;
     FALLING;
+    DEAD;
 }
 
 
 Playerlike :: struct {
     state: Playerlike_State;
     union { 
+        ground: struct {
+            landing_interp: float; // Used only by Player
+        }
         moving: struct {
             from: Vector3i;
             interp: float;
@@ -101,6 +106,10 @@ Playerlike :: struct {
         }
         falling: struct {
             interp: float;
+            last_floor_y: s32; // Used only by Player
+        }
+        dead: struct {
+            interp: float; // Used only by Player
         }
     }
 }
@@ -114,9 +123,6 @@ PLAYERLIKE_SPAWNING_TIME :: 0.2;
 Player :: struct {
     using #as e: Entity;
     using playerlike: Playerlike; @NoSerialize
-    ground_landing_interp: float; @NoSerialize
-    falling_last_floor_y: s32; @NoSerialize
-    dead_interp: float; @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -551,7 +557,7 @@ get_camera_yaw :: (using level: *Level) -> float {
     // This one feels kind of "gummy".
 }
 
-// @TODO: Handle enemies below you!
+
 is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
     below := position;
     below.y -= 1;
@@ -831,11 +837,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 
             player := make_entity(level, Player, arena);
             player.position = _Entrance[0].position;
-            in_bounds, index := get_3d_index(player.position, level_position, level_size);
-            assert(in_bounds);
-            collision[index] = player.eid;
-
-            player.state = .SPAWNING;
+            set_state(player, .SPAWNING);
             camera_focus_x = player.position.x;
             camera_focus_z = player.position.z;
 
@@ -910,8 +912,17 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
         case .FALLING;
             scale = Matrix4_Identity;
             position = to_vector3(player.position);
+        case .MOVING;
+            scale = Matrix4_Identity;
+            position = to_vector3(player.position);
+            // Don't do player movement interp until block movement interp is also working.
+            // position = lerp(to_vector3(player.moving.from), to_vector3(player.position), player.moving.interp);
         case .SPAWNING;
             weight := player.spawning.interp;
+            scale = make_scale_matrix4(.{weight, weight, weight});
+            position = to_vector3(player.position);
+        case .DEAD;
+            weight := 1 - player.dead.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});
             position = to_vector3(player.position);
     }
@@ -945,56 +956,33 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
-Playerlike_Entity_Interface :: struct {
-    using #as e: Entity;
-    using playerlike: Playerlike;
-}
-
-
-set_state :: (e: *$T/interface Playerlike_Entity_Interface, state: Playerlike_State) {
+set_state :: (player: *Player, state: Playerlike_State) {
     if #complete state == {
+        case .MOVING;
+            player.moving.interp = 0;
         case .GROUND;
-            #if T == Player {
-                if e.state == .FALLING {
-                    e.ground_landing_interp = e.falling.interp;
-                } else {
-                    e.ground_landing_interp = 1;
-                }
+            if player.state == .FALLING {
+                player.ground.landing_interp = player.falling.interp;
+            } else {
+                player.ground.landing_interp = 1;
             }
         case .FALLING;
-            e.falling.interp = 0;
-            #if T == Player {
-                if e.state == .GROUND {
-                    e.falling_last_floor_y = e.position.y;
-                }
+            if player.state == .GROUND {
+                player.falling.last_floor_y = player.position.y;
+                player.falling.interp = 0;
+            } else {
+                player.falling.last_floor_y = -100000;
+                // This is set to -100000 in case something weird happens.
+                // This value shouldn't matter when player.falling.interp == 1.
+                player.falling.interp = 1;
             }
+
+        case .DEAD;
+            player.dead.interp = 0;
         case .SPAWNING;
-            e.spawning.interp = 0;
+            player.spawning.interp = 1;
     }
-    e.state = state;
-}
-
-
-set_position :: (using level: *Level, e: *$T/interface Playerlike_Entity_Interface, position: Vector3i) {   
-    in_bounds, index := get_3d_index(e.position, level_position, level_size);
-    assert(in_bounds);
-    assert(collision[index] == e.eid);
-    collision[index] = 0;
-
-    in_bounds, index = get_3d_index(position, level_position, level_size);
-    assert(in_bounds);
-
-    if !is_colliding_below(level, position) {
-        if e.state == .GROUND set_state(e, .FALLING);
-    } else {
-        if e.state == .FALLING set_state(e, .GROUND);
-    }
-
-    e.position = position;
-    
-    assert(in_bounds);
-    assert(collision[index] == 0);
-    collision[index] = e.eid;
+    player.state = state;
 }
 
 
@@ -1065,20 +1053,29 @@ use_desired_positions :: (using level: *Level) -> bool {
 
     player := *_Player[0];
     if !(flags & .DEBUG_MOVEMENT) {
-        player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
-        assert(player_in_bounds);
-        if collision[player_index] {
-            e := get_entity(level, collision[player_index]);
-            if e.type == {
-                case .Enemy;
-                    set_position(level, player, _Entrance[0].position);
-                
-                case .Block;
-                    // :PlayerInsideBlock
+        if #complete player.state == {
+            case .SPAWNING; #through;
+            case .GROUND; #through;
+            case .MOVING; #through;
+            case .FALLING;
+                player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
+                assert(player_in_bounds);
+                if collision[player_index] {
+                    e := get_entity(level, collision[player_index]);
+                    if e.type == {
+                        case .Enemy;
+                            set_state(player, .DEAD);
+                        
+                        case .Block;
+                            // :PlayerInsideBlock
 
-                case;
-                    assert(false);
-            }
+                        case;
+                            assert(false);
+                    }
+                }
+
+            case .DEAD;
+                // Don't do anything because the player has already died.
         }
     }
 
@@ -1163,8 +1160,6 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         return;
     }
 
-    // @TODO: Re-add debug movement
-    /*
     if event.key == #char "M" && event.down {
         player := *_Player[0];
         if flags & .DEBUG_MOVEMENT {
@@ -1181,12 +1176,11 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
                 set_state(player, .FALLING);
             }
         } else {
-            flags |= .DEBUG_MOVEMENT;
+            flags |=  .DEBUG_MOVEMENT;
             set_state(player, .GROUND);
         }
         return;
     }
-    */
 
     if event.key == #char "U" && event.down {
        camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
@@ -1226,7 +1220,7 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
     if flags & .DEBUG_MOVEMENT {
         assert(player.state == .GROUND);
         if inside_bounding_box(new_player_position, level_position, level_size) {
-            player.position = new_player_position; // @TODO: Is it okay to set this explicitly here?
+            player.position = new_player_position;
             play_sound(level, *footstep);
         }
     } else if player.state == .GROUND { 
@@ -1336,12 +1330,15 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         
         if !use_desired_positions(level) return;
 
+        assert(player.state != .DEAD);
         // There's no way you could walk into mutually annhilating enemies while
         // you're pushing a block, because the only way a mutual annihilation could
         // happen is if an enemy is pushed by the block you're pushing into another
         // enemy. There is no way that can happen in the square directly in front
         // of you.
         
+        set_state(player, .MOVING);
+        player.moving.from = player.position;
         player.position = new_player_position;
         play_sound(level, *footstep);
     
@@ -1353,13 +1350,9 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
                 append_no_resize(*mutual_annihilations, .{position = player.position});
                 collision[pushed_index] = 0;
                 delete_entity(level, e.eid);
-                set_position(level, player, _Entrance[0].position);
+                set_state(player, .DEAD);
                 return;
             }
-        }
-
-        if !is_colliding_below(level, player.position) {
-            set_state(player, .FALLING);
         }
     }
     
@@ -1431,13 +1424,15 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
         
         if #complete player.state == {
             case .GROUND;
-                y = position.y + 1.0 - player.ground_landing_interp;
+                y = position.y + 1.0 - player.ground.landing_interp;
             case .FALLING;
-                if player.position.y <= player.falling_last_floor_y - 1 {
+                if player.position.y <= player.falling.last_floor_y - 1 {
                     y = position.y + 1.0 - player.falling.interp;
                 } else {
-                    y = xx player.falling_last_floor_y;
+                    y = xx player.falling.last_floor_y;
                 }
+            case .DEAD; #through;
+            case .MOVING; #through; // @TODO: Make this use the landing_interp.
             case .SPAWNING;
                 y = position.y;
         }
@@ -1768,7 +1763,9 @@ gameplay_level_update :: (using level: *Level, dt: float) {
             }
 
             if player.position == it.position {
-                set_position(level, player, _Entrance[0].position);
+                set_state(player, .DEAD);
+                // @Cleanup do the state update when we do the player update so we don't have 
+                // the chance to change the player's state twice in one frame.
             }
         }
     }
@@ -1830,8 +1827,18 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
     if #complete player.state == {
         case .GROUND;
-            player.ground_landing_interp = min(1.0, player.ground_landing_interp + dt * PLAYERLIKE_FALLING_SPEED);
+            player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt * PLAYERLIKE_FALLING_SPEED);
 
+        case .MOVING;
+            player.moving.interp += dt / PLAYERLIKE_MOVING_TIME;
+            if player.moving.interp >= 1 {
+                if is_colliding_below(level, player.position) {
+                    set_state(player, .GROUND);
+                } else {
+                    set_state(player, .FALLING);
+                }
+            }
+            
         case .SPAWNING;
             player.spawning.interp += dt / PLAYERLIKE_SPAWNING_TIME;
             if player.spawning.interp >= 1 {
@@ -1851,7 +1858,26 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                 new_position := player.position;
                 new_position.y -= 1;
                
-                set_position(level, player, new_position);
+                if new_position.y < level_position.y {
+                    set_state(player, .DEAD);
+                    break;
+                }
+
+                player.position = new_position;
+
+                if is_colliding_below(level, player.position) {
+                    set_state(player, .GROUND);
+                    break;
+                }
+            }
+
+        case .DEAD;
+            DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
+            player.dead.interp += dt / DEAD_TIME;
+            if player.dead.interp >= 1 {    
+                entrance := *_Entrance[0];
+                player.position = entrance.position;
+                set_state(player, .SPAWNING);
             }
     }
 
