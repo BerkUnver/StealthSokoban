@@ -212,6 +212,12 @@ Favored_Direction :: enum u8 {
     LEFT;
 }
 
+Enemy_Vfx_Modifiers :: enum_flags u8 {
+    SPAWNING;
+    FALLING;
+    MOVING;
+}
+
 
 Enemy :: struct {
     using #as e: Entity;
@@ -219,43 +225,41 @@ Enemy :: struct {
     favored_direction: Favored_Direction;
     facing: Facing;
 
-    vfx_modifiers: enum_flags u8 {
-        SPAWNING;
-        MOVING;
-        FALLING;
-    } @NoSerialize
-
-    vfx_spawning_timer: float; @NoSerialize
-    vfx_moving_timer: float; @NoSerialize
-    vfx_falling_timer: float; @NoSerialize
-
+    vfx_modifiers: Enemy_Vfx_Modifiers; @NoSerialize
     moving_from: Vector3; @NoSerialize
     state: Enemy_State; @NoSerialize
 
-    desired_state: enum u8 {
+    result_state: enum u8 {
         ALIVE;
         OUT_OF_BOUNDS; // The enemy won't be in the new collision map
 
         PRIMARY_ANNIHILATOR;
         // This will stay in the new collision map. I do this so that we can check if the player
         // annihilated with anything. Maybe it would be better to have the player in the collision
-        // map and have desired_position / desired_state on the player?
+        // map and have desired_position / result_state on the player?
 
         SECONDARY_ANNIHILATOR; // The enemy won't be in the new collision map.
     }; @NoSerialize
+    
+    /*
+    desired: struct {
+        position: Vector3i;
+        vfx_modifiers: Enemy_Vfx_Modifiers
+    } @NoSerialize
+    */
 
+    desired_vfx_modifiers: Enemy_Vfx_Modifiers; @NoSerialize
     desired_position: Vector3i; @NoSerialize
-    // Temporary variable that's only used when enemies are pushed/pulled or the enemy wants to move.
 }
 
 
 LEFT_ENEMY_COLOR :: Vector4.{0, 68.0 / 255.0, 166.0 / 255.0, 1};
 RIGHT_ENEMY_COLOR :: Vector4.{1, 0, 0, 1};
 ENEMY_TICK_TIME :: 0.8;
-FALLS_PER_ENEMY_TICK :: 4;
+FALLS_PER_ENEMY_TICK :: 3;
 
 ENEMY_MOVING_VFX_TIME :: 0.1;
-ENEMY_FALLING_VFX_TIME :: 0.1;
+ENEMY_FALLING_VFX_TIME :: 0.05;
 
 Enemy_Spawner_Type :: enum {
     ALTERNATING;
@@ -880,11 +884,6 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
 }
 
 
-enemy_timer_to_fall_timer :: (enemy_timer: float) -> float {
-    return fmod_cycling(enemy_timer, ENEMY_TICK_TIME / FALLS_PER_ENEMY_TICK);
-}
-
-
 get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, bitmap: GLuint {
     using context.game_context;
 
@@ -901,9 +900,8 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     }
 
     if enemy.vfx_modifiers & .FALLING {
-        weight := enemy_timer_to_fall_timer(level.enemy_timer) / ENEMY_FALLING_VFX_TIME;
-        // :FallingEnemies @TODO: Have some kind of nice interpolation effect when enemies are falling.
-        weight *= -1; // Do the flip we need to do for make_translation_matrix4
+        weight := 1 - fmod_cycling(level.enemy_timer, ENEMY_TICK_TIME / FALLS_PER_ENEMY_TICK) / ENEMY_FALLING_VFX_TIME;
+        weight = weight * weight;
         matrix = make_translation_matrix4(.{0, weight, 0}) * matrix;
     }
 
@@ -1029,13 +1027,13 @@ use_desired_positions :: (using level: *Level) -> bool {
 
     
     for * _Enemy {
-        it.desired_state = .ALIVE; // A baseline state. Set this to something if it needs to be something else.
+        it.result_state = .ALIVE; // A baseline state. Set this to something if it needs to be something else.
 
         in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
         
         if !in_bounds {
             if it.desired_position.y < level_position.y {
-                it.desired_state = .OUT_OF_BOUNDS;
+                it.result_state = .OUT_OF_BOUNDS;
                 continue;
             } else {
                 return false;
@@ -1055,8 +1053,8 @@ use_desired_positions :: (using level: *Level) -> bool {
                 other_enemy := as(e, Enemy);
                 // The enemy in the collision will be the PRIMARY_ANNIHILATOR.
                 // The secondary ones aren't ever added to the collision map.
-                other_enemy.desired_state = .PRIMARY_ANNIHILATOR;
-                it.desired_state = .SECONDARY_ANNIHILATOR;
+                other_enemy.result_state = .PRIMARY_ANNIHILATOR;
+                it.result_state = .SECONDARY_ANNIHILATOR;
             case .Block;
                 return false;
         }
@@ -1108,20 +1106,11 @@ use_desired_positions :: (using level: *Level) -> bool {
     }
 
     for * _Enemy {
-        if #complete it.desired_state == {
+        if #complete it.result_state == {
             case .ALIVE;
-                /*
-                if it.desired_position.y < it.position.y {
-                    // :FallingEnemies we need a separate vfx timer per vfx per enemy.
-                    it.vfx_modifiers |= .FALLING;
-                }
-
-                if it.desired_position.x != it.position.x || it.desired_position.z != it.position.z {
-                    it.vfx_modifiers |= .MOVING; 
-                }
-                */
-
+                it.vfx_modifiers |= it.desired_vfx_modifiers;
                 it.position = it.desired_position;
+
                 if #complete it.state == {
                     case .IDLE;
                         if !is_colliding_below(level, it.position) {
@@ -1325,6 +1314,7 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
 
         for * _Enemy {
             it.desired_position = it.position;
+            it.desired_vfx_modifiers = 0;
         }
 
         push_enemies :: (block: *Block) -> bool #expand {
@@ -1353,7 +1343,9 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
                     e := get_entity(level, eid);
                     if e.type == {
                         case .Enemy;
-                            as(e, Enemy).desired_position += push_direction;
+                            enemy := as(e, Enemy);
+                            enemy.desired_position += push_direction;
+                            enemy.desired_vfx_modifiers = 0;
                         case .Block;
                             assert(e != block);
                             succeeded = false;
@@ -1662,6 +1654,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
     old_enemy_timer := enemy_timer;
     enemy_timer += dt / ENEMY_TICK_TIME;
+    new_enemy_timer := enemy_timer;
 
     enemy_update_to_do: enum {
         NONE;
@@ -1714,6 +1707,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
                         if can_move_to(level, it.position + desired_direction) {
                             it.desired_position = it.position + desired_direction;
+                            it.desired_vfx_modifiers = .MOVING;
                         } else {
                             new_facing: Facing;
 
@@ -1728,6 +1722,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
                             if can_move_to(level, it.position + desired_direction) {
                                 it.desired_position = it.position + desired_direction;
+                                it.desired_vfx_modifiers = .MOVING;
                                 it.facing = new_facing;
                             } else {
                                 new_facing: Facing;
@@ -1742,6 +1737,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
                                 if can_move_to(level, it.position + desired_direction) {
                                     it.desired_position = it.position + desired_direction;
+                                    it.desired_vfx_modifiers = .MOVING;
                                     it.facing = new_facing;
                                 } else {
                                     new_facing := facing_opposite(it.facing);
@@ -1749,9 +1745,11 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
                                     if can_move_to(level, it.position + desired_direction) {
                                         it.desired_position = it.position + desired_direction;
+                                        it.desired_vfx_modifiers = .MOVING;
                                         it.facing = new_facing;
                                     } else {
                                         it.desired_position = it.position;
+                                        it.desired_vfx_modifiers = 0;
                                     }
                                 }
                             }
@@ -1760,6 +1758,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                     case .FALLING;
                         it.desired_position = it.position;
                         it.desired_position.y -= 1;
+                        it.desired_vfx_modifiers = .FALLING;
                 }
             }
         } else {
@@ -1767,9 +1766,11 @@ gameplay_level_update :: (using level: *Level, dt: float) {
                 if #complete it.state == {
                     case .IDLE;
                         it.desired_position = it.position;
+                        it.desired_vfx_modifiers = 0;
                     case .FALLING;
                         it.desired_position = it.position;
                         it.desired_position.y -= 1;
+                        it.desired_vfx_modifiers = .FALLING;
                 }
             }
         }
@@ -1834,37 +1835,34 @@ gameplay_level_update :: (using level: *Level, dt: float) {
         }
     } 
 
-    if #complete enemy_update_to_do == {
-        case .NONE;
-            if enemy_timer_to_fall_timer(old_enemy_timer) < ENEMY_FALLING_VFX_TIME && ENEMY_FALLING_VFX_TIME <= enemy_timer_to_fall_timer(enemy_timer) {
-                for * _Enemy {
-                    if it.vfx_modifiers & .FALLING {
-                        it.vfx_modifiers &= ~.FALLING;
-                    }
-                }
-            }
-        case .FALLING;
-            // We didn't wrap around the enemy_timer value. do the update.
-            if enemy_update_to_do != .ALL {
-                if old_enemy_timer < ENEMY_MOVING_VFX_TIME && ENEMY_MOVING_VFX_TIME <= enemy_timer {
-                    for * _Enemy {
-                        if it.vfx_modifiers & .MOVING {
-                            it.vfx_modifiers &= ~.MOVING;
-                        }
-                    }
-                }
 
-                if old_enemy_timer < PLAYERLIKE_SPAWNING_TIME && PLAYERLIKE_SPAWNING_TIME <= enemy_timer {
-                    for * _Enemy {
-                        if it.vfx_modifiers & .SPAWNING {
-                            it.vfx_modifiers &= ~.SPAWNING;
-                        }
-                    }
-                }
+    
+    old_fall_timer := fmod_cycling(old_enemy_timer, ENEMY_TICK_TIME / FALLS_PER_ENEMY_TICK);
+    new_fall_timer := old_fall_timer + new_enemy_timer - old_enemy_timer;
+
+    if old_fall_timer < ENEMY_FALLING_VFX_TIME && ENEMY_FALLING_VFX_TIME <= new_fall_timer {
+        for * _Enemy {
+            if it.vfx_modifiers & .FALLING {
+                it.vfx_modifiers &= ~.FALLING;
             }
-        case .ALL;
+        }
     }
 
+    if old_enemy_timer < ENEMY_MOVING_VFX_TIME && ENEMY_MOVING_VFX_TIME <= new_enemy_timer {
+        for * _Enemy {
+            if it.vfx_modifiers & .MOVING {
+                it.vfx_modifiers &= ~.MOVING;
+            }
+        }
+    }
+
+    if old_enemy_timer < PLAYERLIKE_SPAWNING_TIME && PLAYERLIKE_SPAWNING_TIME <= new_enemy_timer {
+        for * _Enemy {
+            if it.vfx_modifiers & .SPAWNING {
+                it.vfx_modifiers &= ~.SPAWNING;
+            }
+        }
+    }
 
 
     for * mutual_annihilations {
