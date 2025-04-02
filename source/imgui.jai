@@ -752,7 +752,8 @@ string_entry :: (
                     entered = true;
                     break;
                 }
-
+                
+                // @TODO: Handle all non-alphabetic keys that are modified by the SHIFT key
                 if (#char " " <= it.key && it.key <= #char "~") && it.state != .UP && string_entry.str_count < string_entry.str.count {
                     key := it.key;
                     if !keys_down[Key.SHIFT] && #char "A" <= key && key <= #char "Z" {

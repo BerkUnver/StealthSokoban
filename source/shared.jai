@@ -15,9 +15,14 @@ MAX_INPUT_EVENTS_PER_TICK :: 64;
 
 // @TODO: See how much of this memory is actually used!
 GAME_MEMORY_SIZE     :: 1 << 24; 
-LEVEL_ARENA_SIZE     :: 1 << 27;
+EDITOR_ARENA_SIZE    :: 1 << 27;
+GAMEPLAY_ARENA_SIZE  :: 1 << 24;
 PERMANENT_ARENA_SIZE :: 1 << 22;
 FRAME_ARENA_SIZE     :: 1 << 22;
+
+// GAMEPLAY_ARENA_SIZE < EDITOR_ARENA_SIZE because the way we make changes to allocations in the level
+// is just to append new allocations to the end of the arena. Once we stop storing mesh vertices on the CPU then
+// maybe this can change.
 
 
 AUDIO_SAMPLES_PER_SECOND :: 48000;
@@ -35,7 +40,8 @@ Game_Init_Data :: struct {
     gl_extension_loader: (*u8) -> *void #c_call;
     os_procs: OS_Procedures;
     keys_down: [] bool;
-    level_arena_memory: *void;
+    gameplay_arena_memory: *void;
+    editor_arena_memory: *void;
     frame_arena_memory: *void;
     permanent_arena_memory: *void;
 }

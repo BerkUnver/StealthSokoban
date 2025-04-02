@@ -724,7 +724,7 @@ serialize_level :: (using level: *Level) {
 }
 
 
-load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> bool {
+load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> gameplay_mode_load_succeeded: bool {
     name = copy_string(arena, level_name);
    
     // Give each entity an Entity_Id

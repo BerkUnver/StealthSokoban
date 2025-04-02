@@ -1,18 +1,3 @@
-Editor_Mode :: enum {
-    IDLE;
-    // We can change the selection in this mode. Other modes expect the selection
-    // (and camera angle) to be fixed.
-
-    CAMERA; // The camera is moving. DO NOT CHANGE THE SELECTION.
-
-    // Do not allow changing the camera angle or selection in any of the below modes,
-    // or else it could mess up what the user is working on.
-    EXTRUDE; // We're extruding a gridlike we clicked on
-    DRAG;
-}
-
-
-// @TODO: Maybe this should just be put in the level struct. This is per-level editor state.
 Editor :: struct {
     mode: Editor_Mode;
 
@@ -43,6 +28,20 @@ Editor :: struct {
     camera_position := Vector3.{0, 8, -4};
     camera_pitch: float;
     camera_yaw: float;
+}
+
+
+Editor_Mode :: enum {
+    IDLE;
+    // We can change the selection in this mode. Other modes expect the selection
+    // (and camera angle) to be fixed.
+
+    CAMERA; // The camera is moving. DO NOT CHANGE THE SELECTION.
+
+    // Do not allow changing the camera angle or selection in any of the below modes,
+    // or else it could mess up what the user is working on.
+    EXTRUDE; // We're extruding a gridlike we clicked on
+    DRAG;
 }
 
 
