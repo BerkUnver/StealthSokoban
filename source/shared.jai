@@ -5,11 +5,11 @@ BACKGROUND_R :: 12;
 BACKGROUND_G :: 27;
 BACKGROUND_B :: 19;
 
-INNER_WINDOW_W :: 2560;
-INNER_WINDOW_H :: 1600;
+// INNER_WINDOW_W :: 2560;
+// INNER_WINDOW_H :: 1600;
 
-// INNER_WINDOW_W :: 1920;
-// INNER_WINDOW_H :: 1080;
+INNER_WINDOW_W :: 1920;
+INNER_WINDOW_H :: 1080;
 
 MAX_INPUT_EVENTS_PER_TICK :: 64;
 
@@ -18,7 +18,7 @@ GAME_MEMORY_SIZE     :: 1 << 24;
 EDITOR_ARENA_SIZE    :: 1 << 27;
 GAMEPLAY_ARENA_SIZE  :: 1 << 24;
 PERMANENT_ARENA_SIZE :: 1 << 22;
-FRAME_ARENA_SIZE     :: 1 << 22;
+FRAME_ARENA_SIZE     :: 1 << 24;
 
 // GAMEPLAY_ARENA_SIZE < EDITOR_ARENA_SIZE because the way we make changes to allocations in the level
 // is just to append new allocations to the end of the arena. Once we stop storing mesh vertices on the CPU then
@@ -78,6 +78,12 @@ Game_Get_Audio_Samples :: #type (
 ) #no_context;
 
 
+Game_DLL_Hotloaded_Init :: #type (
+    context_base: *Context_Base, // :ContextBase
+    game_memory: *void
+) #no_context;
+
+
 Input :: struct {
     events: [] Input_Event; // Stored by the OS layer
 
@@ -127,6 +133,11 @@ Key :: enum {
     HOME;
     END;
     COUNT;
+}
+
+
+Date :: struct {
+    year, month, day, hour, minute, second, millisecond: int;
 }
 
 

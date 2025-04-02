@@ -1,5 +1,5 @@
 types
-	_Block 5[
+	_Block 6[
 		e
 			position
 				x -2
@@ -96,6 +96,26 @@ types
 			x 1
 			y 1
 			z 1
+			w 1
+			;
+		moveable 1
+		;
+		e
+			position
+				x -2
+				y 1
+				z -4
+				;
+			;
+		size
+			x 1
+			y 1
+			z 1
+			;
+		filled 1[ 1 ]
+		color
+			y 0.0463217645883560178
+			z 0.8566471338272094725
 			w 1
 			;
 		moveable 1

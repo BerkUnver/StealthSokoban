@@ -1,6 +1,7 @@
-       #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
-       #import "freetype-2.12.1";
+#import "Math"; // @TODO: DELETE THIS DEPENDENCY!
+#import "freetype-2.12.1";
 #import "stb_image";
+#import "stb_image_write";
 
 #load "gl.jai";
 #load "shared.jai";
@@ -190,10 +191,11 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         if GL_ARB_debug_output {
             glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
             // Make sure we do not have to also call glEnable(GL_DEBUG_OUTPUT);
-            glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
         } else {
             print("glDebugMessageCallbackARB was not found\n.");
         }
+
+        game_dll_hotloaded_init();
 
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -207,8 +209,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         imm_state = imm_init();
         imgui_state = imgui_init();
-
-        stbi_set_flip_vertically_on_load(1);
 
         imm_color_shader = load_shader("shaders/imm_color.gl");
         imm_text_shader = load_shader("shaders/imm_text.gl");
@@ -261,10 +261,37 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         */
         
         set_mode(*game, .EDITOR);
-        
-        if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
     }
 }
+
+#program_export "game_dll_hotloaded_init"
+game_dll_hotloaded_init : Game_DLL_Hotloaded_Init : (
+    context_base: *Context_Base,
+    game_memory_: *void
+) #no_context {
+    push_context {
+        context.base = context_base.*;
+        context.game_context = game_memory_;
+
+        game_dll_hotloaded_init();
+    }
+}
+
+
+// I wish we didn't need to have a procedure like this.
+// However, some libraries we use have globals that 
+// get reset when we hotload, and the imgui uses the
+// code loc to store the active widget, and those
+// numbers could change, so we have to reset that.
+game_dll_hotloaded_init :: () {
+    using context.game_context;
+    stbi_set_flip_vertically_on_load(1);
+    stbi_flip_vertically_on_write(1);
+    if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, context.game_context);
+    imgui_state.active_widget_exists = false;
+}
+
+
 
 #program_export "game_update"
 game_update : Game_Update : (
@@ -294,7 +321,6 @@ game_update : Game_Update : (
         // someone lower in the call stack could have done it.
         // This causes us to use more memory than we should.
         
-        // glClear up here so it doesn't happen after anyone does any debug drawing
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
@@ -308,6 +334,9 @@ game_update : Game_Update : (
         // However, I don't know if this is the clearly better option yet, so I am
         // going to leave it.
         //          -berk, 2025 - 3 - 15
+
+
+        screenshot_requested: bool;
 
 
         for input.events {
@@ -347,6 +376,11 @@ game_update : Game_Update : (
 
                     if it.key == #char "]" && it.state == .DOWN {
                         change_level(1);
+                        continue;
+                    }
+
+                    if it.key == #char "C" && it.state == .DOWN && keys_down[Key.CTRL] {
+                        screenshot_requested = true;
                         continue;
                     }
 
@@ -416,12 +450,6 @@ game_update : Game_Update : (
                 gameplay_level_update(*level, dt);
         }
 
-
-        // :GLDebugProcHotloadingHack
-        // We need the GL callback to tank being hotloaded, so we load it, then unload it, every frame.
-        stack_context := context;
-        if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, *stack_context);
-
         
         if mode == {
             case .EDITOR;
@@ -429,8 +457,36 @@ game_update : Game_Update : (
             case .GAMEPLAY;
                 gameplay_draw(*level);
         }
-        
-        if GL_ARB_debug_output glDebugMessageCallbackARB(null, null);
+
+
+        if screenshot_requested {
+            scope_mark(*frame_arena);
+            data := alloc(*frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
+            glReadPixels(0, 0, INNER_WINDOW_W, INNER_WINDOW_H, GL_RGB, GL_UNSIGNED_BYTE, data);
+            
+            write :: (ctx: *void, data: *void, size: s32) #c_call {
+                push_context cast(*#Context, ctx) {
+                    assert(create_directory("../screenshots"));
+
+                    buf: [4096] u8 = ---;
+                    date := get_date();
+                    sb := make_string_builder(buf);
+
+                    // @TODO: Pad with zeros for numbers that aren't long enough.
+                    print(*sb, "../screenshots/%-%-%_%-%-%-%.png",
+                        date.year, date.month, date.day,
+                        date.hour, date.minute, date.second, date.millisecond);
+
+                    name := get_string(*sb);
+                    // It's very unlikely that we'll try to write two images within
+                    // the same millisecond but if so I'm okay with on
+                    assert(write_file(name, .{size, data}));
+                }
+            }
+
+            stbi_write_png_to_func(write, *context, INNER_WINDOW_W, INNER_WINDOW_H, 3, data, INNER_WINDOW_W * 3);
+            log(.OK, "Screenshot captured.\n");
+        }
     }
 }
 
@@ -643,7 +699,7 @@ editor_draw :: (using level: *Level, editor: *Editor) {
 
             imgui_draw_text("Level", text_position, font, HIGHLIGHT_COLOR);
 
-            position := Vector2.{text_position.x + length, head.y};
+            position := Vector2.{head.x + length, head.y};
             size := Vector2.{item_size.x - length, item_size.y};
 
             if string_entry(position, size, *imgui_state.test_string, *imgui_state.test_string_count) {
@@ -945,7 +1001,8 @@ gl_debug_callback :: (
 ) #c_call {
     // @Investigate: Maybe this will notify us when we don't want to hear from it. Keep an eye out.
 
-    push_context cast(*#Context, userParam) {
+    push_context {
+        context.game_context = userParam;
         source_str: string;
         if source == {
             case GL_DEBUG_SOURCE_API;               source_str = "API";

@@ -157,7 +157,7 @@ main :: () {
     //
 
     // @TODO: Support fullscreen, changing the window size
-    WINDOW_FLAGS :: WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    WINDOW_FLAGS :: WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX;
     // This is WS_OVERLAPPEDWINDOW without the WS_MAXIMIZEBOX and WS_THICKFRAME.
     // Supposedly this is to prevent you from resizing
     
@@ -172,7 +172,10 @@ main :: () {
     AdjustWindowRect(*rect, WINDOW_FLAGS, .FALSE);
     window_w := rect.right - rect.left;
     window_h := rect.bottom - rect.top;
-
+    
+    // If you try to create a window that's too big to
+    // fit on the screen, CreateWindowExA will truncate
+    // it to fit!
     window := CreateWindowExA(
         0,
         "Window Class",
@@ -500,14 +503,17 @@ main :: () {
 
     game_init(*context.base, *data);
 
-    get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_Get_Audio_Samples {
+    get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_DLL_Hotloaded_Init, Game_Get_Audio_Samples {
         game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
         assert(game_update != null);
         game_get_audio_samples := cast(Game_Get_Audio_Samples, GetProcAddress(game_dll, "game_get_audio_samples"));
-        return game_update, game_get_audio_samples;
+        assert(game_get_audio_samples != null);
+        game_dll_hotloaded_init := cast(Game_DLL_Hotloaded_Init, GetProcAddress(game_dll, "game_dll_hotloaded_init"));
+        assert(game_dll_hotloaded_init != null);
+        return game_update, game_dll_hotloaded_init, game_get_audio_samples;
     }
 
-    game_update, game_get_audio_samples := get_game_calls(game_dll);
+    game_update, game_dll_hotloaded_init, game_get_audio_samples := get_game_calls(game_dll);
     
     while main_loop := true {
         message: MSG;
@@ -535,7 +541,8 @@ main :: () {
                 assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
                 game_dll = LoadLibraryA(GAME_DLL_NAME);
                 assert(game_dll != null);
-                game_update, game_get_audio_samples = get_game_calls(game_dll);
+                game_update, game_dll_hotloaded_init, game_get_audio_samples = get_game_calls(game_dll);
+                game_dll_hotloaded_init(*context.base, game_memory);
                 print("Game DLL has been hotloaded.\n");
             }
         }

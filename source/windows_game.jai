@@ -37,6 +37,32 @@ write_file :: (name: string, str: string) -> bool {
 }
 
 
+create_directory :: (name: string) -> bool {
+    path := jai_string_to_path(name);
+
+    if CreateDirectoryA(path.data, null) == 0 return true;
+    err := GetLastError();
+    if err == ERROR_ALREADY_EXISTS return true;
+    return false;
+}
+
+
+get_date :: () -> Date {
+    using date: SYSTEMTIME;
+    GetSystemTime(*date);
+
+    return .{
+        year=wYear,
+        month=wMonth,
+        day=wDay,
+        hour=wHour,
+        minute=wMinute,
+        second=wSecond,
+        millisecond=wMilliseconds
+    };
+}
+
+
 #scope_file
 // @CompileSpeed both the windows exe and the game dll have to load windows_winapi.jai
 // This is why headers kill compile time in C++, and we're replicating the problem here.
