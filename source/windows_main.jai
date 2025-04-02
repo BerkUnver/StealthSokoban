@@ -12,14 +12,20 @@
 
 windows: struct {
     stdout: HANDLE;
-    input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event;
+    input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event; // :DynamicArray
     input_event_count: s64;
     keys_down: [Key.COUNT] bool; // :BitArray
 }
 
 append_input_event :: (e: Input_Event) #no_context {
     using windows;
-    keys_down[e.key] = e.down;
+    
+    if e.state == .DOWN {
+        keys_down[e.key] = true;
+    } else if e.state == .UP {
+        keys_down[e.key] = false;
+    }
+
     if input_event_count < input_events.count {
         input_events[input_event_count] = e;
         input_event_count += 1;
@@ -41,7 +47,7 @@ main :: () {
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
             push_context .{} {
         
-                translate_keycode_to_game_input :: (down: bool, keycode: WPARAM) #no_context {
+                translate_keycode_to_game_input :: (state: Input_Event_State, keycode: WPARAM) #no_context {
                     using windows;
 
                     key: Key;
@@ -73,13 +79,9 @@ main :: () {
                             return;
                             // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
                     }
-                    append_input_event(.{down=down, key=key});
+                    append_input_event(.{key=key, state=state});
                 }
 
-                REPEAT_FLAG :: 0x40000000;
-                // This flag is 1 if the key was down before the message was sent,
-                // and 0 if it was up before the message was sent. Use this to filter
-                // out key repeats.
 
                 using windows;
                 if message == {
@@ -93,34 +95,40 @@ main :: () {
                     // SendMessage if it's in the same thread or GetMessage / PeekMessage if it
                     // is not.
                     case WM_KEYDOWN;
-                        if (l_param & REPEAT_FLAG) == 0 {
-                            translate_keycode_to_game_input(true, w_param);
+                        // This flag is 1 if the key was down before the message was sent,
+                        // and 0 if it was up before the message was sent. Use this to filter
+                        // out key repeats.
+                        KEY_WAS_DOWN_FLAG :: 0x40000000;
+                        if (l_param & KEY_WAS_DOWN_FLAG) == 0 {
+                            translate_keycode_to_game_input(.DOWN, w_param);
+                        } else {
+                            translate_keycode_to_game_input(.REPEAT, w_param);
                         }
                         return 0;
                     case WM_KEYUP;
-                        if (l_param & REPEAT_FLAG) != 0 {
-                            translate_keycode_to_game_input(false, w_param);
-                        }
+                        // Microsoft documentation says that the KEY_WAS_DOWN flag will always be set for 
+                        // WM_KEYUP messages.
+                        translate_keycode_to_game_input(.UP, w_param);
                         return 0;
 
                     case WM_LBUTTONDOWN;
                         SetCapture(window);
-                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=true});
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, state=.DOWN});
                         return 0;
 
                     case WM_RBUTTONDOWN;
                         SetCapture(window);
-                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=true});
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.DOWN});
                         return 0;
 
 
                     case WM_LBUTTONUP;
-                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, down=false});
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, state=.UP});
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
                         
                     case WM_RBUTTONUP;
-                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, down=false});
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.UP});
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
 
@@ -481,6 +489,7 @@ main :: () {
             os_print               = os_print,
             set_console_text_color = set_console_text_color,
         },
+        keys_down = windows.keys_down,
         level_arena_memory     = VirtualAlloc(null, LEVEL_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
         permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
@@ -556,7 +565,6 @@ main :: () {
         mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
 
         input := Input.{
-            keys_down = *windows.keys_down,
             events = .{windows.input_event_count, windows.input_events.data},
             mouse_x = mouse_x,
             mouse_y = mouse_y

@@ -1154,50 +1154,50 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
     using context.game_context;
 
     if event.key == #char " " {
-        if event.down flags |= .PULLING;
-        else          flags &= ~.PULLING;
+        if event.state == .DOWN flags |= .PULLING;
+        else                    flags &= ~.PULLING;
         return;
     }
 
-    if event.key == #char "K" && event.down {
+    if event.key == #char "K" && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_ticks = max(camera_pitch_ticks - 1, 0);
         camera_pitch_interp = 0;
         return;
     }
 
-    if event.key == #char "I" && event.down {
+    if event.key == #char "I" && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_ticks = min(camera_pitch_ticks + 1, CAMERA_PITCH_TICK_COUNT);
         camera_pitch_interp = 0;
         return;
     } 
     
-    if event.key == #char "L" && event.down {
+    if event.key == #char "L" && event.state == .DOWN {
         camera_yaw_old = get_camera_yaw(level);
         camera_yaw_interp = 0;
         camera_yaw_target -= TAU / 12;
         return;
     }
    
-    if event.key == #char "J" && event.down {
+    if event.key == #char "J" && event.state == .DOWN {
         camera_yaw_old = get_camera_yaw(level);
         camera_yaw_interp = 0;
         camera_yaw_target += TAU / 12;
         return;
     } 
 
-    if event.key == #char "-" && event.down {
+    if event.key == #char "-" && event.state == .DOWN {
         if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
         return;
     }
 
-    if event.key == #char "=" && event.down {
+    if event.key == #char "=" && event.state == .DOWN {
         if dt_modifier < 16 dt_modifier *= 2;
         return;
     }
 
-    if event.key == #char "M" && event.down {
+    if event.key == #char "M" && event.state == .DOWN {
         player := *_Player[0];
         if flags & .DEBUG_MOVEMENT {
             flags &= ~.DEBUG_MOVEMENT;
@@ -1219,7 +1219,7 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         return;
     }
 
-    if event.key == #char "U" && event.down {
+    if event.key == #char "U" && event.state == .DOWN {
        camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
         if camera_mode == {
             case .NEAR; #through;
@@ -1230,7 +1230,7 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
         return;
     }
 
-    if !event.down return;
+    if event.state != .DOWN return;
 
     //
     // Player movement code

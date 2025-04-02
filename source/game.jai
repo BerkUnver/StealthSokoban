@@ -1,5 +1,5 @@
-#import "Math"; // @TODO: DELETE THIS DEPENDENCY!
-#import "freetype-2.12.1";
+       #import "Math"; // @TODO: DELETE THIS DEPENDENCY!
+       #import "freetype-2.12.1";
 #import "stb_image";
 
 #load "gl.jai";
@@ -29,6 +29,7 @@ Game_Context :: struct {
     using gl_extensions: GL_Extensions;
     
     using os_procs: OS_Procedures;
+    keys_down: [] bool;
 
     frame_arena: Memory_Arena;
     permanent_arena: Memory_Arena;
@@ -142,6 +143,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
         
         os_procs = data.os_procs;
+        keys_down = data.keys_down;
 
         for * type_info(GL_Procedures).members {
             if it.flags & .CONSTANT continue; // OpenGL procs from versions 1.0 and 1.1 are constant because that's when they were introduced to windows.
@@ -294,7 +296,7 @@ game_update : Game_Update : (
 
 
         for input.events {
-            if it.key == .TILDE && it.down {
+            if it.key == .TILDE && it.state == .DOWN {
                 free_level(*level, *level_arena);
                 
                 if #complete mode == {
@@ -324,12 +326,12 @@ game_update : Game_Update : (
                         }
                     }
 
-                    if it.key == #char "[" && it.down {
+                    if it.key == #char "[" && it.state == .DOWN {
                         change_level(-1);
                         continue;
                     }
 
-                    if it.key == #char "]" && it.down {
+                    if it.key == #char "]" && it.state == .DOWN {
                         change_level(1);
                         continue;
                     }
@@ -343,20 +345,20 @@ game_update : Game_Update : (
                      && (imgui_state.active_widget_exists || inside(imgui_position, imgui_size, imgui_state.mouse));
                     
                     // Is it weird that I manually make these higher-priority than the imgui?
-                    if it.key == #char "S" && input.keys_down.*[Key.CTRL] && it.down {
+                    if it.key == #char "S" && keys_down[Key.CTRL] && it.state == .DOWN {
                         serialize_level(*level);
                         log(.OK, "Serialized level.\n");
                         continue;
                     }
 
-                    if it.key == #char "[" && it.down {
+                    if it.key == #char "[" && it.state == .DOWN {
                         editor_level_index = (editor_level_index - 1 + LEVELS.count) % LEVELS.count;
                         free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
                         continue;    
                     }
 
-                    if it.key == #char "]" && it.down {
+                    if it.key == #char "]" && it.state == .DOWN {
                         editor_level_index = (editor_level_index + 1) % LEVELS.count;
                         free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
@@ -370,17 +372,17 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    if it.key == #char "T" && it.down {
+                    if it.key == #char "T" && it.state == .DOWN {
                         test();
                         continue;
                     }
 
-                    if it.key == .TAB && it.down {
+                    if it.key == .TAB && it.state == .DOWN {
                         editor_imgui_disabled = !editor_imgui_disabled;
                         continue;
                     }
 
-                    editor_handle_input(*level, *level_arena, *editor, mouse, it, input.keys_down);
+                    editor_handle_input(*level, *level_arena, *editor, mouse, it);
             }
         }
         
@@ -396,7 +398,7 @@ game_update : Game_Update : (
         // However, we need to update the camera movement before we can set the projection for imm_state.
         if #complete mode == {
             case .EDITOR;
-                editor_update(*level, *editor, mouse, input.keys_down, dt);
+                editor_update(*level, *editor, mouse, dt);
             case .GAMEPLAY;
                 gameplay_level_update(*level, dt);
         }

@@ -72,7 +72,7 @@ get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
 }
 
 
-editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event, keys_down: *[Key.COUNT] bool) {
+editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event) {
     using context.game_context;
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
@@ -83,7 +83,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
             mouse_end := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 1});
             mouse_direction := mouse_end - mouse_start;
 
-            if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.down {
+            if (event.key == .MOUSE_RIGHT_BUTTON || event.key == xx #char " ") && event.state == .DOWN {
                 editor.mode = .CAMERA;
                 editor.camera = .{
                     rotating_previous_mouse_position = mouse
@@ -92,7 +92,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
             }
             
             // Check to see if the camera is moving
-            if event.down 
+            if event.state == .DOWN 
             && (event.key == #char "W" 
              || event.key == #char "A"
              || event.key == #char "S"
@@ -104,7 +104,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                     return;
             }
             
-            if event.key == xx #char "Z" && event.down {
+            if event.key == xx #char "Z" && event.state == .DOWN {
                 Data :: struct {
                     level: *Level;
                     selected: Entity_Id;
@@ -145,7 +145,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                     start_position: Vector3i;
                     tweak_sign := 0.0;
 
-                    if keys_down.*[Key.SHIFT] != keys_down.*[Key.CTRL] {
+                    if keys_down[Key.SHIFT] != keys_down[Key.CTRL] {
                         start_position = data.selected_position;
                         tweak_sign = 1;
                     } else {
@@ -169,7 +169,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                         start_intersection = intersection,
                         end_intersection = intersection,
                         plane_normal = .{0, 1, 0},
-                        deletion = keys_down.*[Key.CTRL],
+                        deletion = keys_down[Key.CTRL],
                     };
 
                 } else {
@@ -213,7 +213,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
             }
 
 
-            if event.key == .MOUSE_LEFT_BUTTON && event.down {
+            if event.key == .MOUSE_LEFT_BUTTON && event.state == .DOWN {
                 success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
                 
                 if success {
@@ -226,7 +226,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                 return;
             }
 
-            if (event.key == .BACKSPACE || event.key == .DELETE) && event.down {
+            if (event.key == .BACKSPACE || event.key == .DELETE) && event.state == .DOWN {
                 if editor.selected != 0 {
                     delete_entity(level, editor.selected, arena);
                     editor.selected = 0;
@@ -246,22 +246,22 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                 }
             }
 
-            if event.key == xx #char "1" && event.down {
+            if event.key == xx #char "1" && event.state == .DOWN {
                 enable_drag(0);
                 return;
             }
 
-            if event.key == xx #char "2" && event.down {
+            if event.key == xx #char "2" && event.state == .DOWN {
                 enable_drag(1);
                 return;
             }
 
-            if event.key == xx #char "3" && event.down {
+            if event.key == xx #char "3" && event.state == .DOWN {
                 enable_drag(2);
                 return;
             }
 
-            if .ARROW_START <= event.key && event.key <= .ARROW_END && event.down {
+            if .ARROW_START <= event.key && event.key <= .ARROW_END && event.state == .DOWN {
                 if editor.selected == 0 return;
                 e := get_entity(level, editor.selected);
 
@@ -292,7 +292,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
             }
 
 
-            if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.down {
+            if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.state == .DOWN {
                 success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
                 position: Vector3i;
                 if success {
@@ -341,24 +341,24 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
         case .CAMERA;
             using editor.camera;
 
-            if event.key == #char " " && event.down && !keys_down.*[Key.MOUSE_RIGHT_BUTTON] {
+            if event.key == #char " " && event.state == .DOWN && !keys_down[Key.MOUSE_RIGHT_BUTTON] {
                 rotating_previous_mouse_position = mouse;
                 return;
             }
 
-            if event.key == .MOUSE_RIGHT_BUTTON && event.down && !keys_down.*[#char " "] {
+            if event.key == .MOUSE_RIGHT_BUTTON && event.state == .DOWN && !keys_down[#char " "] {
                 rotating_previous_mouse_position = mouse;
                 return;
             }
 
-            if !keys_down.*[#char "W"]
-            && !keys_down.*[#char "S"]
-            && !keys_down.*[#char "A"]
-            && !keys_down.*[#char "D"]
-            && !keys_down.*[#char "Q"]
-            && !keys_down.*[#char "E"] 
-            && !keys_down.*[#char " "] 
-            && !keys_down.*[Key.MOUSE_RIGHT_BUTTON] {
+            if !keys_down[#char "W"]
+            && !keys_down[#char "S"]
+            && !keys_down[#char "A"]
+            && !keys_down[#char "D"]
+            && !keys_down[#char "Q"]
+            && !keys_down[#char "E"] 
+            && !keys_down[#char " "] 
+            && !keys_down[Key.MOUSE_RIGHT_BUTTON] {
                 // The user has released all keys.
                 // :AltTab this might not be true on Windows.
                 editor.mode = .IDLE;
@@ -366,7 +366,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
             
         case .EXTRUDE;
             using editor.extrude;
-            if event.key == #char " " && event.down {
+            if event.key == #char " " && event.state == .DOWN {
                 for plane_normal.component {
                     if it == 1 {
                         plane_normal.component[it_index] = 0;
@@ -374,7 +374,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                         break;
                     }
                 }
-            } else if event.key == #char "Z" && !event.down {
+            } else if event.key == #char "Z" && event.state == .UP {
                 position, size := get_editor_extrude_size(editor);
 
                 extrude_gridlike_entity :: (e: *$T/Entity) #expand {
@@ -459,9 +459,9 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
 
         case .DRAG;
             using editor.drag;
-            if !event.down && ((index == 0 && event.key == xx #char "1")
-                            || (index == 1 && event.key == xx #char "2")
-                            || (index == 2 && event.key == xx #char "3")) {
+            if event.state == .UP && ((index == 0 && event.key == xx #char "1")
+                                   || (index == 1 && event.key == xx #char "2")
+                                   || (index == 2 && event.key == xx #char "3")) {
                 // @TODO: change level_position or level_size to accomadate the new position.
                 editor.mode = .IDLE;
             }
@@ -526,13 +526,13 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
 }
 
 
-editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, keys_down: *[Key.COUNT] bool, dt: float) {
+editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: float) {
     using context.game_context;
 
     if editor.mode == {
         case .CAMERA;
             using editor.camera;
-            if keys_down.*[#char " "] || keys_down.*[Key.MOUSE_RIGHT_BUTTON] {
+            if keys_down[#char " "] || keys_down[Key.MOUSE_RIGHT_BUTTON] {
                 PITCH_SPEED :: 50;
                 YAW_SPEED :: 100;
                 mouse_movement := rotating_previous_mouse_position - mouse;
@@ -549,11 +549,11 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, keys_dow
             CAMERA_FAST_SPEED :: 960.0 / 60.0;
 
             camera_speed := CAMERA_NORMAL_SPEED;
-            if keys_down.*[Key.SHIFT] camera_speed = CAMERA_FAST_SPEED;
+            if keys_down[Key.SHIFT] camera_speed = CAMERA_FAST_SPEED;
 
-            x := cast(int, keys_down.*[#char "D"]) - cast(int, keys_down.*[#char "A"]);
-            y := cast(int, keys_down.*[#char "Q"]) - cast(int, keys_down.*[#char "E"]);
-            z := cast(int, keys_down.*[#char "W"]) - cast(int, keys_down.*[#char "S"]);
+            x := cast(int, keys_down[#char "D"]) - cast(int, keys_down[#char "A"]);
+            y := cast(int, keys_down[#char "Q"]) - cast(int, keys_down[#char "E"]);
+            z := cast(int, keys_down[#char "W"]) - cast(int, keys_down[#char "S"]);
             dir := Vector3.{xx x, xx y, xx z};
 
             camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * dir * (dt * camera_speed);

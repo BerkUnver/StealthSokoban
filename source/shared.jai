@@ -34,6 +34,7 @@ Game_Init_Data :: struct {
     game_memory: *void;
     gl_extension_loader: (*u8) -> *void #c_call;
     os_procs: OS_Procedures;
+    keys_down: [] bool;
     level_arena_memory: *void;
     frame_arena_memory: *void;
     permanent_arena_memory: *void;
@@ -72,8 +73,6 @@ Game_Get_Audio_Samples :: #type (
 
 
 Input :: struct {
-    keys_down: *[Key.COUNT] bool; // :BitArray
-
     events: [] Input_Event; // Stored by the OS layer
 
     // In the range (-1, 1) for the x and y axis of the window. Maybe this is a mistake?
@@ -82,9 +81,16 @@ Input :: struct {
 }
 
 
+Input_Event_State :: enum u8 {
+    DOWN;
+    UP;
+    REPEAT;
+}
+
+
 Input_Event :: struct {
     key: Key; // Do we want to pack the "down" into these bits?
-    down: bool; // Up or down?
+    state: Input_Event_State;
 }
 
 

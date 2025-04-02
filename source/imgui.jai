@@ -249,7 +249,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     
     if current_widget_state == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
         for [] Input_Event.{event_count, events.data} {
-            if it.key == .MOUSE_LEFT_BUTTON && it.down {
+            if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
                 val.* = !val.*;
             }
         }
@@ -282,7 +282,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
     if current_widget_state == {
         case .ACTIVE;
             for [] Input_Event.{event_count, events.data} {
-                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                if it.key == .MOUSE_LEFT_BUTTON && it.state == .UP {
                     deactivate();
                     event_count = 0;
                     // We clear the input events because this widget consumed it.
@@ -305,7 +305,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
 
             if inside(cursor_position, cursor_size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
-                    if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                    if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
                         activate(.{
                             type = .SLIDER,
                             slider = .{mouse_offset_x = cursor_x - mouse.x}
@@ -444,7 +444,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     if current_widget_state == {
         case .ACTIVE;
             for [] Input_Event.{event_count, events.data} {
-                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                if it.key == .MOUSE_LEFT_BUTTON && it.state == .UP {
                     deactivate();
                     event_count = 0;
                     break;
@@ -470,7 +470,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
             
             if inside(sv_cursor_position, cursor_selection_size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
-                    if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                    if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
                         activate(.{
                             type = .SV,
                             sv = .{
@@ -638,7 +638,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     if current_widget_state == {
         case .ACTIVE;
             for [] Input_Event.{event_count, events.data} {
-                if it.key == .MOUSE_LEFT_BUTTON && !it.down {
+                if it.key == .MOUSE_LEFT_BUTTON && it.state == .UP {
                     deactivate();
                     event_count = 0;
                     break;
@@ -647,7 +647,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
         case .NO_ONE;
             if inside(position, size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
-                    if it.key == .MOUSE_LEFT_BUTTON && it.down {
+                    if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
                         activate(.{
                             type = .BUTTON
                         });
@@ -743,9 +743,8 @@ string_entry :: (
 
             mouse_outside := !inside(outer_position, outer_size, mouse);
             for [] Input_Event.{event_count, events.data} {
-                if !it.down continue;
 
-                if it.key == .ENTER || (mouse_outside && it.key == .MOUSE_LEFT_BUTTON) {
+                if (it.key == .ENTER || (mouse_outside && it.key == .MOUSE_LEFT_BUTTON)) && it.state == .DOWN {
                     memcpy(str.data, string_entry.str.data, string_entry.str_count);
                     str_count.* = string_entry.str_count;
                     deactivate();
@@ -754,18 +753,23 @@ string_entry :: (
                     break;
                 }
 
-                if (#char " " <= it.key && it.key <= #char "~") && string_entry.str_count < string_entry.str.count {
+                if (#char " " <= it.key && it.key <= #char "~") && it.state != .UP && string_entry.str_count < string_entry.str.count {
+                    key := it.key;
+                    if !keys_down[Key.SHIFT] && #char "A" <= key && key <= #char "Z" {
+                        key = #char "a" + key - #char "A";
+                    }
+
                     for #v2 < string_entry.cursor..string_entry.str_count-1 {
                         string_entry.str[it + 1] = string_entry.str[it];
                     }
-                    string_entry.str[string_entry.cursor] = xx it.key;
+                    string_entry.str[string_entry.cursor] = xx key;
                     string_entry.str_count += 1;
                     string_entry.cursor += 1;
 
                     continue;
                 }
 
-                if it.key == .DELETE || it.key == .BACKSPACE {
+                if (it.key == .DELETE || it.key == .BACKSPACE) && it.state != .UP {
                     if string_entry.str_count > 0 {
                         start := ifx string_entry.cursor > 0 then string_entry.cursor else 1;
                         for start..string_entry.str_count-1 {
@@ -777,12 +781,11 @@ string_entry :: (
                     continue;
                 }
 
-                if it.key == .LEFT_ARROW {
+                if it.key == .LEFT_ARROW && it.state != .UP {
                     if string_entry.cursor > 0 string_entry.cursor -= 1;
-                    continue;
                 }
 
-                if it.key == .RIGHT_ARROW {
+                if it.key == .RIGHT_ARROW && it.state != .UP {
                     if string_entry.cursor < string_entry.str_count string_entry.cursor += 1;
                     continue;
                 }
@@ -791,7 +794,7 @@ string_entry :: (
         case .NO_ONE;
             if inside(outer_position, outer_size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
-                    if it.down && it.key == .MOUSE_LEFT_BUTTON {    
+                    if it.state == .DOWN && it.key == .MOUSE_LEFT_BUTTON {    
                         data: Active_Widget_Data;
                         data.type = .STRING_ENTRY;
                         memcpy(data.string_entry.str.data, str.data, str_count.*);
