@@ -783,10 +783,21 @@ string_entry :: (
 
                 if it.key == .LEFT_ARROW && it.state != .UP {
                     if string_entry.cursor > 0 string_entry.cursor -= 1;
+                    continue;
                 }
 
                 if it.key == .RIGHT_ARROW && it.state != .UP {
                     if string_entry.cursor < string_entry.str_count string_entry.cursor += 1;
+                    continue;
+                }
+
+                if it.key == .HOME && it.state != .UP {
+                    string_entry.cursor = 0;
+                    continue;
+                }
+
+                if it.key == .END && it.state != .UP {
+                    string_entry.cursor = string_entry.str_count;
                     continue;
                 }
             }

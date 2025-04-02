@@ -75,6 +75,8 @@ main :: () {
                             // @TODO: Properly handle left and right alts, shifts, and ctrls.
                         case VK_SHIFT;      key = .SHIFT;
                         case VK_CONTROL;    key = .CTRL;
+                        case VK_HOME;       key = .HOME;
+                        case VK_END;        key = .END;
                         case;
                             return;
                             // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
