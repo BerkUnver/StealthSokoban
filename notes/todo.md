@@ -10,7 +10,7 @@
 - Get enemies to move with blocks if they're standing on them and the block is pushed
 - Get the player to die when a mutual annihilation occurs on the player position
 - Nice effect for mutual annihilations
-
+- Level entrance and exit effects
 
 
 # Editor

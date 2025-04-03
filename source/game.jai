@@ -118,6 +118,7 @@ Game_Mode :: enum {
 #assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
 
 LEVELS :: string.[
+    "levels/overworld.level",
     "levels/test.level",
     "levels/test2.level",
     "levels/test3.level",
