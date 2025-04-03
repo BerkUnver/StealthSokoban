@@ -35,4 +35,53 @@ alt-tabs back.
 
 
 # Website
-We need a website for the project requirement
+- We need a website for the project requirement
+
+
+
+
+For people in the exhibition to thoroughly understand and enjoy the demo, we need a few things.
+
+- Saving level state with checkpoints. When you die you go back to the last checkpoint.
+- Interpolation for player movement
+- Better camera controls
+- Level entrance and exit
+- Some explanation of basic movement. Input hinting in the game?
+- Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
+- Better enemy death effect (Enemies don't disappear right away, not just an orange cube).
+- Fix z-fighting with doors, have a special inside of doors vfx
+- MUSIC. A tastefully-chosen selection of not-well-known classical music is likely the best we can do for now.
+- SFX. Walking, pushing, etc.
+- Better effect for the edges of the level
+- Better meshes for level items
+
+- More introductory levels
+- Playtesting!
+
+- Pause menu with options to exit the current level, reset the demo.
+- Credits screen???
+
+
+Now, let's sort these by priority.
+
+# NEED
+- Saving level state with checkpoints. When you die you go back to the last checkpoint. <--- DYNAMIC MEMORY ALLOCATION?
+- Level entrance and exit
+- Pause menu with options to exit the current level, reset the demo.
+- More introductory levels
+
+# WE SHOULD HAVE
+- Better meshes for level items
+- Playtesting!
+- Interpolation for player movement
+- Pulling vfx
+- Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
+- MUSIC. A tastefully-chosen selection of not-well-known classical music is likely the best we can do for now.
+- SFX. Walking, pushing, etc.
+- Some explanation of basic movement. Input hinting in the game?
+
+# WOULD BE NICE
+- Better enemy death effect (Enemies don't disappear right away, not just an orange cube).
+- Better camera controls
+- Better effect for the edges of the level
+- Fix z-fighting with doors, have better doors vfx
