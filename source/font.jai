@@ -32,7 +32,7 @@ load_font :: (file_name: string) -> Font {
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    success, str := read_file(file_name, *frame_arena);
+    success, str := read_file(file_name, frame_allocator);
     assert(success);
 
     face: FT_Face;
@@ -60,7 +60,7 @@ load_font :: (file_name: string) -> Font {
     font.space_advance = xx face.glyph.advance.x / 64.0;
 
 
-    bitmap_data := alloc(*frame_arena, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT);
+    bitmap_data := alloc(frame_allocator, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT);
 
     // :BottomToTopText
     // FreeType wants you to use a y-down coordinate system. I don't know if I want to do this.

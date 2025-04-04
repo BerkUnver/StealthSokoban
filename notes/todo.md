@@ -85,3 +85,14 @@ Now, let's sort these by priority.
 - Better camera controls
 - Better effect for the edges of the level
 - Fix z-fighting with doors, have better doors vfx
+
+
+
+
+
+What is the best way to go about using the dynamic memory allocator so we don't break everything all at once?
+
+- Make a jai-style allocator proc for the memory arena. Replace all calls to the old memory arena procs with jai-style ones.
+- I still want to do explicit allocator passing rather than pass it with the context. Replace all calls that take a \*Memory\_Arena with ones that take an Allocator.
+- Remove the permanent area. Replace it with calls to the default allocator.
+- Remove the level arena. Make freeing a level also free the arrays of entities (Unless we want to reuse them?). Make editing doors and blocks free the old mesh.

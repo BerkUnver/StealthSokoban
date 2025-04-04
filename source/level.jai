@@ -584,12 +584,12 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
 }
 
 
-load_level_part_1_new :: (using level: *Level, arena: *Memory_Arena) {
+load_level_part_1_new :: (using level: *Level) {
     level.* = .{};
 }
 
 
-load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
+load_level_part_1_example :: (using level: *Level, allocator: Allocator) {
     using context.game_context;
 
     // @Speed maybe we can just set what we need to be reset in case
@@ -600,17 +600,17 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
     T :: true;
     F :: false;
 
-    _Entrance = alloc_array(arena, 1, Entrance);
+    _Entrance = alloc_array(allocator, 1, Entrance);
     _Entrance[0] = .{
         position = .{-1, 0, -1},
     };
     
-    _Exit = alloc_array(arena, 1, Exit);
+    _Exit = alloc_array(allocator, 1, Exit);
     _Exit[0] = .{
         position = .{2, 0, -1},
     };
     
-    _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
+    _Enemy_Spawner = alloc_array(allocator, 1, Enemy_Spawner);
     _Enemy_Spawner[0] = .{
         position = .{2, 0, 2},
         facing = .X_NEGATIVE,
@@ -666,9 +666,9 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
         }
     ];
 
-    _Block = alloc_array(arena, temp_blocks.count, Block);
+    _Block = alloc_array(allocator, temp_blocks.count, Block);
     for * temp_blocks {
-        filled := alloc_view(arena, it.filled.count, bool);
+        filled := alloc_view(allocator, it.filled.count, bool);
         memcpy(filled.data, it.filled.data, size_of(type_of(it.filled.data.*)) * it.filled.count);
 
         _Block[it_index] = .{
@@ -680,7 +680,7 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
         };
     }
 
-    _Enemy = alloc_array(arena, 2, Enemy);
+    _Enemy = alloc_array(allocator, 2, Enemy);
     assert(_Enemy.count >= 2);
     _Enemy[0] = .{
         position = .{0, 0, 2},
@@ -692,23 +692,21 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
 }
 
 
-load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool {
+load_level_part_1_deserialize :: (level_name: string, using level: *Level, allocator: Allocator) -> bool {
     using context.game_context;
     
     level_file_mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, level_file_mark);
 
-    success, level_text := read_file(level_name, *frame_arena);
+    success, level_text := read_file(level_name, frame_allocator);
     if !success {
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
         return false;
     }
     
-    level_arena_mark := get_mark(arena);
-    err := deserialize(level_text, level, arena);
+    err := deserialize(level_text, level, *allocator);
     if !err.ok {
         log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
-        restore_mark(arena, level_arena_mark);
         return false;
     }
 
@@ -724,8 +722,8 @@ serialize_level :: (using level: *Level) {
 }
 
 
-load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> gameplay_mode_load_succeeded: bool {
-    name = copy_string(arena, level_name);
+load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, allocator: Allocator) -> gameplay_mode_load_succeeded: bool {
+    name = copy_string(allocator, level_name);
    
     // Give each entity an Entity_Id
     entity_count := 1;
@@ -743,16 +741,16 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     }
     
     for * _Block {
-        it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
+        it.mesh = make_gridlike_mesh(it.size, it.filled, allocator);
     }
 
     for * _Door {
-        it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
+        it.mesh = make_gridlike_mesh(it.size, it.filled, allocator);
     }
 
     if #complete for_mode == {
         case .EDITOR;
-            entities = alloc_array(arena, entity_count, *Entity, zero_init = false);
+            entities = alloc_array(allocator, entity_count, *Entity, zero_init = false);
             entities[0] = null;
 
             for :iterate_entities types {
@@ -769,7 +767,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
             // dynamically allocate memory while the a level is running, and we can easily know how much memory the
             // game will ever use (when we're in the GAMEPLAY mode. When we're in the EDITOR mode, do whatever you want.)
-            alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
+            alloc_extra_array_capacity(allocator, *_Enemy, size_1d, zero_init=false);
 
             // Count up all the entities so we can allocate an array big enough
             // to hold pointers to all of them for the Entity_Id system
@@ -788,11 +786,11 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             }
             count += 1; // For the player we are about to add
 
-            entities = reserve_array(arena, reserved, *Entity, zero_init=false);
+            entities = reserve_array(allocator, reserved, *Entity, zero_init=false);
             entities.count = count;
             entities[0] = null;
 
-            unused_eids = reserve_array(arena, reserved, Entity_Id, zero_init=false);
+            unused_eids = reserve_array(allocator, reserved, Entity_Id, zero_init=false);
 
             for :iterate_entities types {
                 entities[it.eid] = it;
@@ -802,11 +800,11 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 
             view_texture = make_view_texture(level_size);
 
-            viewed = alloc_view(arena, size_1d, View_State);
-            doors = alloc_view(arena, size_1d, Entity_Id);
-            collision = alloc_view(arena, size_1d, Entity_Id);
-            desired_collision = alloc_view(arena, size_1d, Entity_Id);
-            mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
+            viewed = alloc_view(allocator, size_1d, View_State);
+            doors = alloc_view(allocator, size_1d, Entity_Id);
+            collision = alloc_view(allocator, size_1d, Entity_Id);
+            desired_collision = alloc_view(allocator, size_1d, Entity_Id);
+            mutual_annihilations = reserve_array(allocator, size_1d, Mutual_Annihilation);
 
             for * _Block {  
                 assert(add_block_to_collision(level, it) == .OK);
@@ -853,7 +851,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
                 return false;
             }
 
-            player := make_entity(level, Player, arena);
+            player := make_entity(level, Player, *allocator);
             player.position = _Entrance[0].position;
             set_state(player, .SPAWNING);
             camera_focus_x = player.position.x;
@@ -1150,7 +1148,7 @@ use_desired_positions :: (using level: *Level) -> bool {
 }
 
 
-gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
+gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
 
     if event.key == #char " " {
@@ -1930,8 +1928,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
 
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
-    // Should this instead be stashed in the data structure for the level so we know how much memory is being used?
-    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
+    positions := alloc_view(frame_allocator, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
     position_count := 1;
 
     player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);

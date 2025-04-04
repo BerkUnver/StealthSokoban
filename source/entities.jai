@@ -49,7 +49,9 @@ Entity_Types :: struct {
 
 // We only ever want the arena when we're in the editor mode.
 // Should we assert on this or something?
-make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) -> *Entity {
+
+// :DynamicAllocator make the allocator non-optional
+make_entity :: (using level: *Level, index: int, allocator: *Allocator = null) -> *Entity {
     array := *types.components[index];
     type := ENTITIES[index];
     
@@ -57,10 +59,9 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
     // type is, the count and allocated will NOT CORRESPOND to how big the array
     // actually is. DO NOT CALL THE NORMAL "append" FUNCTION HERE!
     if array.count == array.allocated {
-        assert(arena != null);
         if array.allocated == 0 array.allocated = 8;
         else array.allocated *= 2;
-        new_memory := cast(*u8, alloc(arena, array.allocated * type.runtime_size, zero_init=false));
+        new_memory := cast(*u8, alloc(allocator, array.allocated * type.runtime_size, zero_init=false));
         memcpy(new_memory, array.data, array.count * type.runtime_size);
         array.data = new_memory;
 
@@ -82,7 +83,7 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
         entities[eid] = e;
     } else {
         eid = xx entities.count;
-        if arena append(*entities, e, arena);
+        if allocator append(*entities, e, allocator.*);
         else append_no_resize(*entities, e);
     }
 
@@ -93,7 +94,8 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
 }
 
 
-make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *T {
+// :DynamicAllocator make the allocator non-optional
+make_entity :: (using level: *Level, $T: Type, allocator: *Allocator = null) -> *T {
     INDEX :: #run -> int {
         for ENTITIES {
             if it == type_info(T) {
@@ -104,13 +106,14 @@ make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *
         return -1;
     }
 
-    return xx make_entity(level, INDEX, arena);
+    return xx make_entity(level, INDEX, allocator);
 }
 
 
-delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = null) {
+// :DynamicAllocator make the allocator non-optional
+delete_entity :: (using level: *Level, eid: Entity_Id, allocator: *Allocator = null) {
     assert(eid != 0);
-    if arena append(*unused_eids, eid, arena);
+    if allocator append(*unused_eids, eid, allocator.*);
     else append_no_resize(*unused_eids, eid);
 
     e := entities[eid];

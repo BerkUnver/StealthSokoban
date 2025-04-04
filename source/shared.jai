@@ -40,10 +40,10 @@ Game_Init_Data :: struct {
     gl_extension_loader: (*u8) -> *void #c_call;
     os_procs: OS_Procedures;
     keys_down: [] bool;
+    permanent_arena_memory: *void;
     gameplay_arena_memory: *void;
     editor_arena_memory: *void;
     frame_arena_memory: *void;
-    permanent_arena_memory: *void;
 }
 
 // :ContextBase
