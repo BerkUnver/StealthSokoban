@@ -17,7 +17,6 @@ MAX_INPUT_EVENTS_PER_TICK :: 64;
 GAME_MEMORY_SIZE     :: 1 << 24; 
 EDITOR_ARENA_SIZE    :: 1 << 27;
 GAMEPLAY_ARENA_SIZE  :: 1 << 24;
-PERMANENT_ARENA_SIZE :: 1 << 22;
 FRAME_ARENA_SIZE     :: 1 << 24;
 
 // GAMEPLAY_ARENA_SIZE < EDITOR_ARENA_SIZE because the way we make changes to allocations in the level
@@ -40,7 +39,7 @@ Game_Init_Data :: struct {
     gl_extension_loader: (*u8) -> *void #c_call;
     os_procs: OS_Procedures;
     keys_down: [] bool;
-    permanent_arena_memory: *void;
+    allocator: Allocator;
     gameplay_arena_memory: *void;
     editor_arena_memory: *void;
     frame_arena_memory: *void;

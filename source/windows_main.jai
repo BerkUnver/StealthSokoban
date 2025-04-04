@@ -495,7 +495,7 @@ main :: () {
             set_console_text_color = set_console_text_color,
         },
         keys_down = windows.keys_down,
-        permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
+        allocator = context.allocator,
         gameplay_arena_memory  = VirtualAlloc(null, GAMEPLAY_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
         // editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE,     MEM_COMMIT, PAGE_READWRITE),

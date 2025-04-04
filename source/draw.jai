@@ -298,6 +298,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, alloca
     defer restore_mark(*frame_arena, mark);
 
     vertices: [..] Block_Vertex;
+    vertices.allocator = frame_allocator;
 
     for :iterate_vector3i size {
         if !filled[it_index] continue;
@@ -517,7 +518,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, alloca
 
             for i: 0..5 {
                 index := xx face + i;
-                append(*vertices, frame_allocator).* = .{
+                append(*vertices).* = .{
                     position = origin + CUBE_VERTICES[index],
                     uv = CUBE_UVS[index],
                     viewed_offset = above,

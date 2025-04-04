@@ -50,8 +50,7 @@ Entity_Types :: struct {
 // We only ever want the arena when we're in the editor mode.
 // Should we assert on this or something?
 
-// :DynamicAllocator make the allocator non-optional
-make_entity :: (using level: *Level, index: int, allocator: *Allocator = null) -> *Entity {
+make_entity :: (using level: *Level, index: int) -> *Entity {
     array := *types.components[index];
     type := ENTITIES[index];
     
@@ -61,7 +60,7 @@ make_entity :: (using level: *Level, index: int, allocator: *Allocator = null) -
     if array.count == array.allocated {
         if array.allocated == 0 array.allocated = 8;
         else array.allocated *= 2;
-        new_memory := cast(*u8, alloc(allocator, array.allocated * type.runtime_size, zero_init=false));
+        new_memory := cast(*u8, alloc(array.allocator, array.allocated * type.runtime_size, zero_init=false));
         memcpy(new_memory, array.data, array.count * type.runtime_size);
         array.data = new_memory;
 
@@ -83,8 +82,7 @@ make_entity :: (using level: *Level, index: int, allocator: *Allocator = null) -
         entities[eid] = e;
     } else {
         eid = xx entities.count;
-        if allocator append(*entities, e, allocator.*);
-        else append_no_resize(*entities, e);
+        append(*entities, e);
     }
 
     e.eid = eid;
@@ -94,8 +92,7 @@ make_entity :: (using level: *Level, index: int, allocator: *Allocator = null) -
 }
 
 
-// :DynamicAllocator make the allocator non-optional
-make_entity :: (using level: *Level, $T: Type, allocator: *Allocator = null) -> *T {
+make_entity :: (using level: *Level, $T: Type) -> *T {
     INDEX :: #run -> int {
         for ENTITIES {
             if it == type_info(T) {
@@ -106,15 +103,13 @@ make_entity :: (using level: *Level, $T: Type, allocator: *Allocator = null) -> 
         return -1;
     }
 
-    return xx make_entity(level, INDEX, allocator);
+    return xx make_entity(level, INDEX);
 }
 
 
-// :DynamicAllocator make the allocator non-optional
-delete_entity :: (using level: *Level, eid: Entity_Id, allocator: *Allocator = null) {
+delete_entity :: (using level: *Level, eid: Entity_Id) {
     assert(eid != 0);
-    if allocator append(*unused_eids, eid, allocator.*);
-    else append_no_resize(*unused_eids, eid);
+    append(*unused_eids, eid);
 
     e := entities[eid];
     entities[eid] = null;
@@ -243,4 +238,11 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
     if player return get_player_draw_info(player);
 
     return make_translation_matrix4(to_vector3(e.position));
+}
+
+
+free_entity_types :: (types: *Entity_Types) {
+    for * types.components {
+        free(it.allocator, it.data);
+    }
 }

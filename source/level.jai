@@ -589,109 +589,6 @@ load_level_part_1_new :: (using level: *Level) {
 }
 
 
-load_level_part_1_example :: (using level: *Level, allocator: Allocator) {
-    using context.game_context;
-
-    // @Speed maybe we can just set what we need to be reset in case
-    // this is a reused pointer from an old level. I am going to
-    // zero-init everything right now to prevent bugs.
-    level.* = .{};
-
-    T :: true;
-    F :: false;
-
-    _Entrance = alloc_array(allocator, 1, Entrance);
-    _Entrance[0] = .{
-        position = .{-1, 0, -1},
-    };
-    
-    _Exit = alloc_array(allocator, 1, Exit);
-    _Exit[0] = .{
-        position = .{2, 0, -1},
-    };
-    
-    _Enemy_Spawner = alloc_array(allocator, 1, Enemy_Spawner);
-    _Enemy_Spawner[0] = .{
-        position = .{2, 0, 2},
-        facing = .X_NEGATIVE,
-    };
-
-
-    Temporary_Block :: struct {
-        position: Vector3i;
-        size: Vector3i;
-        filled: [] bool;
-        color: Vector4;
-        moveable: bool;
-    }
-
-    temp_blocks := Temporary_Block.[
-        .{
-            position = .{-3, -1, -2},
-            size = .{6, 1, 8},
-            filled = .[
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-            ],
-            color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
-            moveable = false,
-        },
-        .{
-            position = .{-3, 0, -2},
-            size = .{6, 1, 2},
-            filled = .[
-                F, F, F, F, T, T,
-                T, T, F, T, T, F, 
-            ],
-            color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
-            // .{1, 143.0/255.0, 0, 1} Orange color that I liked
-            moveable = true,
-        },
-        .{
-            position = .{-1, 0, 4},
-            size = .{1, 3, 1},
-            filled = .[
-                T,
-                T,
-                T,
-            ],
-            color = .{0, 0, 1, 1},
-            moveable = true,
-        }
-    ];
-
-    _Block = alloc_array(allocator, temp_blocks.count, Block);
-    for * temp_blocks {
-        filled := alloc_view(allocator, it.filled.count, bool);
-        memcpy(filled.data, it.filled.data, size_of(type_of(it.filled.data.*)) * it.filled.count);
-
-        _Block[it_index] = .{
-            position = it.position,
-            size = it.size,
-            filled = filled,
-            color = it.color,
-            moveable = it.moveable,
-        };
-    }
-
-    _Enemy = alloc_array(allocator, 2, Enemy);
-    assert(_Enemy.count >= 2);
-    _Enemy[0] = .{
-        position = .{0, 0, 2},
-    };
-    _Enemy[1] = .{
-        position = .{-1, 0, 2},
-    };
-
-}
-
-
 load_level_part_1_deserialize :: (level_name: string, using level: *Level, allocator: Allocator) -> bool {
     using context.game_context;
     
@@ -748,58 +645,25 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
         it.mesh = make_gridlike_mesh(it.size, it.filled, allocator);
     }
 
+    entities.allocator = allocator;
+    append(*entities, null);
+    for :iterate_entities types {
+        append(*entities, it);
+    }
+
+    unused_eids.allocator = allocator;
+
+
     if #complete for_mode == {
         case .EDITOR;
-            entities = alloc_array(allocator, entity_count, *Entity, zero_init = false);
-            entities[0] = null;
-
-            for :iterate_entities types {
-                entities[it.eid] = it;
-            }
             return true;
-
         case .GAMEPLAY;
             level_position, level_size = get_block_extents(_Block);
+
             size_1d := level_size.x * level_size.y * level_size.z;
-            // @Hack @Speed @Memory
-            // This is a dumb workaround.
-            // Right now, the serialization system will allocate as many elements as was serialized for an array.
-            // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
-            // dynamically allocate memory while the a level is running, and we can easily know how much memory the
-            // game will ever use (when we're in the GAMEPLAY mode. When we're in the EDITOR mode, do whatever you want.)
-            alloc_extra_array_capacity(allocator, *_Enemy, size_1d, zero_init=false);
-
-            // Count up all the entities so we can allocate an array big enough
-            // to hold pointers to all of them for the Entity_Id system
-            // The first slot is null, so we start at 1.
-
-            reserved := 1;
-            count := 1;
-            #insert -> string {
-                buf: [1024] u8;
-                sb := make_string_builder(buf);
-                for ENTITIES {
-                    print(*sb, "reserved += _%.allocated;\n", it.name);
-                    print(*sb, "count += _%.count;\n", it.name);
-                }
-                return get_string(*sb);
-            }
-            count += 1; // For the player we are about to add
-
-            entities = reserve_array(allocator, reserved, *Entity, zero_init=false);
-            entities.count = count;
-            entities[0] = null;
-
-            unused_eids = reserve_array(allocator, reserved, Entity_Id, zero_init=false);
-
-            for :iterate_entities types {
-                entities[it.eid] = it;
-            }
-
             // @TODO: Make sure none of the other entities are outside of the level
 
             view_texture = make_view_texture(level_size);
-
             viewed = alloc_view(allocator, size_1d, View_State);
             doors = alloc_view(allocator, size_1d, Entity_Id);
             collision = alloc_view(allocator, size_1d, Entity_Id);
@@ -851,7 +715,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
                 return false;
             }
 
-            player := make_entity(level, Player, *allocator);
+                player := make_entity(level, Player);
             player.position = _Entrance[0].position;
             set_state(player, .SPAWNING);
             camera_focus_x = player.position.x;
@@ -862,23 +726,32 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 }
 
 
-free_level :: (using level: *Level, level_arena: *Memory_Arena) {   
+free_level :: (using level: *Level, allocator: Allocator) {   
     // @TODO This is a far-in-the-future kind of thing.
     // We should wrap glGenBuffers, glDeleteBuffers, and similar allocating functions and make a memory debugger
     // that tells us what has leaked when we close the application, because as far as I can tell, there's no good
     // way to natively get that information from OpenGL.
+    
+    free(allocator, entities);
+    free(allocator, unused_eids);
+
+    free(allocator, viewed);
+    free(allocator, doors);
+    free(allocator, collision);
+    free(allocator, desired_collision);
+    free(allocator, mutual_annihilations);
 
     free(*view_texture);
 
     for * _Block {
         free(*it.mesh);
+        free(allocator, it.filled);
     }
 
     for * _Door {
         free(*it.mesh);
+        free(allocator, it.filled);
     }
-
-    clear(level_arena);
 }
 
 
