@@ -32,6 +32,9 @@ Game_Context :: struct {
     using os_procs: OS_Procedures;
     keys_down: [] bool;
 
+    permanent_arena: Memory_Arena;
+    permanent_allocator: Allocator;
+
     frame_arena: Memory_Arena;
     frame_allocator: Allocator;
     
@@ -90,20 +93,22 @@ Game_Memory :: struct {
 }
 
 Game :: struct { 
-    allocator: Allocator;
-    // This is here instead of in the context in case we decide to do funny stuff,
-    // like have multiple heaps. I've decided to be very explicit about allocator passing.
-
     mode: Game_Mode;
 
     level: Level;
     // Right now, the EDITOR and GAMEPLAY mode both use this member to store their
     // level state. When we switch modes, we just reload the level based on the
     // level index.
+    level_arena: Memory_Arena;
+    level_allocator: Allocator;
 
     editor: Editor;
+    // editor_level: Level;
+    // editor_arena: Memory_Arena;
     editor_level_index: int;
 
+    // gameplay_level: Level;
+    // gameplay_arena: Memory_Arena;
     gameplay_level_index: int;
 
     time_elapsed: float64;
@@ -141,7 +146,6 @@ IMGUI_SIZE :: Vector2.{700, INNER_WINDOW_H};
 
 #program_export "game_init"
 game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data) #no_context {
-    allocator := data.allocator;
     game_memory := cast(*Game_Memory, data.game_memory);
     push_context {
         context.base = context_base.*;
@@ -152,6 +156,9 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
         frame_allocator = .{proc = arena_allocator_proc, data = *frame_arena};
 
+        permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
+        permanent_allocator = .{proc = arena_allocator_proc, data = *permanent_arena};
+        
         os_procs = data.os_procs;
         keys_down = data.keys_down;
 
@@ -205,7 +212,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         glEnable(GL_CULL_FACE);
 
         assert(FT_Init_FreeType(*freetype) == 0);
-        success:, shader_include = read_file("shaders/include.gl", allocator);
+        success:, shader_include = read_file("shaders/include.gl", permanent_allocator);
         assert(success);
         
         imm_state = imm_init();
@@ -226,20 +233,20 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         consolas = load_font("consolas.ttf");
 
-        footstep = load_wav("footstep.wav", allocator);
+        footstep = load_wav("footstep.wav", permanent_allocator);
 
         gridlike_bitmap = load_bitmap("gridlike.tga");
         gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
         
-        enemy_mesh = load_mesh("enemy.my_mesh", allocator);
+        enemy_mesh = load_mesh("enemy.my_mesh", permanent_allocator);
         enemy_left_bitmap = load_bitmap("enemy_left.tga");
         enemy_right_bitmap = load_bitmap("enemy_right.tga");
-        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, allocator);
-        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", allocator);
-        enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, allocator);
-        entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, allocator);
-        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, allocator);
-        player_mesh = load_mesh("player.my_mesh", allocator);
+        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_allocator);
+        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", permanent_allocator);
+        enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_allocator);
+        entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_allocator);
+        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_allocator);
+        player_mesh = load_mesh("player.my_mesh", permanent_allocator);
         player_bitmap = load_bitmap("player.tga");
 
 
@@ -247,9 +254,22 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         // Now that the game_context is initted, we can init the game.
         //
 
-        game_memory.game.allocator = allocator;
+        using game_memory;
+        using game_memory.game;
 
-        set_mode(*game_memory.game, .EDITOR);
+        level_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
+        level_allocator = .{proc = arena_allocator_proc, data = *level_arena};
+        // editor_arena = make_arena(data.editor_arena_memory, EDITOR_ARENA_SIZE);
+        // gameplay_arena = make_arena(data.gameplay_arena_memory. LEVEL_ARENA_SIZE);
+        
+        /*
+        if !load_level_part_1_deserialize("test.level", *editor_level, *editor_arena) {
+            load_level_part_1_new(*editor_level);
+        }
+        assert(load_level_part_2_init_unserialized_fields("test.level", *editor_level, *editor_arena));
+        */
+        
+        set_mode(*game, .EDITOR);
     }
 }
 
@@ -330,7 +350,7 @@ game_update : Game_Update : (
 
         for input.events {
             if it.key == .TILDE && it.state == .DOWN {
-                free_level(*level, allocator);
+                free_level(*level, *level_arena);
                 
                 if #complete mode == {
                     case .GAMEPLAY; set_mode(*game, .EDITOR);
@@ -342,19 +362,19 @@ game_update : Game_Update : (
             if #complete mode == {
                 case .GAMEPLAY;
                     change_level :: (dir: int) #expand {
-                        free_level(*level, allocator);
+                        free_level(*level, *level_arena);
                         old_index := gameplay_level_index;
                         gameplay_level_index = (gameplay_level_index + dir + LEVELS.count) % LEVELS.count;
                         
-                        success := load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, allocator);
-                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, allocator);
+                        success := load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, level_allocator);
+                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, level_allocator);
 
                         if !success {
                             log(.ERROR, "Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[gameplay_level_index]);
                             gameplay_level_index = old_index;
-                            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, allocator));
+                            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, level_allocator));
 
-                            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY,allocator));
+                            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, level_allocator));
                         }
                     }
 
@@ -390,14 +410,14 @@ game_update : Game_Update : (
 
                     if it.key == #char "[" && it.state == .DOWN {
                         editor_level_index = (editor_level_index - 1 + LEVELS.count) % LEVELS.count;
-                        free_level(*level, allocator);
+                        free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
                         continue;    
                     }
 
                     if it.key == #char "]" && it.state == .DOWN {
                         editor_level_index = (editor_level_index + 1) % LEVELS.count;
-                        free_level(*level, allocator);
+                        free_level(*level, *level_arena);
                         set_mode(*game, .EDITOR);
                         continue;
                     }
@@ -419,7 +439,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    editor_handle_input(*level, allocator, *editor, mouse, it);
+                    editor_handle_input(*level, level_allocator, *editor, mouse, it);
             }
         }
         
@@ -941,15 +961,15 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
     mode = new_mode;
     if #complete new_mode == {
         case .GAMEPLAY;
-            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, allocator));
+            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, level_allocator));
             // Not every serialized level is a valid gameplay level.
             // (Player entity could be missing, Entrance entity could be missing, etc.)
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, allocator));
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, level_allocator));
         case .EDITOR;
-            if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, allocator) {
+            if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, level_allocator) {
                 load_level_part_1_new(*level);
             } 
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *allocator)); // This should not fail in editor mode
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_allocator)); // This should not fail in editor mode
 
 
             editor = .{};

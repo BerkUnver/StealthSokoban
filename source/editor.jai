@@ -189,7 +189,7 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
                     filled[0] = true;
                     size := Vector3i.{1, 1, 1};
 
-                    block := make_entity(level, Block);
+                    block := make_entity(level, Block, allocator);
                     block.size = size;
                     block.position = .{xx floor(point.x), 0, xx floor(point.z)};
                     block.filled = filled;
@@ -227,7 +227,7 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.state == .DOWN {
                 if editor.selected != 0 {
-                    delete_entity(level, editor.selected);
+                    delete_entity(level, editor.selected, *allocator);
                     editor.selected = 0;
                 }
                 return;
@@ -313,7 +313,7 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
 
                 index := cast(int, event.key - 1 - .F_BASE);
-                e := make_entity(level, index);
+                e := make_entity(level, index, *allocator);
                 e.position = position;
 
 
@@ -413,7 +413,7 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
                         if all_zero {
                             if e.eid == editor.selected editor.selected = 0;
-                            delete_entity(level, e.eid);
+                            delete_entity(level, e.eid, *allocator);
                         } else {
                             new_size := new_end - new_position + Vector3i.{1,1,1};
                             if e.size != new_size {

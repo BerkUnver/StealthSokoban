@@ -223,21 +223,17 @@ alloc :: (allocator: Allocator, size: s64, zero_init := false) -> *void {
 }
 
 
-free :: (allocator: Allocator, data: *void) {
-
-    assert(data != null);
-    allocator.proc(.FREE, 0, 0, data, allocator.data);
-}
-
-free :: (allocator: Allocator, view: [] $T) {
-    if view.data free(allocator, view.data);
-}
-
-
 alloc_view :: (allocator: Allocator, count: s64, $T: Type, zero_init := true) -> [] T #must {
     byte_count := size_of(T) * count; 
     ret := alloc(allocator, byte_count, zero_init);
     return .{data=xx ret, count=count};
+}
+
+
+alloc_array :: (allocator: Allocator, count: s64, $T: Type, zero_init := true) -> [..] T {
+    array := reserve_array(allocator, count, T, zero_init);
+    array.count = count;
+    return array;
 }
 
 
@@ -249,20 +245,16 @@ reserve_array :: (allocator: Allocator, count: s64, $T: Type, zero_init := true)
     array: [..] T;
     array.data = mem;
     array.allocated = allocated;
+    array.allocator = allocator;
     return array;
 }
 
 
-free :: (allocator: Allocator, array: [..] $T) {
-    if array.data free(allocator, array.data);
-}
-
-
-append :: (a: *[..] $T) -> *T {
+append :: (a: *[..] $T, allocator: Allocator) -> *T {
     if a.count == a.allocated {
         if a.count == 0 a.allocated = 8;
         else a.allocated *= 2;
-        a.data = realloc(a.allocator, a.data, a.count * size_of(T), a.allocated * size_of(T), zero_init = false);
+        a.data = realloc(allocator, a.data, a.count * size_of(T), a.allocated * size_of(T), zero_init = false);
     }
 
     item := a.data + a.count;
@@ -279,8 +271,8 @@ realloc :: (allocator: Allocator, old: *void, old_size: s64, new_size: s64, zero
 }
 
 
-append :: inline (a: *[..] $T, item: T) {
-    append(a).* = item;
+append :: inline (a: *[..] $T, item: T, allocator: Allocator) {
+    append(a, allocator).* = item;
 }
 
 

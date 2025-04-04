@@ -313,12 +313,6 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, allocator: *Al
                     if can_serialize_member(member, greatest_offset) {
                         greatest_offset = member.offset_in_bytes;
                         if member.name == token.identifier break;
-                        if member.type.type == .ARRAY {
-                            array_type := cast(*Type_Info_Array, member.type);
-                            if array_type.array_type == .RESIZABLE {
-                                cast(*Resizable_Array, ptr + member.offset_in_bytes).allocator = allocator;
-                            }
-                        }
                     }
 
                     member_index += 1;
