@@ -5,65 +5,67 @@ Level :: struct {
 
     // @TODO: This should be a hash table... probably.
     entities: [..] *Entity; @NoSerialize
-    
-    // These are gameplay-only variables. In the future, we might want to better-differentiate
-    // between what is modifiable in the editor (which should be as close as we can get to a 
-    // pure-data representation of the scene) and what is gameplay state. We could use
-    // metaprogramming to do this but it seems like overkill right now.
-
-    
-    level_position: Vector3i; @NoSerialize
-    level_size: Vector3i; @NoSerialize
-
-    mutual_annihilations: [..] Mutual_Annihilation; @NoSerialize
     unused_eids: [..] Entity_Id; @NoSerialize
 
-    flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; @NoSerialize
-    
-    camera_mode: Camera_Mode; @NoSerialize
+    using gameplay: struct {
+        // These are gameplay-only variables. In the future, we might want to better-differentiate
+        // between what is modifiable in the editor (which should be as close as we can get to a 
+        // pure-data representation of the scene) and what is gameplay state. We could use
+        // metaprogramming to do this but it seems like overkill right now.
 
-    // These members are only used by the NEAR and FAR camera states.
-    // Maybe they should be in the Player struct?
-    
-    camera_focus_x: s32; @NoSerialize
-    camera_focus_z: s32; @NoSerialize
-    camera_focus_old_x: float; @NoSerialize
-    camera_focus_old_z: float; @NoSerialize
-    camera_focus_x_interp := 1.0; @NoSerialize
-    camera_focus_z_interp := 1.0; @NoSerialize
+        
+        level_position: Vector3i;
+        level_size: Vector3i;
 
-    camera_landing_interp: float; @NoSerialize
+        mutual_annihilations: [..] Mutual_Annihilation;
 
-    camera_pitch_ticks: s8 = 1; @NoSerialize
-    camera_pitch_interp := 1.0; @NoSerialize
-    camera_pitch_old: float64; @NoSerialize
+        flags: enum_flags {PULLING; DEBUG_MOVEMENT;};
+        
+        camera_mode: Camera_Mode;
 
-    camera_yaw_target: float64; @NoSerialize
-    camera_yaw_old: float64; @NoSerialize
-    camera_yaw_interp := 1.0; @NoSerialize
-    
-    enemy_timer: float; @NoSerialize
-    dt_modifier := 1.0; @NoSerialize
-    
-    doors: [] Entity_Id; @NoSerialize // Only Door entities should be put in here.
-    collision: [] Entity_Id; @NoSerialize
-    desired_collision: [] Entity_Id; @NoSerialize
-    viewed: [] View_State; @NoSerialize
+        // These members are only used by the NEAR and FAR camera states.
+        // Maybe they should be in the Player struct?
+        
+        camera_focus_x: s32;
+        camera_focus_z: s32;
+        camera_focus_old_x: float;
+        camera_focus_old_z: float;
+        camera_focus_x_interp := 1.0;
+        camera_focus_z_interp := 1.0;
 
-    
-    // These are stored SOA because we don't want to touch these at the same time.
-    // @TODO 3d arrays are stored x-major, then z, then y.
-    // This makes sense from the perspective of wanting to be
-    // able to type levels directly into code for this initial
-    // development period, but may make less sense later.
-    // Consider coming back to this.
+        camera_landing_interp: float;
 
-    view_texture: View_Texture; @NoSerialize
-    
+        camera_pitch_ticks: s8 = 1;
+        camera_pitch_interp := 1.0;
+        camera_pitch_old: float64;
 
-    // @Temporary This is very basic, just to get sound to work for now.
-    playing_sound_count: int; @NoSerialize
-    playing_sounds: [1024] Playing_Sound; @NoSerialize
+        camera_yaw_target: float64;
+        camera_yaw_old: float64;
+        camera_yaw_interp := 1.0;
+        
+        enemy_timer: float;
+        dt_modifier := 1.0;
+        
+        doors: [] Entity_Id; // Only Door entities should be put in here.
+        collision: [] Entity_Id;
+        desired_collision: [] Entity_Id;
+        viewed: [] View_State;
+
+        
+        // These are stored SOA because we don't want to touch these at the same time.
+        // @TODO 3d arrays are stored x-major, then z, then y.
+        // This makes sense from the perspective of wanting to be
+        // able to type levels directly into code for this initial
+        // development period, but may make less sense later.
+        // Consider coming back to this.
+
+        view_texture: View_Texture;
+        
+
+        // @Temporary This is very basic, just to get sound to work for now.
+        playing_sound_count: int;
+        playing_sounds: [1024] Playing_Sound;
+    }; @NoSerialize
 }
 
 
@@ -703,7 +705,12 @@ load_level_part_1_deserialize :: (level_name: string, using level: *Level, alloc
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
         return false;
     }
-    
+
+    return load_level_part_1_deserialize_mem(level_text, level, allocator);
+}
+
+
+load_level_part_1_deserialize_mem :: (level_text: string, using level: *Level, allocator: Allocator) -> bool {
     err := deserialize(level_text, level, *allocator);
     if !err.ok {
         log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);

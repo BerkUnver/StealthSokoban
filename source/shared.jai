@@ -15,8 +15,7 @@ MAX_INPUT_EVENTS_PER_TICK :: 64;
 
 // @TODO: See how much of this memory is actually used!
 GAME_MEMORY_SIZE     :: 1 << 24; 
-EDITOR_ARENA_SIZE    :: 1 << 27;
-GAMEPLAY_ARENA_SIZE  :: 1 << 24;
+LEVEL_ARENA_SIZE    :: 1 << 27;
 PERMANENT_ARENA_SIZE :: 1 << 22;
 FRAME_ARENA_SIZE     :: 1 << 24;
 
@@ -41,8 +40,7 @@ Game_Init_Data :: struct {
     os_procs: OS_Procedures;
     keys_down: [] bool;
     permanent_arena_memory: *void;
-    gameplay_arena_memory: *void;
-    editor_arena_memory: *void;
+    level_arena_memory: *void;
     frame_arena_memory: *void;
 }
 
@@ -67,6 +65,7 @@ Game_Update :: #type (
     context_base: *Context_Base, // :ContextBase
     game_memory: *void,
     input: Input,
+    hotloaded: bool,
     time_elapsed: float64
 ) #no_context;
 
@@ -75,12 +74,6 @@ Game_Get_Audio_Samples :: #type (
     game_memory_void_ptr: *void,
     samples_played: int, // How many samples we played since the previous update
     buffer: [] s16
-) #no_context;
-
-
-Game_DLL_Hotloaded_Init :: #type (
-    context_base: *Context_Base, // :ContextBase
-    game_memory: *void
 ) #no_context;
 
 
@@ -113,6 +106,7 @@ Key :: enum {
     // Space: Ascii ' '
     // '[', ']'
     // '-', '='
+    // '/', '.', ','. '`'
     MOUSE_LEFT_BUTTON :: 256;
     MOUSE_RIGHT_BUTTON;
     F_BASE :: MOUSE_RIGHT_BUTTON;
@@ -127,7 +121,6 @@ Key :: enum {
     DELETE;
     SHIFT;
     CTRL;
-    TILDE;
     TAB;
     ENTER;
     HOME;

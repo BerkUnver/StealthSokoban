@@ -65,12 +65,15 @@ main :: () {
                         case VK_DOWN;       key = .DOWN_ARROW;
                         case VK_BACK;       key = .BACKSPACE;
                         case VK_DELETE;     key = .DELETE;
-                        case VK_OEM_3;      key = .TILDE;
+                        case VK_OEM_2;      key = #char "/";
+                        case VK_OEM_3;      key = #char "`";
                         case VK_RETURN;     key = .ENTER;
                         case VK_OEM_4;      key = #char "[";
                         case VK_OEM_6;      key = #char "]";
                         case VK_OEM_PLUS;   key = #char "=";
                         case VK_OEM_MINUS;  key = #char "-";
+                        case VK_OEM_PERIOD; key = #char ".";
+                        case VK_OEM_COMMA;  key = #char ",";
                         case VK_TAB;        key = .TAB;    
                             // @TODO: Properly handle left and right alts, shifts, and ctrls.
                         case VK_SHIFT;      key = .SHIFT;
@@ -496,24 +499,21 @@ main :: () {
         },
         keys_down = windows.keys_down,
         permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
-        gameplay_arena_memory  = VirtualAlloc(null, GAMEPLAY_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
-        // editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
+        level_arena_memory  = VirtualAlloc(null, LEVEL_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE,     MEM_COMMIT, PAGE_READWRITE),
     };
 
     game_init(*context.base, *data);
 
-    get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_DLL_Hotloaded_Init, Game_Get_Audio_Samples {
+    get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_Get_Audio_Samples {
         game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
         assert(game_update != null);
         game_get_audio_samples := cast(Game_Get_Audio_Samples, GetProcAddress(game_dll, "game_get_audio_samples"));
         assert(game_get_audio_samples != null);
-        game_dll_hotloaded_init := cast(Game_DLL_Hotloaded_Init, GetProcAddress(game_dll, "game_dll_hotloaded_init"));
-        assert(game_dll_hotloaded_init != null);
-        return game_update, game_dll_hotloaded_init, game_get_audio_samples;
+        return game_update, game_get_audio_samples;
     }
 
-    game_update, game_dll_hotloaded_init, game_get_audio_samples := get_game_calls(game_dll);
+    game_update, game_get_audio_samples := get_game_calls(game_dll);
     
     while main_loop := true {
         message: MSG;
@@ -529,6 +529,7 @@ main :: () {
             DispatchMessageA(*message);
         }
         
+        hotloaded := false;
         new_dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
         if new_dll_attrs != INVALID_FILE_ATTRIBUTES {
             if MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME_FRESH) == 0 {
@@ -541,9 +542,9 @@ main :: () {
                 assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
                 game_dll = LoadLibraryA(GAME_DLL_NAME);
                 assert(game_dll != null);
-                game_update, game_dll_hotloaded_init, game_get_audio_samples = get_game_calls(game_dll);
-                game_dll_hotloaded_init(*context.base, game_memory);
+                game_update, game_get_audio_samples = get_game_calls(game_dll);
                 print("Game DLL has been hotloaded.\n");
+                hotloaded = true;
             }
         }
 
@@ -588,7 +589,7 @@ main :: () {
         
         AUDIO_BYTES_TO_WRITE :: AUDIO_BUFFER_SIZE_IN_BYTES / 20; // 1.5 frames of audio data
 
-        game_update(*context.base, game_memory, input, time_elapsed);
+        game_update(*context.base, game_memory, input, hotloaded, time_elapsed);
         windows.input_event_count = 0;
 
         // @TODO: All this audio stuff should be done on a separate thread.
