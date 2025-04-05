@@ -312,6 +312,7 @@ game_update : Game_Update : (
 
 
         screenshot_requested: bool;
+        level_select_popup_requested: bool;
         
         for input.events {
             if it.key == .TILDE && it.state == .DOWN {
@@ -322,9 +323,13 @@ game_update : Game_Update : (
                 continue;
             }
 
-
             if it.key == #char "C" && it.state == .DOWN && keys_down[Key.CTRL] {
                 screenshot_requested = true;
+                continue;
+            }
+
+            if it.key == #char "L" && it.state == .DOWN && keys_down[Key.CTRL] {
+                level_select_popup_requested = true;
                 continue;
             }
 
@@ -379,29 +384,27 @@ game_update : Game_Update : (
         if #complete mode == {
             case .EDITOR;
                 editor_update(*editor_level, mouse, dt);
-            case .GAMEPLAY;
-                gameplay_level_update(*gameplay_level, dt);
-        }
+                editor_draw(*editor_level);
 
-        
-        if mode == {
-            case .EDITOR;
                 scope_mark(*frame_arena);
-                new_level_name := editor_draw(*editor_level);
-                if new_level_name {
-                    free_level(*editor_level, *editor_arena);
-                    success, data := read_file(new_level_name, *frame_arena);
-                    if success {
-                        assert(load_level_part_1_deserialize_mem(data, *editor_level, *editor_arena));
-                    } else {
-                        editor_level = .{};
+
+                if !editor_imgui_disabled {
+                    new_level_name := editor_draw_imgui(*editor_level);
+                    if new_level_name {
+                        free_level(*editor_level, *editor_arena);
+                        success, data := read_file(new_level_name, *frame_arena);
+                        if success {
+                            assert(load_level_part_1_deserialize_mem(data, *editor_level, *editor_arena));
+                        } else {
+                            editor_level = .{};
+                        }
+                        assert(load_level_part_2_init_unserialized_fields(new_level_name, *editor_level, .EDITOR, *editor_arena));
                     }
-                    assert(load_level_part_2_init_unserialized_fields(new_level_name, *editor_level, .EDITOR, *editor_arena));
                 }
             case .GAMEPLAY;
+                gameplay_level_update(*gameplay_level, dt);
                 gameplay_draw(*gameplay_level);
         }
-
 
         if screenshot_requested {
             scope_mark(*frame_arena);
@@ -435,6 +438,82 @@ game_update : Game_Update : (
 }
 
 
+editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
+    using context.game_context;
+
+    
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+
+    glUseProgram(imm_color_shader);
+    set_uniform("projection", imgui_state.imgui_to_camera);
+    imm_quad(IMGUI_POSITION, IMGUI_SIZE, .{0, 0, 0, 1});
+    imm_flush();
+
+    font := *consolas;
+    item_height := font.ascender * 2;
+
+    item_size := Vector2.{IMGUI_SIZE.x, item_height};
+    head := IMGUI_POSITION;
+
+    level_name: [STRING_ENTRY_MAX_COUNT] u8;
+    level_name_count: int;
+
+    assert(level_name.count >= name.count);
+    memcpy(level_name.data, name.data, name.count);
+    level_name_count = name.count;
+
+    new_level_name: string;
+    {
+        margin := font.ascender * 0.2;
+        length := head.x + text_length("Level", font) + margin * 2;
+        text_position := round(Vector2.{
+            head.x + margin,
+            head.y + item_size.y / 2 + font.ascender / 2
+        });
+
+        imgui_draw_text("Level", text_position, font, HIGHLIGHT_COLOR);
+
+        position := Vector2.{head.x + length, head.y};
+        size := Vector2.{item_size.x - length, item_size.y};
+
+        if string_entry(position, size, *level_name, *level_name_count) {
+            data := alloc(*frame_arena, level_name_count, zero_init=false);
+            memcpy(data, level_name.data, level_name_count);
+            new_level_name = .{level_name_count, data};
+            // Maybe the correct thing to do is to load the new level, then rerender
+            // the entire frame.
+
+            // Things we need to do to make this work:
+            
+            // 1.
+            // Separate imgui rendering from the rest of the drawing code.
+            // It's okay if the imgui has stuff that is off by a frame, because
+            // you did something in the imgui that affected a level element
+            // that had its respective imgui already rendered.
+            // HOWEVER, that should not contaminate the rest of the drawing.
+        }
+    }
+
+    head.y += item_height;
+
+    if editor.selected {
+        // glEnable(GL_SCISSOR_TEST);
+        // glScissor(
+        //     xx IMGUI_SIZE.x,
+        //     xx (INNER_WINDOW_H - IMGUI_SIZE.y - IMGUI_SIZE.y),
+        //     xx IMGUI_SIZE.x,
+        //     xx IMGUI_SIZE.y
+        // );
+        e := get_entity(level, editor.selected);
+        type := ENTITIES[e.type];
+        imgui_for_value(e, type, head, item_size);
+    }
+
+    return new_level_name;
+}
+
+
 // @TODO: Make a real renderer.
 // This is all just temporary code to get stuff to draw on the screen.
 // I'm not sure about what the editor drawing code vs gameplay drawing code distinction will 
@@ -444,7 +523,7 @@ game_update : Game_Update : (
 // too much complication for this initial phase of development, so I'm okay with doing this.
 //          -berk, 2025 - 2 - 26
 
-editor_draw :: (using level: *Level) -> new_level_name: string {
+editor_draw :: (using level: *Level) {
     using context.game_context;
 
     glEnable(GL_DEPTH_TEST);
@@ -610,80 +689,6 @@ editor_draw :: (using level: *Level) -> new_level_name: string {
 
         imm_flush();
     }
-
-
-    new_level_name: string;
-    
-    if !editor_imgui_disabled {
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-
-        glUseProgram(imm_color_shader);
-        set_uniform("projection", imgui_state.imgui_to_camera);
-        imm_quad(IMGUI_POSITION, IMGUI_SIZE, .{0, 0, 0, 1});
-        imm_flush();
-
-        font := *consolas;
-        item_height := font.ascender * 2;
-
-        item_size := Vector2.{IMGUI_SIZE.x, item_height};
-        head := IMGUI_POSITION;
-
-        level_name: [STRING_ENTRY_MAX_COUNT] u8;
-        level_name_count: int;
-
-        assert(level_name.count >= name.count);
-        memcpy(level_name.data, name.data, name.count);
-        level_name_count = name.count;
-
-        {
-            margin := font.ascender * 0.2;
-            length := head.x + text_length("Level", font) + margin * 2;
-            text_position := round(Vector2.{
-                head.x + margin,
-                head.y + item_size.y / 2 + font.ascender / 2
-            });
-
-            imgui_draw_text("Level", text_position, font, HIGHLIGHT_COLOR);
-
-            position := Vector2.{head.x + length, head.y};
-            size := Vector2.{item_size.x - length, item_size.y};
-
-            if string_entry(position, size, *level_name, *level_name_count) {
-                data := alloc(*frame_arena, level_name_count, zero_init=false);
-                memcpy(data, level_name.data, level_name_count);
-                new_level_name = .{level_name_count, data};
-                // Maybe the correct thing to do is to load the new level, then rerender
-                // the entire frame.
-
-                // Things we need to do to make this work:
-                
-                // 1.
-                // Separate imgui rendering from the rest of the drawing code.
-                // It's okay if the imgui has stuff that is off by a frame, because
-                // you did something in the imgui that affected a level element
-                // that had its respective imgui already rendered.
-                // HOWEVER, that should not contaminate the rest of the drawing.
-            }
-        }
-
-        head.y += item_height;
-
-        if editor.selected {
-            // glEnable(GL_SCISSOR_TEST);
-            // glScissor(
-            //     xx IMGUI_SIZE.x,
-            //     xx (INNER_WINDOW_H - IMGUI_SIZE.y - IMGUI_SIZE.y),
-            //     xx IMGUI_SIZE.x,
-            //     xx IMGUI_SIZE.y
-            // );
-            e := get_entity(level, editor.selected);
-            type := ENTITIES[e.type];
-            imgui_for_value(e, type, head, item_size);
-        }
-    }
-
-    return new_level_name;
 }
 
 
