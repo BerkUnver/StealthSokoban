@@ -181,7 +181,7 @@ My_Mesh_Vertex :: struct {
 } #no_padding
 
 
-load_mesh :: (path: string, allocator: Allocator) -> Mesh {
+load_mesh :: (path: string, arena: *Memory_Arena) -> Mesh {
     using context.game_context;
     Mesh_Header :: struct {
         index_count: u32;
@@ -190,7 +190,7 @@ load_mesh :: (path: string, allocator: Allocator) -> Mesh {
 
     scope_mark(*frame_arena);
 
-    success, str := read_file(path, frame_allocator);
+    success, str := read_file(path, *frame_arena);
     assert(success);
 
     header:, str = get(str, Mesh_Header);
@@ -223,7 +223,7 @@ load_mesh :: (path: string, allocator: Allocator) -> Mesh {
     glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(My_Mesh_Vertex), *cast(*My_Mesh_Vertex, null).uv);
     
     // @TODO: Get mesh picking to work in a SANE WAY.
-    vertex_positions := alloc_view(allocator, header.index_count, Vector3);
+    vertex_positions := alloc_view(arena, header.index_count, Vector3);
     for * vertex_positions {
         it.* = cast(*My_Mesh_Vertex, vertex_chunk_ptr)[cast(*u32, index_chunk_ptr)[it_index]].position;
     }
@@ -251,10 +251,10 @@ free :: (mesh: *Mesh) {
 }
 
 
-make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, allocator: Allocator) -> Mesh {
+make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mesh {
     using context.game_context;
 
-    vertex_positions := alloc_view(allocator, 36, Vector3);
+    vertex_positions := alloc_view(arena, 36, Vector3);
     make_cuboid(vertex_positions, b, e);
 
     vao, vbo: GLuint;
@@ -277,6 +277,56 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, allocator: Allocator) -> Mes
 }
 
 
+/*
+make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
+    using context.game_context;
+    
+    mark := get_mark(*frame_arena);
+    defer restore_mark(*frame_arena, mark);
+    
+    vertices: [..] Block_Vertex;
+
+    for :iterate_vector3i size {
+        if !filled[it_index] continue;
+        
+        origin := to_vector3(it);
+        
+        check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
+            success, index := get_3d_index(position, size);
+            if !success || !filled[index] {
+                for 0..5 {
+                    append(*vertices, *frame_arena).* = .{
+                       position = origin + CUBE_VERTICES[xx face + it],
+                       uv = CUBE_UVS[xx face + it],
+                       viewed_offset = position,
+                    };
+                }
+            }
+        }
+        
+        check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
+        check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
+        check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
+        check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
+        check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
+        check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
+    }
+    
+    vertex_positions := alloc_view(arena, vertices.count, Vector3);
+
+    for * vertices {
+        vertex_positions[it_index] = it.position;
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
+
+
+    return vertex_positions;
+}
+*/
+
+
 // @CompilerBug doing "enum_flags u8" doesn't actually make it a u8
 // when we put it inside of this function.
 Gridlike_Edge :: enum_flags u8 {
@@ -291,7 +341,7 @@ Gridlike_Edge :: enum_flags u8 {
 }
 
 
-make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, allocator: Allocator) -> vertices: [] Vector3 {
+make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
 
     mark := get_mark(*frame_arena);
@@ -517,7 +567,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, alloca
 
             for i: 0..5 {
                 index := xx face + i;
-                append(*vertices, frame_allocator).* = .{
+                append(*vertices, *frame_arena).* = .{
                     position = origin + CUBE_VERTICES[index],
                     uv = CUBE_UVS[index],
                     viewed_offset = above,
@@ -537,7 +587,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, alloca
         check(.Z_NEGATIVE);
     }
 
-    vertex_positions := alloc_view(allocator, vertices.count, Vector3);
+    vertex_positions := alloc_view(arena, vertices.count, Vector3);
 
     for * vertices {
         vertex_positions[it_index] = it.position;
@@ -551,7 +601,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, alloca
 }
 
 
-make_gridlike_mesh :: (size: Vector3i, filled: [] bool, allocator: Allocator) -> Mesh {      
+make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Arena) -> Mesh {      
     using context.game_context;
 
     vao, vbo: GLuint;
@@ -578,7 +628,7 @@ make_gridlike_mesh :: (size: Vector3i, filled: [] bool, allocator: Allocator) ->
 
 
 
-    vertex_positions := make_gridlike_mesh_data(size, filled, vbo, allocator);
+    vertex_positions := make_gridlike_mesh_data(size, filled, vbo, level_arena);
 
     // @TODO Store vertex buffers in SOA form!
     return .{
@@ -589,8 +639,8 @@ make_gridlike_mesh :: (size: Vector3i, filled: [] bool, allocator: Allocator) ->
 }
 
 
-update_gridlike_mesh :: (e: *$T, allocator: Allocator) {
-    e.mesh.vertex_positions = make_gridlike_mesh_data(e.size, e.filled, e.mesh.vbo, allocator);
+update_gridlike_mesh :: (e: *$T, arena: *Memory_Arena) {
+    e.mesh.vertex_positions = make_gridlike_mesh_data(e.size, e.filled, e.mesh.vbo, arena);
 }
 
 
@@ -684,7 +734,7 @@ load_bitmap :: (file_name: string) -> GLuint {
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    success, str := read_file(file_name, frame_allocator);
+    success, str := read_file(file_name, *frame_arena);
     if !success {
         log(.ERROR, "Failed to load the file for bitmap \"%\"\n", file_name);
         assert(false);
@@ -735,7 +785,7 @@ load_shader :: (file_name: string, prefix := "") -> GLuint {
     mark := get_mark(*frame_arena);
     defer restore_mark(*frame_arena, mark);
 
-    success, str := read_file(file_name, frame_allocator);
+    success, str := read_file(file_name, *frame_arena);
     if !success {
         log(.ERROR, "Failed to load the file for shader \"%\"\n", file_name);
         assert(false);

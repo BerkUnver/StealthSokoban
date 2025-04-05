@@ -756,31 +756,14 @@ string_entry :: (
                 // @TODO: Handle all non-alphabetic keys that are modified by the SHIFT key
                 if (#char " " <= it.key && it.key <= #char "~") && it.state != .UP && string_entry.str_count < string_entry.str.count {
                     key := it.key;
-                    
-                    ascii: u8;
-
-                    if keys_down[Key.SHIFT] {
-                        if key == #char "/" {
-                            ascii = #char "?";
-                        } else if key == #char "." {
-                            ascii = #char ">";
-                        } else if key == #char "," {
-                            ascii = #char "<";
-                        } else {
-                            ascii = xx key;
-                        }
-                    } else {
-                        if #char "A" <= key && key <= #char "Z" {
-                            ascii = xx (#char "a" + key - #char "A");
-                        } else {
-                            ascii = xx key;
-                        }
+                    if !keys_down[Key.SHIFT] && #char "A" <= key && key <= #char "Z" {
+                        key = #char "a" + key - #char "A";
                     }
 
                     for #v2 < string_entry.cursor..string_entry.str_count-1 {
                         string_entry.str[it + 1] = string_entry.str[it];
                     }
-                    string_entry.str[string_entry.cursor] = ascii;
+                    string_entry.str[string_entry.cursor] = xx key;
                     string_entry.str_count += 1;
                     string_entry.cursor += 1;
 

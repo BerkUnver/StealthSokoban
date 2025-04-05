@@ -1,6 +1,6 @@
 // This is os stuff that the game layer can know about.
 
-read_file :: (name: string, allocator: Allocator) -> bool, string {
+read_file :: (name: string, arena: *Memory_Arena) -> bool, string {
     path := jai_string_to_path(name);
 
     handle := CreateFileA(path.data, FILE_GENERIC_READ);
@@ -11,8 +11,8 @@ read_file :: (name: string, allocator: Allocator) -> bool, string {
     assert(GetFileSizeEx(handle, *size_l) != 0);
     assert(size_l.QuadPart < 0x7fffffff);
     size := cast(u32, size_l.QuadPart);
-    
-    data := alloc(allocator, size, zero_init=false);
+
+    data := alloc(arena, size, zero_init = false);
 
     read_size: u32;
     ReadFile(handle, data, size, *read_size);

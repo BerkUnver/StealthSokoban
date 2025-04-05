@@ -71,7 +71,7 @@ get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
 }
 
 
-editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Editor, mouse: Vector2, event: Input_Event) {
+editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event) {
     using context.game_context;
 
     camera_to_world := inverse(get_editor_camera_matrix(editor));
@@ -185,16 +185,16 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
                     if parallel || new_block_t <= 0 return;
 
-                    filled := alloc_view(allocator, 1, bool);
+                    filled := alloc_view(arena, 1, bool);
                     filled[0] = true;
                     size := Vector3i.{1, 1, 1};
 
-                    block := make_entity(level, Block, allocator);
+                    block := make_entity(level, Block, arena);
                     block.size = size;
                     block.position = .{xx floor(point.x), 0, xx floor(point.z)};
                     block.filled = filled;
                     block.color = .{1, 1, 1, 1};
-                    block.mesh = make_block_mesh(size, filled, allocator);
+                    block.mesh = make_block_mesh(size, filled, arena);
 
                     start_intersection := point + normalize(mouse_direction) * 0.001;
 
@@ -227,7 +227,7 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
             if (event.key == .BACKSPACE || event.key == .DELETE) && event.state == .DOWN {
                 if editor.selected != 0 {
-                    delete_entity(level, editor.selected, *allocator);
+                    delete_entity(level, editor.selected, arena);
                     editor.selected = 0;
                 }
                 return;
@@ -313,17 +313,17 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
 
                 index := cast(int, event.key - 1 - .F_BASE);
-                e := make_entity(level, index, *allocator);
+                e := make_entity(level, index, arena);
                 e.position = position;
 
 
                 init_grid_entity :: (e: *$T) #expand {
-                    filled := alloc_view(allocator, 1, bool);
+                    filled := alloc_view(arena, 1, bool);
                     filled[0] = true;
 
                     e.size = .{1, 1, 1};
                     e.filled = filled;
-                    e.mesh = make_gridlike_mesh(.{1, 1, 1}, filled, allocator);
+                    e.mesh = make_gridlike_mesh(.{1, 1, 1}, filled, arena);
                 }
 
                 if e.type == .Block {
@@ -413,11 +413,11 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
 
                         if all_zero {
                             if e.eid == editor.selected editor.selected = 0;
-                            delete_entity(level, e.eid, *allocator);
+                            delete_entity(level, e.eid, arena);
                         } else {
                             new_size := new_end - new_position + Vector3i.{1,1,1};
                             if e.size != new_size {
-                                new_filled := alloc_view(allocator, new_size.x * new_size.y * new_size.z, bool);
+                                new_filled := alloc_view(arena, new_size.x * new_size.y * new_size.z, bool);
                                 for :iterate_vector3i v: new_size {
                                     success, src_index := get_3d_index(v + new_position, e.position, e.size);
                                     assert(success);
@@ -429,10 +429,10 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
                                 e.size = new_size;
                             }
 
-                            update_gridlike_mesh(e, allocator);
+                            update_gridlike_mesh(e, arena);
                         }
                     } else {
-                        e.position, e.size, e.filled = realloc_3d_array_to_fit_subarea(e.position, e.size, e.filled, position, size, allocator);
+                        e.position, e.size, e.filled = realloc_3d_array_to_fit_subarea(e.position, e.size, e.filled, position, size, arena);
                         offset := position - e.position;
 
                         for :iterate_vector3i size {
@@ -442,7 +442,7 @@ editor_handle_input :: (using level: *Level, allocator: Allocator, editor: *Edit
                             e.filled[index] = true;
                         }
 
-                        update_gridlike_mesh(e, allocator);
+                        update_gridlike_mesh(e, arena);
                     }
                 }
 

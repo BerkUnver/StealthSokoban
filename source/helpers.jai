@@ -60,14 +60,14 @@ get_3d_index :: (position: Vector3i, size: Vector3i) -> bool, s64 {
 }
 
 
-realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: [] $T, sub_position: Vector3i, sub_size: Vector3i, allocator: Allocator) -> new_position: Vector3i, new_size: Vector3i, new_data: [] T {
+realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: [] $T, sub_position: Vector3i, sub_size: Vector3i, arena: *Memory_Arena) -> new_position: Vector3i, new_size: Vector3i, new_data: [] T {
     new_position := min(position, sub_position);
     new_end := max(position + size, sub_position + sub_size);
     new_size := new_end - new_position;
     
     if position == new_position && size == new_size return position, size, data;
 
-    new_data := alloc_view(allocator, new_size.x * new_size.y * new_size.z, T);
+    new_data := alloc_view(arena, new_size.x * new_size.y * new_size.z, T);
     
     // @Speed memcpy the x axis instead of calculating it one-by-one.
     offset := position - new_position;
@@ -77,6 +77,12 @@ realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: []
     }
 
     return new_position, new_size, new_data;
+}
+
+
+restore_mark :: (arena: *Memory_Arena, marker: s64) {
+    assert(arena.current >= marker);
+    arena.current = marker;
 }
 
 
@@ -143,16 +149,64 @@ clear :: inline (arena: *Memory_Arena) {
 }
 
 
+alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
+    assert(count >= 0);
+    new_current := arena.current + count;
+    assert(new_current <= arena.count);
+    ret := arena.data + arena.current;
+    arena.current = new_current;
+    if zero_init memset(ret, 0, count);
+    return ret;
+}
+
+
+alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
+    return alloc(arena, size_of(T), zero_init);
+}
+
+
+realloc :: (arena: *Memory_Arena, old: *void, old_count: s64, new_count: s64, zero_init := true) -> *void {
+    assert(old_count >= 0);
+    assert(new_count >= 0);
+
+    if old == null {
+        assert(old_count == 0);
+        return alloc(arena, new_count, zero_init);
+    }
+
+    current := arena.data + arena.current;
+    assert(arena.data <= old && old <= current);
+
+    if new_count < old_count return old;
+
+    if old + old_count == current {
+        alloc(arena, new_count - old_count, zero_init);
+        return old;
+    }
+
+    new := alloc(arena, new_count, false);
+    memcpy(new, old, old_count);
+    if zero_init memset(new + old_count, 0, new_count - old_count);
+
+    return new;
+}
+
+
+realloc_many :: (arena: *Memory_Arena, old: *$T, old_count: s64, new_count: s64, zero_init := true) -> *T {
+    return realloc(arena, old, old_count * size_of(T), new_count * size_of(T), zero_init); 
+}
+
+
+alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
+    byte_count := size_of(T) * count; 
+    ret := alloc(arena, byte_count, zero_init);
+    return .{data=xx ret, count=count};
+}
+
+
 get_mark :: (arena: *Memory_Arena) -> s64 {
     return arena.current;
 }
-
-
-restore_mark :: (arena: *Memory_Arena, marker: s64) {
-    assert(arena.current >= marker);
-    arena.current = marker;
-}
-
 
 scope_mark :: (arena: *Memory_Arena) #expand {
     mark := get_mark(arena);
@@ -160,125 +214,42 @@ scope_mark :: (arena: *Memory_Arena) #expand {
 }
 
 
-arena_allocator_proc : Allocator_Proc : (mode: Allocator_Mode, size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
 
 
-    _alloc :: (arena: *Memory_Arena, count: s64) -> *void {
-        new_current := arena.current + count;
-        assert(new_current <= arena.count);
-        ret := arena.data + arena.current;
-        arena.current = new_current;
-        return ret;
-    }
-
-    arena := cast(*Memory_Arena, allocator_data);
-    if #complete mode == {
-        case .ALLOCATE;
-            return _alloc(arena, size);
-
-        case .RESIZE;
-            if old_memory == null {
-                assert(old_size == 0);
-                return _alloc(arena, size);
-            }
-
-            current := arena.data + arena.current;
-            assert(arena.data <= old_memory && old_memory <= current);
-            if size < old_size return old_memory;
-            
-            if old_memory + old_size == current {
-                _alloc(arena, size - old_size);
-                return old_memory;
-            }
-
-            new_memory := _alloc(arena, size);
-            memcpy(new_memory, old_memory, old_size);
-            return new_memory;
-
-        case .IS_THIS_YOURS;
-            ret := arena.data <= old_memory && old_memory <= arena.data + arena.current;
-            return xx cast(s64, ret);
-
-        case .CAPS;
-            return xx Allocator_Caps.HINT_I_AM_A_FAST_BUMP_ALLOCATOR|.IS_THIS_YOURS;
-
-        case .FREE; #through; // Do we want this to assert false? Do nothing? Log something?
-        case .STARTUP; #through;
-        case .SHUTDOWN; #through;
-        case .THREAD_START; #through;
-        case .THREAD_STOP; #through;
-        case .CREATE_HEAP; #through;  // @Investigate What does this do?
-        case .DESTROY_HEAP; #through; // @Investivate What does this do?
-        case;
-            assert(false);
-            return null;
-    }
-}
-
-
-alloc :: (allocator: Allocator, size: s64, zero_init := false) -> *void {
-    data := allocator.proc(.ALLOCATE, size, 0, null, allocator.data);
-    if zero_init memset(data, 0, size);
-    return data;
-}
-
-
-alloc_view :: (allocator: Allocator, count: s64, $T: Type, zero_init := true) -> [] T #must {
-    byte_count := size_of(T) * count; 
-    ret := alloc(allocator, byte_count, zero_init);
-    return .{data=xx ret, count=count};
-}
-
-
-alloc_array :: (allocator: Allocator, count: s64, $T: Type, zero_init := true) -> [..] T {
-    array := reserve_array(allocator, count, T, zero_init);
-    array.count = count;
-    return array;
-}
-
-
-reserve_array :: (allocator: Allocator, count: s64, $T: Type, zero_init := true) -> [..] T {
-    allocated := count;
-    if 0 < allocated && allocated < 8 allocated = 8;
-    mem := alloc(allocator, allocated * size_of(T), zero_init);
+reserve_array :: (arena: *Memory_Arena, reserve: s64, $T: Type, zero_init := true) -> [..] T {
+    mem := alloc(arena, reserve * size_of(T), zero_init);
 
     array: [..] T;
     array.data = mem;
-    array.allocated = allocated;
-    array.allocator = allocator;
+    array.allocated = reserve;
+    array.allocator.data = arena;
+
+    // I don't love the implicit allocator semantics that Jai wants you to use,
+    // so I am avoiding them for now. However, I will set the allocator data to the
+    // arena so we can assert that we're resizing using the same arena.
+
     return array;
 }
 
 
-append :: (a: *[..] $T, allocator: Allocator) -> *T {
-    if a.count == a.allocated {
-        if a.count == 0 a.allocated = 8;
-        else a.allocated *= 2;
-        a.data = realloc(allocator, a.data, a.count * size_of(T), a.allocated * size_of(T), zero_init = false);
-    }
+alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [..] T {
+    allocated := count;
+    if 0 < allocated && allocated < 8 allocated = 8;
+    mem := alloc(arena, allocated * size_of(T), zero_init);
 
-    item := a.data + a.count;
-    a.count += 1;
-
-    return item;
+    array: [..] T;
+    array.count = count;
+    array.data = mem;
+    array.allocated = allocated;
+    array.allocator.data = arena;
+    
+    return array;
 }
 
 
-realloc :: (allocator: Allocator, old: *void, old_size: s64, new_size: s64, zero_init := true) -> *void {
-    data := allocator.proc(.RESIZE, new_size, old_size, old, allocator.data);
-    if zero_init memset(old + old_size, 0, new_size - old_size);
-    return data;
-}
-
-
-append :: inline (a: *[..] $T, item: T, allocator: Allocator) {
-    append(a, allocator).* = item;
-}
-
-
-alloc_extra_array_capacity :: (allocator: Allocator, array: *[..] $T, new_capacity: s64, zero_init := true) {
+alloc_extra_array_capacity :: (arena: *Memory_Arena, array: *[..] $T, new_capacity: s64, zero_init := true) {
     if new_capacity < array.allocated return;
-    mem := alloc(allocator, new_capacity * size_of(T), zero_init=false);
+    mem := alloc(arena, new_capacity * size_of(T), zero_init=false);
     memcpy(mem, array.data, size_of(T) * array.count);
     if zero_init memset(mem + size_of(T) * array.count, 0, size_of(T) * (new_capacity - array.count));
 
@@ -305,10 +276,29 @@ contains :: (a: *[..] $T, item: T) -> bool {
     return false;
 }
 
-
 contains :: (a: [] $T, item: T) -> bool {
     for a if it == item return true;
     return false;
+}
+
+
+append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
+    if a.count == a.allocated {
+        if a.count == 0 a.allocated = 8;
+        else a.allocated *= 2;
+
+        a.data = realloc_many(arena, a.data, a.count, a.allocated, zero_init = false);
+    }
+
+    item := a.data + a.count;
+    a.count += 1;
+
+    return item;
+}
+
+
+append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
+    append(a, arena).* = item;
 }
 
 
@@ -321,8 +311,8 @@ pop :: (a: *[..] $T) -> bool, T {
 }
 
 
-copy_string :: (allocator: Allocator, str: string) -> string {
-    mem := alloc(allocator, str.count, zero_init=false);
+copy_string :: (arena: *Memory_Arena, str: string) -> string {
+    mem := alloc(arena, str.count, zero_init=false);
     memcpy(mem, str.data, str.count);
     return .{str.count, mem};
 }

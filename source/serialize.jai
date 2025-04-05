@@ -1,5 +1,5 @@
 // @TODO: :SpecialSerialization Do we want to serialize commonly-used structs
-// (Vector2, Vector3, Vector4, Vector3i) to some more convenient form?
+// (Vector2, Vector3, Vector4, Vector3i to some more convenient form?
 // Like "(% % % %)" where each % is a member of Vector4?
 
 // @TODO: Elegantly fail when the buffer is too small.
@@ -15,7 +15,7 @@ serialize :: (buf: [] u8, val: *$T) -> string {
 
     #if INFO.type == .STRUCT {
         mark := get_mark(*frame_arena);
-        default = alloc(frame_allocator, INFO.runtime_size, zero_init = false);
+        default = alloc(*frame_arena, INFO.runtime_size, zero_init = false);
         init_from_info(INFO, default);
     }
 
@@ -75,7 +75,7 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
                 separator = "\n";
                 struct_info := cast(*Type_Info_Struct, array_info.element_type);
                 mark = get_mark(*frame_arena);
-                default = alloc(frame_allocator, struct_info.runtime_size, zero_init = false);
+                default = alloc(*frame_arena, struct_info.runtime_size, zero_init = false);
                 init_from_info(struct_info, default);
             } else {
                 separator = " ";
@@ -203,25 +203,30 @@ can_serialize_member :: (member: *Type_Info_Struct_Member, greatest_offset_befor
     return true;
 }
 
-
-
-// @Leak We need to free everything that was allocated when deserialization failed!
-deserialize :: (data: string, val: *$T, allocator: *Allocator = null) -> Deserialization_Error {
+deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserialization_Error {
     lexer := Lexer.{str = data};
     INFO :: type_info(T);
     
-    err := deserialize_next(*lexer, type_info(T), val, allocator);
-    if !err.ok return err;
+    mark: s64;
+    if arena != null mark = get_mark(arena);
+
+    err_return :: (e: Deserialization_Error) #expand {
+        if arena restore_mark(arena, mark);
+        `return e;
+    }
+
+    err := deserialize_next(*lexer, type_info(T), val, arena);
+    if !err.ok err_return(err);
 
     token := get_token(*lexer);
-    if token.type == .ERROR return .{false, token.error, token.loc};
-    if token.type != .EOF   return .{false, "Expected no more tokens after the end of what we just deserialized.", token.loc};
+    if token.type == .ERROR err_return(.{false, token.error, token.loc});
+    if token.type != .EOF   err_return(.{false, "Expected no more tokens after the end of what we just deserialized.", token.loc});
 
     return OK;
 }
 
 
-deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, allocator: *Allocator) -> Deserialization_Error {
+deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory_Arena) -> Deserialization_Error {
     if info.type == {
         case .BOOL;
             token := get_token(lexer);
@@ -322,7 +327,7 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, allocator: *Al
                 }
 
                 member := *struct_info.members[member_index];
-                err := deserialize_next(lexer, member.type, ptr + member.offset_in_bytes, allocator);
+                err := deserialize_next(lexer, member.type, ptr + member.offset_in_bytes, arena);
                 if !err.ok return err;
 
                 member_index += 1;
@@ -340,11 +345,11 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, allocator: *Al
             if token.type != #char "[" return .{false, "Expected a '[' at the start of an array declaration.", token.loc};
             
             populate_memory :: () -> *void #expand {
-                if allocator == null `return .{false, "This array expected to dynamically allocate memory.", token.loc};
-                memory := alloc(allocator.*, count * array_info.element_type.runtime_size, zero_init=false);
+                if arena == null `return .{false, "This array expected to dynamically allocate memory.", token.loc};
+                memory := alloc(arena, count * array_info.element_type.runtime_size, zero_init=false);
                 for 0..count-1 {
                     item := memory + it * array_info.element_type.runtime_size;
-                    err := deserialize_next(lexer, array_info.element_type, item, allocator);
+                    err := deserialize_next(lexer, array_info.element_type, item, arena);
                     if !err.ok `return err;
                 }
                 return memory;
@@ -362,7 +367,7 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, allocator: *Al
                         count=count,
                         data=memory,
                         allocated=count,
-                        allocator=allocator
+                        allocator.data=arena
                     };
             }
 

@@ -32,11 +32,8 @@ Game_Context :: struct {
     using os_procs: OS_Procedures;
     keys_down: [] bool;
 
-    permanent_arena: Memory_Arena;
-    permanent_allocator: Allocator;
-
     frame_arena: Memory_Arena;
-    frame_allocator: Allocator;
+    permanent_arena: Memory_Arena;
     
     // @Incomplete:
     // We might just want to init a new freetype library every time we instanciate a font
@@ -100,11 +97,14 @@ Game :: struct {
     // level state. When we switch modes, we just reload the level based on the
     // level index.
     level_arena: Memory_Arena;
-    level_allocator: Allocator;
 
     editor: Editor;
+    // editor_level: Level;
+    // editor_arena: Memory_Arena;
     editor_level_index: int;
 
+    // gameplay_level: Level;
+    // gameplay_arena: Memory_Arena;
     gameplay_level_index: int;
 
     time_elapsed: float64;
@@ -150,10 +150,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         using context.game_context;
 
         frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
-        frame_allocator = .{proc = arena_allocator_proc, data = *frame_arena};
-
         permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
-        permanent_allocator = .{proc = arena_allocator_proc, data = *permanent_arena};
         
         os_procs = data.os_procs;
         keys_down = data.keys_down;
@@ -208,7 +205,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         glEnable(GL_CULL_FACE);
 
         assert(FT_Init_FreeType(*freetype) == 0);
-        success:, shader_include = read_file("shaders/include.gl", permanent_allocator);
+        success:, shader_include = read_file("shaders/include.gl", *permanent_arena);
         assert(success);
         
         imm_state = imm_init();
@@ -229,20 +226,20 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         consolas = load_font("consolas.ttf");
 
-        footstep = load_wav("footstep.wav", permanent_allocator);
+        footstep = load_wav("footstep.wav", *permanent_arena);
 
         gridlike_bitmap = load_bitmap("gridlike.tga");
         gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
         
-        enemy_mesh = load_mesh("enemy.my_mesh", permanent_allocator);
+        enemy_mesh = load_mesh("enemy.my_mesh", *permanent_arena);
         enemy_left_bitmap = load_bitmap("enemy_left.tga");
         enemy_right_bitmap = load_bitmap("enemy_right.tga");
-        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_allocator);
-        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", permanent_allocator);
-        enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_allocator);
-        entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_allocator);
-        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_allocator);
-        player_mesh = load_mesh("player.my_mesh", permanent_allocator);
+        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
+        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
+        enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        player_mesh = load_mesh("player.my_mesh", *permanent_arena);
         player_bitmap = load_bitmap("player.tga");
 
 
@@ -253,12 +250,34 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         using game_memory;
         using game_memory.game;
 
-        level_arena = make_arena(data.level_arena_memory, LEVEL_ARENA_SIZE);
-        level_allocator = .{proc = arena_allocator_proc, data = *level_arena};
+        level_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
+        // editor_arena = make_arena(data.editor_arena_memory, EDITOR_ARENA_SIZE);
+        // gameplay_arena = make_arena(data.gameplay_arena_memory. LEVEL_ARENA_SIZE);
+        
+        /*
+        if !load_level_part_1_deserialize("test.level", *editor_level, *editor_arena) {
+            load_level_part_1_new(*editor_level, *editor_arena);
+        }
+        assert(load_level_part_2_init_unserialized_fields("test.level", *editor_level, *editor_arena));
+        */
         
         set_mode(*game, .EDITOR);
     }
 }
+
+#program_export "game_dll_hotloaded_init"
+game_dll_hotloaded_init : Game_DLL_Hotloaded_Init : (
+    context_base: *Context_Base,
+    game_memory_: *void
+) #no_context {
+    push_context {
+        context.base = context_base.*;
+        context.game_context = game_memory_;
+
+        game_dll_hotloaded_init();
+    }
+}
+
 
 // I wish we didn't need to have a procedure like this.
 // However, some libraries we use have globals that 
@@ -280,7 +299,6 @@ game_update : Game_Update : (
     context_base: *Context_Base,
     game_memory_: *void, 
     input: Input,
-    hotloaded: bool,
     time_elapsed_: float64
 ) #no_context {
     game_memory := cast(*Game_Memory, game_memory_);
@@ -291,10 +309,6 @@ game_update : Game_Update : (
         using game_memory;
         using game_memory.game;
         using game_memory.game_context;
-
-        if hotloaded {
-            game_dll_hotloaded_init();
-        }
 
         defer assert(frame_arena.current == 0);
         // I'm trying to enforce people who use the stack arena to use it
@@ -327,7 +341,7 @@ game_update : Game_Update : (
 
 
         for input.events {
-            if it.key == #char "`" && it.state == .DOWN {
+            if it.key == .TILDE && it.state == .DOWN {
                 free_level(*level, *level_arena);
                 
                 if #complete mode == {
@@ -344,15 +358,15 @@ game_update : Game_Update : (
                         old_index := gameplay_level_index;
                         gameplay_level_index = (gameplay_level_index + dir + LEVELS.count) % LEVELS.count;
                         
-                        success := load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, level_allocator);
-                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, level_allocator);
+                        success := load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena);
+                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena);
 
                         if !success {
                             log(.ERROR, "Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[gameplay_level_index]);
                             gameplay_level_index = old_index;
-                            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, level_allocator));
+                            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena));
 
-                            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, level_allocator));
+                            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena));
                         }
                     }
 
@@ -371,7 +385,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    gameplay_handle_input(*level, it);
+                    gameplay_handle_input(*level, *level_arena, it);
 
                 case .EDITOR;
                     imgui_capturing_input := 
@@ -417,7 +431,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    editor_handle_input(*level, level_allocator, *editor, mouse, it);
+                    editor_handle_input(*level, *level_arena, *editor, mouse, it);
             }
         }
         
@@ -440,20 +454,7 @@ game_update : Game_Update : (
         
         if mode == {
             case .EDITOR;
-                scope_mark(*frame_arena);
-                new_level_name := editor_draw(*level, *editor);
-                if new_level_name {
-                    free_level(*level, *level_arena);
-                    scope_mark(*frame_arena);
-                    success, level_text := read_file(new_level_name, frame_allocator);
-                    if success {
-                        // A corrupted level would be really weird. As such, let's just crash if it is.
-                        assert(load_level_part_1_deserialize_mem(level_text, *level, level_allocator));
-                    } else {
-                        level = .{};
-                    }
-                    assert(load_level_part_2_init_unserialized_fields(new_level_name, *level, .EDITOR, level_allocator));
-                }
+                editor_draw(*level, *editor);
             case .GAMEPLAY;
                 gameplay_draw(*level);
         }
@@ -461,7 +462,7 @@ game_update : Game_Update : (
 
         if screenshot_requested {
             scope_mark(*frame_arena);
-            data := alloc(frame_allocator, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
+            data := alloc(*frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
             glReadPixels(0, 0, INNER_WINDOW_W, INNER_WINDOW_H, GL_RGB, GL_UNSIGNED_BYTE, data);
             
             write :: (ctx: *void, data: *void, size: s32) #c_call {
@@ -500,7 +501,7 @@ game_update : Game_Update : (
 // too much complication for this initial phase of development, so I'm okay with doing this.
 //          -berk, 2025 - 2 - 26
 
-editor_draw :: (using level: *Level, editor: *Editor) -> new_level_name: string {
+editor_draw :: (using level: *Level, editor: *Editor) {
     using context.game_context;
 
     glEnable(GL_DEPTH_TEST);
@@ -631,7 +632,7 @@ editor_draw :: (using level: *Level, editor: *Editor) -> new_level_name: string 
 
         position, size := get_block_extents(_Block);
         
-        overlapping := alloc_view(frame_allocator, size.x * size.y * size.z, int);
+        overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
 
         for * block: _Block {
             offset := block.position - position;
@@ -666,9 +667,6 @@ editor_draw :: (using level: *Level, editor: *Editor) -> new_level_name: string 
 
         imm_flush();
     }
-
-
-    new_level_name: string;
     
     if !editor_imgui_disabled {
         glDisable(GL_DEPTH_TEST);
@@ -685,7 +683,13 @@ editor_draw :: (using level: *Level, editor: *Editor) -> new_level_name: string 
         item_size := Vector2.{IMGUI_SIZE.x, item_height};
         head := IMGUI_POSITION;
 
-        // Draw the level name entry box
+        level_name: [STRING_ENTRY_MAX_COUNT] u8;
+        level_name_count: int;
+
+        assert(level_name.count >= name.count);
+        memcpy(level_name.data, name.data, name.count);
+        level_name_count = name.count;
+
         {
             margin := font.ascender * 0.2;
             length := head.x + text_length("Level", font) + margin * 2;
@@ -698,42 +702,37 @@ editor_draw :: (using level: *Level, editor: *Editor) -> new_level_name: string 
 
             position := Vector2.{head.x + length, head.y};
             size := Vector2.{item_size.x - length, item_size.y};
-            
-            
-            level_name: [STRING_ENTRY_MAX_COUNT] u8;
-            assert(level_name.count >= name.count);
-            memcpy(level_name.data, name.data, name.count);
-            level_name_count := name.count;
-            
-            if string_entry(position, size, *level_name, *level_name_count) {
-                data := alloc(frame_allocator, level_name_count, zero_init = false);
-                memcpy(data, level_name.data, level_name_count);
-                new_level_name = string.{level_name_count, data};
+
+            if string_entry(position, size, *imgui_state.test_string, *imgui_state.test_string_count) {
+                // Maybe the correct thing to do is to load the new level, then rerender
+                // the entire frame.
+
+                // Things we need to do to make this work:
+                
+                // 1.
+                // Separate imgui rendering from the rest of the drawing code.
+                // It's okay if the imgui has stuff that is off by a frame, because
+                // you did something in the imgui that affected a level element
+                // that had its respective imgui already rendered.
+                // HOWEVER, that should not contaminate the rest of the drawing.
             }
-
-            // Maybe the correct thing to do is to load the new level, then rerender
-            // the entire frame.
-
-            // Things we need to do to make this work:
-            
-            // 1.
-            // Separate imgui rendering from the rest of the drawing code.
-            // It's okay if the imgui has stuff that is off by a frame, because
-            // you did something in the imgui that affected a level element
-            // that had its respective imgui already rendered.
-            // HOWEVER, that should not contaminate the rest of the drawing.
         }
 
         head.y += item_height;
 
         if editor.selected {
+            // glEnable(GL_SCISSOR_TEST);
+            // glScissor(
+            //     xx IMGUI_SIZE.x,
+            //     xx (INNER_WINDOW_H - IMGUI_SIZE.y - IMGUI_SIZE.y),
+            //     xx IMGUI_SIZE.x,
+            //     xx IMGUI_SIZE.y
+            // );
             e := get_entity(level, editor.selected);
             type := ENTITIES[e.type];
             imgui_for_value(e, type, head, item_size);
         }
     }
-
-    return new_level_name;
 }
 
 
@@ -954,15 +953,15 @@ set_mode :: (using game: *Game, new_mode: Game_Mode) {
     mode = new_mode;
     if #complete new_mode == {
         case .GAMEPLAY;
-            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, level_allocator));
+            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena));
             // Not every serialized level is a valid gameplay level.
             // (Player entity could be missing, Entrance entity could be missing, etc.)
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, level_allocator));
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena));
         case .EDITOR;
-            if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, level_allocator) {
-                load_level_part_1_new(*level);
+            if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, *level_arena) {
+                load_level_part_1_new(*level, *level_arena);
             } 
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_allocator)); // This should not fail in editor mode
+            assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_arena)); // This should not fail in editor mode
 
 
             editor = .{};

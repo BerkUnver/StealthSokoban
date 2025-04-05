@@ -13,8 +13,8 @@ Playing_Sound :: struct {
 }
 
 
-load_wav :: (path: string, allocator: Allocator) -> Wav {
-    success, base := read_file(path, allocator);
+load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
+    success, base := read_file(path, arena);
     assert(success);
 
     get_chunk_id :: (str: string) -> id: string, str: string {

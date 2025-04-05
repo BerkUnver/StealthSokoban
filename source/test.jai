@@ -67,7 +67,7 @@ test :: () {
 
         expected := int.[1, 2, 3];
         view: [] int;
-        err := deserialize("3[1 2 3]", *view, *frame_allocator);
+        err := deserialize("3[1 2 3]", *view, *frame_arena);
         expect(err);
         expect(view.count == expected.count);
         expect(memcmp(view.data, expected.data, size_of(type_of(expected))) == 0);
@@ -147,11 +147,11 @@ END
         defer restore_mark(*frame_arena, mark);
 
         output: [..] int;
-        err := deserialize("3[1 2 3]", *output, *frame_allocator);
+        err := deserialize("3[1 2 3]", *output, *frame_arena);
         expect(err);
         expect(output.count == 3);
         expect(output.allocated == 3);
-        expect(output.allocator.proc == frame_allocator.proc && output.allocator.data == frame_allocator.data);
+        expect(output.allocator.data == *frame_arena);
         expect(memcmp(output.data, int.[1,2,3].data, 3 * size_of(int)) == 0);
     }
 
