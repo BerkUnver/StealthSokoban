@@ -92,20 +92,11 @@ Game_Memory :: struct {
 Game :: struct { 
     mode: Game_Mode;
 
-    level: Level;
-    // Right now, the EDITOR and GAMEPLAY mode both use this member to store their
-    // level state. When we switch modes, we just reload the level based on the
-    // level index.
-    level_arena: Memory_Arena;
+    gameplay_level: Level;
+    editor_level: Level;
 
-    editor: Editor;
-    // editor_level: Level;
-    // editor_arena: Memory_Arena;
-    editor_level_index: int;
-
-    // gameplay_level: Level;
-    // gameplay_arena: Memory_Arena;
-    gameplay_level_index: int;
+    gameplay_arena: Memory_Arena;
+    editor_arena: Memory_Arena;
 
     time_elapsed: float64;
 }
@@ -116,23 +107,6 @@ Game_Mode :: enum {
 }
 
 #assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
-
-LEVELS :: string.[
-    "levels/overworld.level",
-    "levels/test.level",
-    "levels/test2.level",
-    "levels/test3.level",
-    "levels/test4.level",
-    "levels/intro.level",
-    "levels/comb.level",
-    "levels/comb2.level",
-    "levels/chocolate_bar.level",
-    "levels/bridge.level",
-    "levels/prison_escape.level",
-    "levels/enemies_intro.level",
-    "levels/enemies_advanced.level",
-];
-
 
 NEAR_PLANE :: 0.1;
 FAR_PLANE :: 1000.0;
@@ -250,18 +224,18 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         using game_memory;
         using game_memory.game;
 
-        level_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
-        // editor_arena = make_arena(data.editor_arena_memory, EDITOR_ARENA_SIZE);
-        // gameplay_arena = make_arena(data.gameplay_arena_memory. LEVEL_ARENA_SIZE);
+        editor_arena = make_arena(data.editor_arena_memory, EDITOR_ARENA_SIZE);
+        gameplay_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
         
-        /*
-        if !load_level_part_1_deserialize("test.level", *editor_level, *editor_arena) {
-            load_level_part_1_new(*editor_level, *editor_arena);
-        }
-        assert(load_level_part_2_init_unserialized_fields("test.level", *editor_level, *editor_arena));
-        */
+        LEVEL :: "levels/overworld.level";
+
+        assert(load_level_part_1_deserialize(LEVEL, *editor_level, *editor_arena));
+        assert(load_level_part_2_init_unserialized_fields(LEVEL, *editor_level, .EDITOR, *editor_arena));
+
+        assert(load_level_part_1_deserialize(LEVEL, *gameplay_level, *gameplay_arena));
+        assert(load_level_part_2_init_unserialized_fields(LEVEL, *gameplay_level, .GAMEPLAY, *gameplay_arena));
         
-        set_mode(*game, .EDITOR);
+        mode = .EDITOR;    
     }
 }
 
@@ -338,56 +312,28 @@ game_update : Game_Update : (
 
 
         screenshot_requested: bool;
-
-
+        
         for input.events {
             if it.key == .TILDE && it.state == .DOWN {
-                free_level(*level, *level_arena);
-                
                 if #complete mode == {
-                    case .GAMEPLAY; set_mode(*game, .EDITOR);
-                    case .EDITOR;   set_mode(*game, .GAMEPLAY);
+                    case .GAMEPLAY; mode = .EDITOR;
+                    case .EDITOR;   mode = .GAMEPLAY;
                 }
+                continue;
+            }
+
+
+            if it.key == #char "C" && it.state == .DOWN && keys_down[Key.CTRL] {
+                screenshot_requested = true;
                 continue;
             }
 
             if #complete mode == {
                 case .GAMEPLAY;
-                    change_level :: (dir: int) #expand {
-                        free_level(*level, *level_arena);
-                        old_index := gameplay_level_index;
-                        gameplay_level_index = (gameplay_level_index + dir + LEVELS.count) % LEVELS.count;
-                        
-                        success := load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena);
-                        if success success = load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena);
-
-                        if !success {
-                            log(.ERROR, "Loading level \"%\" failed due to a deserialization error. Going back to the last level.\n", LEVELS[gameplay_level_index]);
-                            gameplay_level_index = old_index;
-                            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena));
-
-                            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena));
-                        }
-                    }
-
-                    if it.key == #char "[" && it.state == .DOWN {
-                        change_level(-1);
-                        continue;
-                    }
-
-                    if it.key == #char "]" && it.state == .DOWN {
-                        change_level(1);
-                        continue;
-                    }
-
-                    if it.key == #char "C" && it.state == .DOWN && keys_down[Key.CTRL] {
-                        screenshot_requested = true;
-                        continue;
-                    }
-
-                    gameplay_handle_input(*level, *level_arena, it);
+                    gameplay_handle_input(*gameplay_level, it);
 
                 case .EDITOR;
+                    using editor_level;
                     imgui_capturing_input := 
                         !editor_imgui_disabled
                      && editor.mode == .IDLE 
@@ -395,22 +341,8 @@ game_update : Game_Update : (
                     
                     // Is it weird that I manually make these higher-priority than the imgui?
                     if it.key == #char "S" && keys_down[Key.CTRL] && it.state == .DOWN {
-                        serialize_level(*level);
+                        serialize_level(*editor_level);
                         log(.OK, "Serialized level.\n");
-                        continue;
-                    }
-
-                    if it.key == #char "[" && it.state == .DOWN {
-                        editor_level_index = (editor_level_index - 1 + LEVELS.count) % LEVELS.count;
-                        free_level(*level, *level_arena);
-                        set_mode(*game, .EDITOR);
-                        continue;    
-                    }
-
-                    if it.key == #char "]" && it.state == .DOWN {
-                        editor_level_index = (editor_level_index + 1) % LEVELS.count;
-                        free_level(*level, *level_arena);
-                        set_mode(*game, .EDITOR);
                         continue;
                     }
 
@@ -431,7 +363,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    editor_handle_input(*level, *level_arena, *editor, mouse, it);
+                    editor_handle_input(*editor_level, *editor_arena, mouse, it);
             }
         }
         
@@ -446,17 +378,28 @@ game_update : Game_Update : (
 
         if #complete mode == {
             case .EDITOR;
-                editor_update(*level, *editor, mouse, dt);
+                editor_update(*editor_level, mouse, dt);
             case .GAMEPLAY;
-                gameplay_level_update(*level, dt);
+                gameplay_level_update(*gameplay_level, dt);
         }
 
         
         if mode == {
             case .EDITOR;
-                editor_draw(*level, *editor);
+                scope_mark(*frame_arena);
+                new_level_name := editor_draw(*editor_level);
+                if new_level_name {
+                    free_level(*editor_level, *editor_arena);
+                    success, data := read_file(new_level_name, *frame_arena);
+                    if success {
+                        assert(load_level_part_1_deserialize_mem(data, *editor_level, *editor_arena));
+                    } else {
+                        editor_level = .{};
+                    }
+                    assert(load_level_part_2_init_unserialized_fields(new_level_name, *editor_level, .EDITOR, *editor_arena));
+                }
             case .GAMEPLAY;
-                gameplay_draw(*level);
+                gameplay_draw(*gameplay_level);
         }
 
 
@@ -501,14 +444,14 @@ game_update : Game_Update : (
 // too much complication for this initial phase of development, so I'm okay with doing this.
 //          -berk, 2025 - 2 - 26
 
-editor_draw :: (using level: *Level, editor: *Editor) {
+editor_draw :: (using level: *Level) -> new_level_name: string {
     using context.game_context;
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
 
-    world_to_camera := get_editor_camera_matrix(editor);
+    world_to_camera := get_editor_camera_matrix(level);
 
     glUseProgram(editor_gridlike_shader);
 
@@ -596,7 +539,7 @@ editor_draw :: (using level: *Level, editor: *Editor) {
         start := start_position;
         end := to_vector3i(floor(end_intersection));
 
-        position, size := get_editor_extrude_size(editor);
+        position, size := get_editor_extrude_size(level);
 
         glUseProgram(imm_color_shader);
         set_uniform("projection", world_to_camera);
@@ -667,6 +610,9 @@ editor_draw :: (using level: *Level, editor: *Editor) {
 
         imm_flush();
     }
+
+
+    new_level_name: string;
     
     if !editor_imgui_disabled {
         glDisable(GL_DEPTH_TEST);
@@ -703,7 +649,10 @@ editor_draw :: (using level: *Level, editor: *Editor) {
             position := Vector2.{head.x + length, head.y};
             size := Vector2.{item_size.x - length, item_size.y};
 
-            if string_entry(position, size, *imgui_state.test_string, *imgui_state.test_string_count) {
+            if string_entry(position, size, *level_name, *level_name_count) {
+                data := alloc(*frame_arena, level_name_count, zero_init=false);
+                memcpy(data, level_name.data, level_name_count);
+                new_level_name = .{level_name_count, data};
                 // Maybe the correct thing to do is to load the new level, then rerender
                 // the entire frame.
 
@@ -733,6 +682,8 @@ editor_draw :: (using level: *Level, editor: *Editor) {
             imgui_for_value(e, type, head, item_size);
         }
     }
+
+    return new_level_name;
 }
 
 
@@ -949,48 +900,6 @@ gameplay_draw :: (using level: *Level) {
 }
 
 
-set_mode :: (using game: *Game, new_mode: Game_Mode) {
-    mode = new_mode;
-    if #complete new_mode == {
-        case .GAMEPLAY;
-            assert(load_level_part_1_deserialize(LEVELS[gameplay_level_index], *level, *level_arena));
-            // Not every serialized level is a valid gameplay level.
-            // (Player entity could be missing, Entrance entity could be missing, etc.)
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[gameplay_level_index], *level, .GAMEPLAY, *level_arena));
-        case .EDITOR;
-            if !load_level_part_1_deserialize(LEVELS[editor_level_index], *level, *level_arena) {
-                load_level_part_1_new(*level, *level_arena);
-            } 
-            assert(load_level_part_2_init_unserialized_fields(LEVELS[editor_level_index], *level, .EDITOR, *level_arena)); // This should not fail in editor mode
-
-
-            editor = .{};
-
-            editor.camera_yaw = 0;
-            editor.camera_pitch = -PI / 3;
-
-            if level._Block.count != 0 {
-                // :LevelSizeInEditor
-                // It makes me slightly uncomfortable at how this code overlaps with the 
-                // gameplay code but we don't have access to the level size in the editor.
-
-                position, size := get_block_extents(level._Block);
-                level_center := to_vector3(position) + to_vector3(size) / 2;
-                level_radius := cast(float, max(size.x, max(size.y, size.z)));
-
-                camera_distance := level_radius * 2;
-                camera_y := sin(PI / 3) * camera_distance;
-                camera_z := cos(PI / 3) * camera_distance;
-
-                editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
-
-            } else {
-                editor.camera_position = .{0, 8, -4};
-            }
-    }
-}
-
-
 gl_debug_callback :: (
     source: GLenum,
     type: GLenum,
@@ -1060,27 +969,30 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
     push_context {
         game_memory := cast(*Game_Memory, game_memory_void_ptr);
         context.game_context = *game_memory.game_context;
-        using game_memory.game.level;
-        using game_memory.game_context;
+        using context.game_context;
+        using game_memory.game;
 
-        for 0..playing_sound_count-1 {
-            sound := *playing_sounds[it];
-            sound.current_sample += samples_played;
+        if mode == .GAMEPLAY {
+            using gameplay_level;
+            for 0..playing_sound_count-1 {
+                sound := *playing_sounds[it];
+                sound.current_sample += samples_played;
 
-            end: int;
-            if sound.current_sample + buffer.count > sound.wav.data.count {
-                end = sound.wav.data.count;
-            } else {
-                end = sound.current_sample + buffer.count;
-            }
+                end: int;
+                if sound.current_sample + buffer.count > sound.wav.data.count {
+                    end = sound.wav.data.count;
+                } else {
+                    end = sound.current_sample + buffer.count;
+                }
 
-            for sound.current_sample..end-1 {
-                sample := sound.wav.data[it];
-                output := *buffer[it - sound.current_sample];
-                result := cast(s32, sample) + cast(s32, output.*);
-                if      result < S16_MIN output.* = S16_MIN;
-                else if result > S16_MAX output.* = S16_MAX;
-                else                     output.* = xx result;
+                for sound.current_sample..end-1 {
+                    sample := sound.wav.data[it];
+                    output := *buffer[it - sound.current_sample];
+                    result := cast(s32, sample) + cast(s32, output.*);
+                    if      result < S16_MIN output.* = S16_MIN;
+                    else if result > S16_MAX output.* = S16_MAX;
+                    else                     output.* = xx result;
+                }
             }
         }
     }

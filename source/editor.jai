@@ -1,36 +1,3 @@
-Editor :: struct {
-    mode: Editor_Mode;
-
-    union {
-        camera: struct {
-            rotating_previous_mouse_position: Vector2;
-        }
-
-        extrude: struct {
-            selected: Entity_Id;
-            start_position: Vector3i;
-            start_intersection: Vector3;
-            end_intersection: Vector3;
-            plane_normal: Vector3i;
-            deletion: bool;
-        }
-
-        drag: struct {
-            mouse_start: Vector2;
-            selectable_start: Vector3i;
-            index: u8;
-        }
-    }
-    
-    selected: Entity_Id;
-    selected_timer: float;
-    
-    camera_position := Vector3.{0, 8, -4};
-    camera_pitch: float;
-    camera_yaw: float;
-}
-
-
 Editor_Mode :: enum {
     IDLE;
     // We can change the selection in this mode. Other modes expect the selection
@@ -55,26 +22,26 @@ EDITOR_FRUSTUM :: #run -> Matrix4 {
 }
 
 
-get_editor_camera_matrix :: (ed: *Editor) -> Matrix4 {
-    position_matrix := make_translation_matrix4(-ed.camera_position);
-    pitch_matrix := make_x_rotation_matrix(Matrix4, -ed.camera_pitch);
-    yaw_matrix := make_y_rotation_matrix(Matrix4, -ed.camera_yaw);
+get_editor_camera_matrix :: (using level: *Level) -> Matrix4 {
+    position_matrix := make_translation_matrix4(-editor.camera_position);
+    pitch_matrix := make_x_rotation_matrix(Matrix4, -editor.camera_pitch);
+    yaw_matrix := make_y_rotation_matrix(Matrix4, -editor.camera_yaw);
 
     return multiply(EDITOR_FRUSTUM, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix)));
 }
 
 
-get_editor_camera_to_world_rotation_matrix :: (ed: *Editor) -> Matrix3 {
-    yaw_matrix := make_y_rotation_matrix(Matrix3, ed.camera_yaw);
-    pitch_matrix := make_x_rotation_matrix(Matrix3, ed.camera_pitch);
+get_editor_camera_to_world_rotation_matrix :: (using level: *Level) -> Matrix3 {
+    yaw_matrix := make_y_rotation_matrix(Matrix3, editor.camera_yaw);
+    pitch_matrix := make_x_rotation_matrix(Matrix3, editor.camera_pitch);
     return multiply(yaw_matrix, pitch_matrix);
 }
 
 
-editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Editor, mouse: Vector2, event: Input_Event) {
+editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector2, event: Input_Event) {
     using context.game_context;
 
-    camera_to_world := inverse(get_editor_camera_matrix(editor));
+    camera_to_world := inverse(get_editor_camera_matrix(level));
 
     if editor.mode == {
         case .IDLE;
@@ -213,7 +180,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
 
 
             if event.key == .MOUSE_LEFT_BUTTON && event.state == .DOWN {
-                success, selected, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
+                success, selected, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
                 
                 if success {
                     editor.selected = selected;
@@ -292,7 +259,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
 
 
             if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.state == .DOWN {
-                success, _, intersection := get_intersection_with_selectable_meshes(level, editor, mouse_start, mouse_end);
+                success, _, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
                 position: Vector3i;
                 if success {
                     // The 0.001 go-back is in case the intersection is on an integer boundary (like colliding with Blocks),
@@ -374,7 +341,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
                     }
                 }
             } else if event.key == #char "Z" && event.state == .UP {
-                position, size := get_editor_extrude_size(editor);
+                position, size := get_editor_extrude_size(level);
 
                 extrude_gridlike_entity :: (e: *$T/Entity) #expand {
                     if deletion {
@@ -468,7 +435,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, editor: *Edit
 }
 
 
-get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor, line_start: Vector3, line_end: Vector3) -> bool, Entity_Id, intersection: Vector3 { 
+get_intersection_with_selectable_meshes :: (using level: *Level, line_start: Vector3, line_end: Vector3) -> bool, Entity_Id, intersection: Vector3 { 
     line_direction := line_end - line_start;
     smallest_t := FLOAT32_INFINITY;
     selected_found := false;
@@ -525,7 +492,7 @@ get_intersection_with_selectable_meshes :: (using level: *Level, editor: *Editor
 }
 
 
-editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: float) {
+editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
     using context.game_context;
 
     if editor.mode == {
@@ -555,12 +522,12 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
             z := cast(int, keys_down[#char "W"]) - cast(int, keys_down[#char "S"]);
             dir := Vector3.{xx x, xx y, xx z};
 
-            camera_movement := get_editor_camera_to_world_rotation_matrix(editor) * dir * (dt * camera_speed);
+            camera_movement := get_editor_camera_to_world_rotation_matrix(level) * dir * (dt * camera_speed);
             editor.camera_position += camera_movement;
 
         case .EXTRUDE;
             using editor.extrude;
-            world_to_camera := get_editor_camera_matrix(editor);
+            world_to_camera := get_editor_camera_matrix(level);
             camera_to_world := inverse(world_to_camera);
             mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0}) - editor.camera_position;
 
@@ -579,8 +546,8 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
 
         case .DRAG;
             using editor.drag;
-            camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(editor);
-            camera_to_world := inverse(get_editor_camera_matrix(editor));
+            camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(level);
+            camera_to_world := inverse(get_editor_camera_matrix(level));
             initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
             mouse_position := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
             
@@ -635,7 +602,7 @@ editor_update :: (using level: *Level, editor: *Editor, mouse: Vector2, dt: floa
 }
 
 
-get_editor_extrude_size :: (editor: *Editor) -> position: Vector3i, size: Vector3i {
+get_editor_extrude_size :: (using level: *Level) -> position: Vector3i, size: Vector3i {
     assert(editor.mode == .EXTRUDE);
     using editor.extrude;
 

@@ -496,7 +496,7 @@ main :: () {
         },
         keys_down = windows.keys_down,
         gameplay_arena_memory  = VirtualAlloc(null, GAMEPLAY_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
-        // editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
+        editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE,     MEM_COMMIT, PAGE_READWRITE),
         permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
     };

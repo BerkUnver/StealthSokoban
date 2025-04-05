@@ -5,65 +5,98 @@ Level :: struct {
 
     // @TODO: This should be a hash table... probably.
     entities: [..] *Entity; @NoSerialize
+    unused_eids: [..] Entity_Id; @NoSerialize
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
 
-    
-    level_position: Vector3i; @NoSerialize
-    level_size: Vector3i; @NoSerialize
+    using gameplay: struct {
+        level_position: Vector3i;
+        level_size: Vector3i;
 
-    mutual_annihilations: [..] Mutual_Annihilation; @NoSerialize
-    unused_eids: [..] Entity_Id; @NoSerialize
+        mutual_annihilations: [..] Mutual_Annihilation;
 
-    flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; @NoSerialize
-    
-    camera_mode: Camera_Mode; @NoSerialize
+        flags: enum_flags {PULLING; DEBUG_MOVEMENT;};
+        
+        camera_mode: Camera_Mode;
 
-    // These members are only used by the NEAR and FAR camera states.
-    // Maybe they should be in the Player struct?
-    
-    camera_focus_x: s32; @NoSerialize
-    camera_focus_z: s32; @NoSerialize
-    camera_focus_old_x: float; @NoSerialize
-    camera_focus_old_z: float; @NoSerialize
-    camera_focus_x_interp := 1.0; @NoSerialize
-    camera_focus_z_interp := 1.0; @NoSerialize
+        // These members are only used by the NEAR and FAR camera states.
+        // Maybe they should be in the Player struct?
+        
+        camera_focus_x: s32;
+        camera_focus_z: s32;
+        camera_focus_old_x: float;
+        camera_focus_old_z: float;
+        camera_focus_x_interp := 1.0;
+        camera_focus_z_interp := 1.0;
 
-    camera_landing_interp: float; @NoSerialize
+        camera_landing_interp: float;
 
-    camera_pitch_ticks: s8 = 1; @NoSerialize
-    camera_pitch_interp := 1.0; @NoSerialize
-    camera_pitch_old: float64; @NoSerialize
+        camera_pitch_ticks: s8 = 1;
+        camera_pitch_interp := 1.0;
+        camera_pitch_old: float64;
 
-    camera_yaw_target: float64; @NoSerialize
-    camera_yaw_old: float64; @NoSerialize
-    camera_yaw_interp := 1.0; @NoSerialize
-    
-    enemy_timer: float; @NoSerialize
-    dt_modifier := 1.0; @NoSerialize
-    
-    doors: [] Entity_Id; @NoSerialize // Only Door entities should be put in here.
-    collision: [] Entity_Id; @NoSerialize
-    desired_collision: [] Entity_Id; @NoSerialize
-    viewed: [] View_State; @NoSerialize
+        camera_yaw_target: float64;
+        camera_yaw_old: float64;
+        camera_yaw_interp := 1.0;
+        
+        enemy_timer: float;
+        dt_modifier := 1.0;
+        
+        doors: [] Entity_Id; // Only Door entities should be put in here.
+        collision: [] Entity_Id;
+        desired_collision: [] Entity_Id;
+        viewed: [] View_State;
 
-    
-    // These are stored SOA because we don't want to touch these at the same time.
-    // @TODO 3d arrays are stored x-major, then z, then y.
-    // This makes sense from the perspective of wanting to be
-    // able to type levels directly into code for this initial
-    // development period, but may make less sense later.
-    // Consider coming back to this.
+        
+        // These are stored SOA because we don't want to touch these at the same time.
+        // @TODO 3d arrays are stored x-major, then z, then y.
+        // This makes sense from the perspective of wanting to be
+        // able to type levels directly into code for this initial
+        // development period, but may make less sense later.
+        // Consider coming back to this.
 
-    view_texture: View_Texture; @NoSerialize
-    
+        view_texture: View_Texture;
+        
 
-    // @Temporary This is very basic, just to get sound to work for now.
-    playing_sound_count: int; @NoSerialize
-    playing_sounds: [1024] Playing_Sound; @NoSerialize
+        // @Temporary This is very basic, just to get sound to work for now.
+        playing_sound_count: int;
+        playing_sounds: [1024] Playing_Sound;
+    } @NoSerialize
+
+    editor: struct {
+        mode: Editor_Mode;
+
+        union {
+            camera: struct {
+                rotating_previous_mouse_position: Vector2;
+            }
+
+            extrude: struct {
+                selected: Entity_Id;
+                start_position: Vector3i;
+                start_intersection: Vector3;
+                end_intersection: Vector3;
+                plane_normal: Vector3i;
+                deletion: bool;
+            }
+
+            drag: struct {
+                mouse_start: Vector2;
+                selectable_start: Vector3i;
+                index: u8;
+            }
+        }
+        
+        selected: Entity_Id;
+        selected_timer: float;
+        
+        camera_position := Vector3.{0, 8, -4};
+        camera_pitch: float;
+        camera_yaw: float;
+    } @NoSerialize
 }
 
 
@@ -584,10 +617,6 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
 }
 
 
-load_level_part_1_new :: (using level: *Level, arena: *Memory_Arena) {
-    level.* = .{};
-}
-
 
 load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
     using context.game_context;
@@ -695,17 +724,21 @@ load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
 load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool {
     using context.game_context;
     
-    level_file_mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, level_file_mark);
+    scope_mark(*frame_arena);
 
-    success, level_text := read_file(level_name, *frame_arena);
+    success, data := read_file(level_name, *frame_arena);
     if !success {
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
         return false;
-    }
+    } 
     
+    return load_level_part_1_deserialize_mem(data, level, arena);
+}
+
+
+load_level_part_1_deserialize_mem :: (data: string, using level: *Level, arena: *Memory_Arena) -> bool {
     level_arena_mark := get_mark(arena);
-    err := deserialize(level_text, level, arena);
+    err := deserialize(data, level, arena);
     if !err.ok {
         log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
         restore_mark(arena, level_arena_mark);
@@ -757,6 +790,25 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
 
             for :iterate_entities types {
                 entities[it.eid] = it;
+            }
+
+            editor.camera_yaw = 0;
+            editor.camera_pitch = -PI / 3;
+
+            if _Block.count != 0 {
+                // :LevelSizeInEditor
+                // It makes me slightly uncomfortable at how this code overlaps with the 
+                // gameplay code but we don't have access to the level size in the editor.
+
+                position, size := get_block_extents(_Block);
+                level_center := to_vector3(position) + to_vector3(size) / 2;
+                level_radius := cast(float, max(size.x, max(size.y, size.z)));
+
+                camera_distance := level_radius * 2;
+                camera_y := sin(PI / 3) * camera_distance;
+                camera_z := cos(PI / 3) * camera_distance;
+
+                editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
             }
             return true;
 
@@ -1150,7 +1202,7 @@ use_desired_positions :: (using level: *Level) -> bool {
 }
 
 
-gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event: Input_Event) { 
+gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
 
     if event.key == #char " " {
@@ -1395,20 +1447,6 @@ gameplay_handle_input :: (using level: *Level, level_arena: *Memory_Arena, event
             set_state(player, .FALLING);
         }
     }
-    
-    // @TODO: Add a fade effect when you exit the level.
-    /*
-        for * _Exit {
-            if player.position == it.position {
-                free_level(level, level_arena);
-                assert(load_level_part_1_deserialize(LEVELS[0], level, level_arena));
-                load_level_part_2_init_unserialized_fields(LEVELS[0], level, level_arena);
-                load_level_part_3_for_game(level, level_arena);
-                break;
-            }
-        }
-    }
-    */
 }
 
 
