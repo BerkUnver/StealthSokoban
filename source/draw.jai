@@ -1,5 +1,5 @@
 Mesh :: struct {
-    vertex_positions: [] Vector3; // We store this information on the CPU so we can raycast against it.
+    vertex_positions: [] Vector3; // :CpuVertices
     vao: GLuint;
     vbo: GLuint;
     

@@ -64,6 +64,11 @@ Level :: struct {
         // @Temporary This is very basic, just to get sound to work for now.
         playing_sound_count: int;
         playing_sounds: [1024] Playing_Sound;
+            
+        // :Checkpoint
+        current_data: [] u8;
+        checkpoint: Entity_Id;
+        checkpoint_data: [] u8;
     } @NoSerialize
 
     editor: struct {
@@ -154,6 +159,14 @@ Player :: struct {
     using #as e: Entity;
     using playerlike: Playerlike; @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
+}
+
+
+Checkpoint :: struct {
+    using #as e: Entity;
+    
+    ACTIVE_COLOR :: Vector4.{1, 1, 1, 1};
+    COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
 }
 
 
@@ -617,111 +630,7 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
 }
 
 
-
-load_level_part_1_example :: (using level: *Level, arena: *Memory_Arena) {
-    using context.game_context;
-
-    // @Speed maybe we can just set what we need to be reset in case
-    // this is a reused pointer from an old level. I am going to
-    // zero-init everything right now to prevent bugs.
-    level.* = .{};
-
-    T :: true;
-    F :: false;
-
-    _Entrance = alloc_array(arena, 1, Entrance);
-    _Entrance[0] = .{
-        position = .{-1, 0, -1},
-    };
-    
-    _Exit = alloc_array(arena, 1, Exit);
-    _Exit[0] = .{
-        position = .{2, 0, -1},
-    };
-    
-    _Enemy_Spawner = alloc_array(arena, 1, Enemy_Spawner);
-    _Enemy_Spawner[0] = .{
-        position = .{2, 0, 2},
-        facing = .X_NEGATIVE,
-    };
-
-
-    Temporary_Block :: struct {
-        position: Vector3i;
-        size: Vector3i;
-        filled: [] bool;
-        color: Vector4;
-        moveable: bool;
-    }
-
-    temp_blocks := Temporary_Block.[
-        .{
-            position = .{-3, -1, -2},
-            size = .{6, 1, 8},
-            filled = .[
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-                T, T, T, T, T, T,
-            ],
-            color = .{163.0/255.0, 176.0/255.0, 183.0/255.0, 1},
-            moveable = false,
-        },
-        .{
-            position = .{-3, 0, -2},
-            size = .{6, 1, 2},
-            filled = .[
-                F, F, F, F, T, T,
-                T, T, F, T, T, F, 
-            ],
-            color = .{204.0/255.0, 206.0/255.0, 207.0/255.0, 1},
-            // .{1, 143.0/255.0, 0, 1} Orange color that I liked
-            moveable = true,
-        },
-        .{
-            position = .{-1, 0, 4},
-            size = .{1, 3, 1},
-            filled = .[
-                T,
-                T,
-                T,
-            ],
-            color = .{0, 0, 1, 1},
-            moveable = true,
-        }
-    ];
-
-    _Block = alloc_array(arena, temp_blocks.count, Block);
-    for * temp_blocks {
-        filled := alloc_view(arena, it.filled.count, bool);
-        memcpy(filled.data, it.filled.data, size_of(type_of(it.filled.data.*)) * it.filled.count);
-
-        _Block[it_index] = .{
-            position = it.position,
-            size = it.size,
-            filled = filled,
-            color = it.color,
-            moveable = it.moveable,
-        };
-    }
-
-    _Enemy = alloc_array(arena, 2, Enemy);
-    assert(_Enemy.count >= 2);
-    _Enemy[0] = .{
-        position = .{0, 0, 2},
-    };
-    _Enemy[1] = .{
-        position = .{-1, 0, 2},
-    };
-
-}
-
-
-load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool {
+load_level_part_1_deserialize :: (level_name: string, arena: *Memory_Arena) -> *Level {
     using context.game_context;
     
     scope_mark(*frame_arena);
@@ -729,23 +638,27 @@ load_level_part_1_deserialize :: (level_name: string, using level: *Level, arena
     success, data := read_file(level_name, *frame_arena);
     if !success {
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
-        return false;
+        return null;
     } 
     
-    return load_level_part_1_deserialize_mem(data, level, arena);
+    return load_level_part_1_deserialize_mem(data, arena);
 }
 
 
-load_level_part_1_deserialize_mem :: (data: string, using level: *Level, arena: *Memory_Arena) -> bool {
-    level_arena_mark := get_mark(arena);
+load_level_part_1_deserialize_mem :: (data: string, arena: *Memory_Arena) -> *Level {
+    assert(arena.current == 0);
+
+    mark := get_mark(arena);
+
+    level := alloc(arena, Level); 
     err := deserialize(data, level, arena);
     if !err.ok {
         log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
-        restore_mark(arena, level_arena_mark);
-        return false;
+        restore_mark(arena, mark);
+        return null;
     }
 
-    return true;
+    return level;
 }
 
 
@@ -910,6 +823,11 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             set_state(player, .SPAWNING);
             camera_focus_x = player.position.x;
             camera_focus_z = player.position.z;
+            
+            // :Checkpoint
+            current_data = .{arena.current, xx level};
+            checkpoint_data = alloc_view(arena, current_data.count, u8, zero_init = false);
+            memcpy(checkpoint_data.data, current_data.data, current_data.count);
 
             return true;
     }
@@ -1204,6 +1122,33 @@ use_desired_positions :: (using level: *Level) -> bool {
 
 gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
+
+    if event.key == #char "R" && event.state == .DOWN {
+        // :Checkpoint
+        // This is how checkpoints work right now. It is very simple, but I'm not
+        // sure how "scalable" it is. Because we store the entire level in a 
+        // single arena, and the level takes up a fixed amount of memory when we
+        // load it and never any more, it means that we can allocate another segment
+        // of equal length in the same arena, and memcpy the level segment into
+        // this segment whenever we want to make a checkpoint.
+
+        // When we want to revert back to a checkpoint, we just memcpy the checkpoint
+        // segment back into the level segment (We can't just swap the one we're
+        // using because all the pointers in the checkpoint segment refer to
+        // addresses in the level segment.
+
+        // This is very simple, but it has a couple caveats. I don't think the
+        // memory usage is _that_ bad (@Investigate), but there are some things
+        // that we _know_ are immutable (such as the Block filled member) that don't
+        // need to be copied. The main offender here are the vertices of the Block
+        // meshes, :CpuVertices which we probably shouldn't be storing on the CPU
+        // anyway.
+
+        //          -berk, 2025 - 4 - 5.
+
+        memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count); 
+        return;
+    }
 
     if event.key == #char " " {
         if event.state == .DOWN flags |= .PULLING;

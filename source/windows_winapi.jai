@@ -3223,7 +3223,32 @@ WIN32_FIND_DATAW :: struct {
     cFileName:        [MAX_PATH] u16;
 
     cAlternateFileName: [14] u16;
+    
+    // @Added THESE ARE MISSING FROM THE MODULES VERSION!
+    // I wouldn't put it past Microsoft to try to write to these.
+
+    dwFileType: u32; // Obsolete. Do not use.
+    dwCreatorType: u32; // Obsolete. Do not use
+    wFinderFlags: u16; // Obsolete. Do not use
 }
+
+
+WIN32_FIND_DATAA :: struct { // @Added
+    dwFileAttributes: u32;
+    ftCreationTime: FILETIME;
+    ftLastAccessTime: FILETIME;
+    ftLastWriteTime: FILETIME;
+    nFileSizeHigh: DWORD;
+    nFileSizeLow: DWORD;
+    dwReserved0: DWORD;
+    dwReserved1: DWORD;
+    cFileName: [MAX_PATH] u8;
+    cAlternateFileName: [14] u8;
+    dwFileType: u32; // Obsolete. Do not use.
+    dwCreatorType: u32; // Obsolete. Do not use
+    wFinderFlags: u16; // Obsolete. Do not use
+}
+
 
 FILE_GENERIC_ALL     :: 0x10000000;
 FILE_GENERIC_READ    :: 0x80000000;
@@ -3294,7 +3319,7 @@ DeleteFileW    :: (filename: *u16) -> BOOL #foreign kernel32;
 // FileEncryptionStatus
 // FileIOCompletionRoutine
 FindClose      :: (file: HANDLE) -> BOOL #foreign kernel32;
-FindFirstFileA :: (lpFileName: *u8, lpFindFileData: *void) -> HANDLE #foreign kernel32;
+FindFirstFileA :: (lpFileName: *u8, lpFindFileData: *WIN32_FIND_DATAA) -> HANDLE #foreign kernel32; // @Added lpFindFileData was a void pointer
 FindFirstFileW :: (lpFileName: *u16, lpFindFileData: *WIN32_FIND_DATAW) -> HANDLE #foreign kernel32;
 FindFirstFileExA :: (lpFileName: *u8, fInfoLevelId: FINDEX_INFO_LEVELS, lpFindFileData: *void, fSearchOp: FINDEX_SEARCH_OPS, lpSearchFilter: *void, dwAdditionalFlags: DWORD) -> HANDLE #foreign kernel32;
 FindFirstFileExW :: (lpFileName: *u16, fInfoLevelId: FINDEX_INFO_LEVELS, lpFindFileData: *void, fSearchOp: FINDEX_SEARCH_OPS, lpSearchFilter: *void, dwAdditionalFlags: DWORD) -> HANDLE #foreign kernel32;
@@ -3303,7 +3328,7 @@ FindFirstFileExW :: (lpFileName: *u16, fInfoLevelId: FINDEX_INFO_LEVELS, lpFindF
 // FindFirstFileTransacted
 // FindFirstStreamTransactedW
 // FindFirstStreamW
-FindNextFileA  :: (hFile: HANDLE,   lpFindFileData: *void) -> BOOL #foreign kernel32;
+FindNextFileA  :: (hFile: HANDLE,   lpFindFileData: *WIN32_FIND_DATAA) -> BOOL #foreign kernel32; // @Added lpFindFileData was a void pointer
 FindNextFileW  :: (hFile: HANDLE,   lpFindFileData: *WIN32_FIND_DATAW) -> BOOL #foreign kernel32;
 // FindNextFileNameW
 // FindNextStreamW
@@ -4897,6 +4922,7 @@ FILE_MAP_COPY  :: 1;
 
 ERROR_FILE_NOT_FOUND :: 0x002;
 ERROR_ACCESS_DENIED  :: 0x005;
+ERROR_NO_MORE_FILES  :: 0x012; // @Added;
 ERROR_SHARING_VIOLATION :: 0x020; // @Added;
 ERROR_BROKEN_PIPE    :: 0x06D;
 ERROR_ALREADY_EXISTS :: 0x0B7;

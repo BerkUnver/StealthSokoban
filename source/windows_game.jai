@@ -47,6 +47,47 @@ create_directory :: (name: string) -> bool {
 }
 
 
+iterate_directory :: (dir: string, data: *void, func: (*void, string)) -> bool {
+    buf: [1024] u8 = ---;
+    sb := make_string_builder(buf);
+    print(*sb, "%/*", dir);
+    str := get_string(*sb);
+
+    path := jai_string_to_path(str);
+
+    find_data: WIN32_FIND_DATAA;
+    find_handle := FindFirstFileA(path.data, *find_data);
+
+    if find_handle == INVALID_HANDLE_VALUE return false;
+
+    while true {
+        if !jai_string_equals_c_string(".", find_data.cFileName.data)
+        && !jai_string_equals_c_string("..", find_data.cFileName.data) 
+        // We're not doing recursive iteration for now.
+        && !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { 
+            buf: [1024] u8 = ---;
+            sb := make_string_builder(buf);
+            print(*sb, "%/%", dir, find_data.cFileName.data);
+            str := get_string(*sb);
+
+            func(data, str);
+        }
+        
+        if !FindNextFileA(find_handle, *find_data) break;
+    }
+
+    error := GetLastError();
+    if error != ERROR_NO_MORE_FILES {
+        log(.ERROR, "Failed to interate through all the files in the directory \"%\"\n", dir);
+        FindClose(find_handle);
+        return false;
+    }
+
+    FindClose(find_handle);
+    return true;
+}
+
+
 get_date :: () -> Date {
     using date: SYSTEMTIME;
     GetSystemTime(*date);

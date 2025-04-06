@@ -443,6 +443,14 @@ get_intersection_with_selectable_meshes :: (using level: *Level, line_start: Vec
     selected_intersection: Vector3;
     
     for :iterate_entities e: types {
+        // :CpuPositions
+        // The way we currently do mouse picking of onscreen meshes is by
+        // doing a raycast from the mouse and checking it against each tri
+        // of each entity's mesh on the CPU. What we should probably actually do
+        // is once we have a real renderer, we should do a separate picking render
+        // pass, and therefore we don't have to store our mesh vertex positions
+        // on the CPU.
+
         mesh := entity_mesh(e);
         matrix := inverse(entity_mesh_to_world_matrix(level, e));
 

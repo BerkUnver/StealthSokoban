@@ -75,6 +75,7 @@ Game_Context :: struct {
         enemy_annihilation_mesh: Mesh;
         enemy_spawner_mesh: Mesh;
         enemy_despawner_mesh: Mesh;
+        checkpoint_mesh: Mesh;
         player_mesh: Mesh;
         player_bitmap: GLuint;
         entrance_mesh: Mesh;
@@ -92,10 +93,10 @@ Game_Memory :: struct {
 Game :: struct { 
     mode: Game_Mode;
 
-    gameplay_level: Level;
-    editor_level: Level;
-
+    gameplay_level: *Level; // Stored in the arena.
     gameplay_arena: Memory_Arena;
+
+    editor_level: *Level;
     editor_arena: Memory_Arena;
 
     time_elapsed: float64;
@@ -213,6 +214,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        checkpoint_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
         player_bitmap = load_bitmap("player.tga");
 
@@ -229,11 +231,13 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         LEVEL :: "levels/overworld.level";
 
-        assert(load_level_part_1_deserialize(LEVEL, *editor_level, *editor_arena));
-        assert(load_level_part_2_init_unserialized_fields(LEVEL, *editor_level, .EDITOR, *editor_arena));
-
-        assert(load_level_part_1_deserialize(LEVEL, *gameplay_level, *gameplay_arena));
-        assert(load_level_part_2_init_unserialized_fields(LEVEL, *gameplay_level, .GAMEPLAY, *gameplay_arena));
+        editor_level = load_level_part_1_deserialize(LEVEL, *editor_arena);
+        assert(editor_level != null);
+        assert(load_level_part_2_init_unserialized_fields(LEVEL, editor_level, .EDITOR, *editor_arena));
+        
+        gameplay_level = load_level_part_1_deserialize(LEVEL, *gameplay_arena);
+        assert(gameplay_level != null);
+        assert(load_level_part_2_init_unserialized_fields(LEVEL, gameplay_level, .GAMEPLAY, *gameplay_arena));
         
         mode = .EDITOR;    
     }
@@ -335,7 +339,7 @@ game_update : Game_Update : (
 
             if #complete mode == {
                 case .GAMEPLAY;
-                    gameplay_handle_input(*gameplay_level, it);
+                    gameplay_handle_input(gameplay_level, it);
 
                 case .EDITOR;
                     using editor_level;
@@ -345,8 +349,10 @@ game_update : Game_Update : (
                      && (imgui_state.active_widget_exists || inside(IMGUI_POSITION, IMGUI_SIZE, imgui_state.mouse));
                     
                     // Is it weird that I manually make these higher-priority than the imgui?
+                    // I do this so if you try to save while an imgui widget is active, you can still save and don't
+                    // lose progress if you then try to switch to another level.
                     if it.key == #char "S" && keys_down[Key.CTRL] && it.state == .DOWN {
-                        serialize_level(*editor_level);
+                        serialize_level(editor_level);
                         log(.OK, "Serialized level.\n");
                         continue;
                     }
@@ -358,6 +364,64 @@ game_update : Game_Update : (
                         continue;
                     }
 
+
+                    if it.key == #char "M" && it.state == .DOWN && keys_down[Key.CTRL] && keys_down[Key.SHIFT] {
+                        serialize_level(editor_level);
+                        log(.OK, "Serialized level before munge.\n");
+
+                        Munge_Data :: struct {
+                            level_ptr: **Level;
+                            arena: *Memory_Arena;
+                        }
+
+                        munge_data := Munge_Data.{
+                            level_ptr = *editor_level,
+                            arena = *editor_arena
+                        };
+
+                        munge :: (data_: *void, level_name: string) {
+                            // If there is some kind of breaking change that you need to make between versions of the
+                            // serialization system, do whatever you need to do here.
+                            
+                            print("Encountered level \"%\"\n", level_name);
+
+                            /*
+                            using data := cast(*Munge_Data, data_);
+                            free_level(level_ptr.*, arena);
+                            level_ptr.* = load_level_part_1_deserialize(level_name, arena);
+                            level := level_ptr.*;
+                            if !level return; // We already do logging in the deserialization functions.
+
+                            using level;
+
+                            assert(load_level_part_2_init_unserialized_fields(level_name, level, .EDITOR, arena));
+
+                            if _Entrance.count != 1 {
+                                log(.ERROR, "There was more or less than one Entrance entity in the level \"%\"!\n", level_name);
+                                return;
+                            }
+
+                            if _Player.count != 0 {
+                                log(.ERROR, "There was at least one Player entity in the level \"%\"!\n, level_name)");
+                                return;
+                            }
+
+                            position := _Entrance[0].position;
+
+                            delete_entity(level, _Entrance[0].eid, arena);
+                            player := make_entity(level, Player, arena);
+                            player.position = position;
+
+                            serialize_level(level);
+                            */
+                        }
+
+                        assert(iterate_directory("levels", *munge_data, munge));
+                        return;
+                    }
+
+
+
                     if it.key == #char "T" && it.state == .DOWN {
                         test();
                         continue;
@@ -368,7 +432,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    editor_handle_input(*editor_level, *editor_arena, mouse, it);
+                    editor_handle_input(editor_level, *editor_arena, mouse, it);
             }
         }
         
@@ -383,27 +447,29 @@ game_update : Game_Update : (
 
         if #complete mode == {
             case .EDITOR;
-                editor_update(*editor_level, mouse, dt);
-                editor_draw(*editor_level);
+                editor_update(editor_level, mouse, dt);
+                editor_draw(editor_level);
 
                 scope_mark(*frame_arena);
 
                 if !editor_imgui_disabled {
-                    new_level_name := editor_draw_imgui(*editor_level);
+                    new_level_name := editor_draw_imgui(editor_level);
                     if new_level_name {
-                        free_level(*editor_level, *editor_arena);
+                        free_level(editor_level, *editor_arena);
                         success, data := read_file(new_level_name, *frame_arena);
                         if success {
-                            assert(load_level_part_1_deserialize_mem(data, *editor_level, *editor_arena));
+                            editor_level = load_level_part_1_deserialize_mem(data, *editor_arena);
+                            assert(editor_level != null);
                         } else {
-                            editor_level = .{};
+                            editor_level = alloc(*editor_arena, Level, zero_init = false);
+                            editor_level.* = .{};
                         }
-                        assert(load_level_part_2_init_unserialized_fields(new_level_name, *editor_level, .EDITOR, *editor_arena));
+                        assert(load_level_part_2_init_unserialized_fields(new_level_name, editor_level, .EDITOR, *editor_arena));
                     }
                 }
             case .GAMEPLAY;
-                gameplay_level_update(*gameplay_level, dt);
-                gameplay_draw(*gameplay_level);
+                gameplay_level_update(gameplay_level, dt);
+                gameplay_draw(gameplay_level);
         }
 
         if screenshot_requested {
@@ -426,7 +492,8 @@ game_update : Game_Update : (
 
                     name := get_string(*sb);
                     // It's very unlikely that we'll try to write two images within
-                    // the same millisecond but if so I'm okay with on
+                    // the same millisecond but if so I'm okay with one overwriting
+                    // the other.
                     assert(write_file(name, .{size, data}));
                 }
             }
@@ -569,6 +636,8 @@ editor_draw :: (using level: *Level) {
         }
     }
 
+    
+    draw_entities(_Checkpoint, *checkpoint_mesh);
     draw_entities(_Entrance, *entrance_mesh);
     draw_entities(_Exit, *exit_mesh);
     draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
@@ -762,6 +831,17 @@ gameplay_draw :: (using level: *Level) {
         set_uniform("model_to_world", matrix);
         set_uniform("color", color);
         bind_and_draw(*enemy_spawner_mesh);
+    }
+
+
+    for * _Checkpoint {
+        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+        if checkpoint != 0 && checkpoint == it.eid {
+            set_uniform("color", Checkpoint.ACTIVE_COLOR);
+        } else {
+            set_uniform("color", Checkpoint.COLOR);
+        }
+        bind_and_draw(*checkpoint_mesh);    
     }
 
 

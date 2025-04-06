@@ -393,6 +393,20 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                             array := cast(*Resizable_Array, arg.value_pointer);
                             print_array(sb, array.count, array.data, info.element_type);
                     }
+
+                case .POINTER;
+                    info := cast(*Type_Info_Pointer, arg.type);
+
+                    // I want to allow us to print c strings.
+                    // Maybe this is a mistake.
+                    assert(info.pointer_to == type_info(u8));
+                    c_string := cast(**u8, arg.value_pointer).*;
+                    while c_string.* {
+                        assert(index < buf.count);
+                        buf[index] = c_string.*;
+                        index += 1;
+                        c_string += 1;
+                    }
                 case; assert(false);
             }
             arg_index += 1;
