@@ -238,7 +238,7 @@ types
 		filled 21[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
 		;
 	]
-	_Entrance 1[
+	_Player 1[
 		e
 			position
 				x 2

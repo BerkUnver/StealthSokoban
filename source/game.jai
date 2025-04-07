@@ -78,7 +78,6 @@ Game_Context :: struct {
         checkpoint_mesh: Mesh;
         player_mesh: Mesh;
         player_bitmap: GLuint;
-        entrance_mesh: Mesh;
         exit_mesh: Mesh;
     };
 }
@@ -212,7 +211,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         checkpoint_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
@@ -231,14 +229,9 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         LEVEL :: "levels/overworld.level";
 
-        editor_level = load_level_part_1_deserialize(LEVEL, *editor_arena);
-        assert(editor_level != null);
-        assert(load_level_part_2_init_unserialized_fields(LEVEL, editor_level, .EDITOR, *editor_arena));
-        
-        gameplay_level = load_level_part_1_deserialize(LEVEL, *gameplay_arena);
-        assert(gameplay_level != null);
-        assert(load_level_part_2_init_unserialized_fields(LEVEL, gameplay_level, .GAMEPLAY, *gameplay_arena));
-        
+        editor_level = load_overworld(*editor_arena, .EDITOR);
+        gameplay_level = load_overworld(*gameplay_arena, .GAMEPLAY);
+
         mode = .EDITOR;    
     }
 }
@@ -339,6 +332,26 @@ game_update : Game_Update : (
 
             if #complete mode == {
                 case .GAMEPLAY;
+                    using gameplay_level;
+                    
+                    // Reload the current level from disc hotkey. All progress is lost.
+                    if it.key == #char "R" && it.state == .DOWN {
+                        scope_mark(*frame_arena);
+
+                        level_name := string.{name.count, alloc(*frame_arena, name.count, zero_init = true)};
+                        // We need the name to persist freeing the old level for when we load the new level.
+                        memcpy(level_name.data, name.data, level_name.count);
+                        free_level(gameplay_level, *gameplay_arena);
+
+                        gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
+                        if gameplay_level {
+                            assert(load_level_part_2_init_unserialized_fields(level_name, gameplay_level, .GAMEPLAY, *gameplay_arena));
+                        } else {
+                            gameplay_level = load_overworld(*gameplay_arena, .GAMEPLAY);
+                        }
+                        continue;
+                    }
+
                     gameplay_handle_input(gameplay_level, it);
 
                 case .EDITOR;
@@ -380,40 +393,10 @@ game_update : Game_Update : (
                         };
 
                         munge :: (data_: *void, level_name: string) {
+                            print("Munging level \"%\"\n", level_name);
                             // If there is some kind of breaking change that you need to make between versions of the
                             // serialization system, do whatever you need to do here.
-                            
-                            print("Encountered level \"%\"\n", level_name);
 
-                            /*
-                            using data := cast(*Munge_Data, data_);
-                            free_level(level_ptr.*, arena);
-                            level_ptr.* = load_level_part_1_deserialize(level_name, arena);
-                            level := level_ptr.*;
-                            if !level return; // We already do logging in the deserialization functions.
-
-                            using level;
-
-                            assert(load_level_part_2_init_unserialized_fields(level_name, level, .EDITOR, arena));
-
-                            if _Entrance.count != 1 {
-                                log(.ERROR, "There was more or less than one Entrance entity in the level \"%\"!\n", level_name);
-                                return;
-                            }
-
-                            if _Player.count != 0 {
-                                log(.ERROR, "There was at least one Player entity in the level \"%\"!\n, level_name)");
-                                return;
-                            }
-
-                            position := _Entrance[0].position;
-
-                            delete_entity(level, _Entrance[0].eid, arena);
-                            player := make_entity(level, Player, arena);
-                            player.position = position;
-
-                            serialize_level(level);
-                            */
                         }
 
                         assert(iterate_directory("levels", *munge_data, munge));
@@ -638,7 +621,6 @@ editor_draw :: (using level: *Level) {
 
     
     draw_entities(_Checkpoint, *checkpoint_mesh);
-    draw_entities(_Entrance, *entrance_mesh);
     draw_entities(_Exit, *exit_mesh);
     draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
@@ -854,7 +836,6 @@ gameplay_draw :: (using level: *Level) {
         }
     }
 
-    draw_entities(_Entrance, *entrance_mesh);
     draw_entities(_Exit, *exit_mesh);
     draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
@@ -945,10 +926,6 @@ gameplay_draw :: (using level: *Level) {
 
     glUseProgram(occlusion_shader);
     
-    // Do we want this? Also, it needs to be depth-sorted with the player.
-    // set_uniform("projection", translate(world_to_camera, to_vector3(entrance.position)));
-    // set_uniform("color", Vector4.{ENTRANCE_COLOR.x, ENTRANCE_COLOR.y, ENTRANCE_COLOR.z, 0.5});
-    // bind_and_draw(*entrance_mesh);
 
     set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
     for * _Player {

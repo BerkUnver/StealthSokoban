@@ -77,7 +77,7 @@ types
 			;
 		;
 	]
-	_Entrance 1[
+	_Player 1[
 		e
 			position
 				x -1

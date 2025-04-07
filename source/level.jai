@@ -170,12 +170,6 @@ Checkpoint :: struct {
 }
 
 
-Entrance :: struct { 
-    using #as e: Entity;
-    COLOR :: Vector4.{75.0/255.0, 228.0/255.0, 1, 1};
-}
-
-
 Exit :: struct {
     using #as e: Entity;
     COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
@@ -808,18 +802,12 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
                 collision[index] = it.eid;
             }
 
-            if _Player.count != 0 {
-                log(.ERROR, "There were player entities in the serialized level \"%\".\n", level.name);
+            if _Player.count != 1 {
+                log(.ERROR, "There was no player entity in the serialized level \"%\".\n", level.name);
                 return false;
             }
 
-            if _Entrance.count != 1 {
-                log(.ERROR, "There were more or less than 1 level entrances in the serialized level \"%\".\n", level.name);
-                return false;
-            }
-
-            player := make_entity(level, Player, arena);
-            player.position = _Entrance[0].position;
+            player := *_Player[0];
             set_state(player, .SPAWNING);
             camera_focus_x = player.position.x;
             camera_focus_z = player.position.z;
@@ -1120,10 +1108,19 @@ use_desired_positions :: (using level: *Level) -> bool {
 }
 
 
+load_overworld :: (arena: *Memory_Arena, mode: Game_Mode) -> *Level {
+    LEVEL :: "levels/overworld.level";
+    level := load_level_part_1_deserialize(LEVEL, arena);
+    assert(level != null);
+    assert(load_level_part_2_init_unserialized_fields(LEVEL, level, mode, arena));
+    return level;
+}
+
+
 gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
 
-    if event.key == #char "R" && event.state == .DOWN {
+    if event.key == #char "C" && event.state == .DOWN {
         // :Checkpoint
         // This is how checkpoints work right now. It is very simple, but I'm not
         // sure how "scalable" it is. Because we store the entire level in a 
@@ -1895,9 +1892,7 @@ gameplay_level_update :: (using level: *Level, dt: float) {
             DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
             player.dead.interp += dt / DEAD_TIME;
             if player.dead.interp >= 1 {    
-                entrance := *_Entrance[0];
-                player.position = entrance.position;
-                set_state(player, .SPAWNING);
+                memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count);
             }
     }
 

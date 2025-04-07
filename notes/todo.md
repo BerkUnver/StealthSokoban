@@ -11,6 +11,7 @@
 - Get the player to die when a mutual annihilation occurs on the player position
 - Nice effect for mutual annihilations
 - Level entrance and exit effects
+- Fix mutual annihilation effect working when an enemy walks into a cell the player is already on
 
 
 # Editor

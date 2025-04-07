@@ -93,7 +93,7 @@ types
 		moveable 1
 		;
 	]
-	_Entrance 1[
+	_Player 1[
 		e
 			position
 				x -1
