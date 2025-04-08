@@ -270,6 +270,7 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
             return OK;
 
         case .FLOAT;
+            float_info := cast(*Type_Info_Float, info);
             token := get_token(lexer);
             return_if_invalid(token);
 
@@ -281,12 +282,8 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
             } else {
                 return .{false, "Expected a numeric token for a numeric type.", token.loc};
             }
-
-            if info.runtime_size == 4 {
-                cast(*float32, ptr).* = xx value;
-            } else {
-                cast(*float64, ptr).* = value;
-            }
+            
+            assign_float(float_info, ptr, value);
 
             return OK;
 
@@ -465,71 +462,27 @@ get_token :: (using lexer: *Lexer) -> Token {
         }
     }
     
-    if str[index] == #char "-" {
-        minus_index := index;
-        index += 1;
-        token := get_token(lexer);
-        if token.type == {
-            case .EOF;
-                return err("Expected a number after the minus sign", .{minus_index, 1});
-            case .ERROR;
-                return token;
-            case .INT; 
-                return .{
-                    type=.INT, 
-                    int_value = -token.int_value, 
-                    loc = .{token.loc.start - 1, token.loc.count + 1}
-                };
-            case .FLOAT;
-                return .{
-                    type=.FLOAT,
-                    float_value = -token.float_value,
-                    loc = .{token.loc.start - 1, token.loc.count + 1}
-                };
-            case;
-                return err("Expected a number after a minus sign.", token.loc);
-        }
-    }
-
-    if #char "0" <= str[index] && str[index] <= #char "9" {
+    if str[index] == #char "-" || (#char "0" <= str[index] && str[index] <= #char "9") {
         start_index := index;
-        value: s64 = str[index] - #char "0";
-        index += 1;
-        while true {
-            if index >= str.count return .{type = .INT, int_value = value, loc = .{start_index, str.count - start_index}};
-            if #char "0" <= str[index] && str[index] <= #char "9" {
-                value *= 10;
-                value += str[index] - #char "0";
-                index += 1;
-            } else if str[index] == #char "." {
-                index += 1;
-                fractional_value: float64 = 0;
-                current_place := 0.1;
-                while true {
-                    if index >= str.count {
-                        return .{
-                            type = .FLOAT,
-                            float_value = cast(float64, value) + fractional_value,
-                            loc = .{start_index, str.count - start_index},
-                        };
-                    }
-
-                    if str[index] < #char "0" || #char "9" < str[index] {
-                        return .{
-                            type = .FLOAT,
-                            float_value = cast(float64, value) + fractional_value,
-                            loc = .{start_index, index - start_index}};
-                    }
-
-                    fractional_value += current_place * cast(float64, str[index] - #char "0");
-                    index += 1;
-                    current_place /= 10;
-                }
-            } else {
-                return .{type=.INT, int_value=value, loc=.{start_index, index - start_index}};
-            }
+        success, end_index, is_float, int_value, float_value := parse_number(str, start_index);
+        index = end_index;
+        length := index - start_index;
+        if !success return err("Failed to parse the number here.", .{start_index, length});
+        
+        if is_float {
+            return .{
+                type=.FLOAT,
+                float_value = float_value,
+                loc = .{start_index, length}
+            };
+        } else {
+            return .{
+                type=.INT,
+                int_value = int_value,
+                loc = .{start_index, length}
+            };
         }
     }
-    
+
     return err("Illegal character.", .{index, 1});
 }

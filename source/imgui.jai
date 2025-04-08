@@ -864,6 +864,62 @@ string_entry :: (
 }
 
 
+number_entry :: (
+    position: Vector2,
+    size: Vector2,
+    val: *$T,
+    loc := #caller_location,
+    id: u64 = 0
+) -> entered: bool {
+    return number_entry(position, size, val, type_info(T), loc, id);
+}
+
+
+number_entry :: (
+    position: Vector2,
+    size: Vector2,
+    val: *void,
+    info: *Type_Info,
+    loc := #caller_location,
+    id: u64 = 0
+) -> entered: bool {
+    using context.game_context;
+    using context.game_context.imgui_state;
+    assert(info.type == .INTEGER || info.type == .FLOAT);
+
+    scope_widget(loc, id);
+
+    str: [STRING_ENTRY_MAX_COUNT] u8;
+    sb := make_string_builder(str);
+    print(*sb, "%", dynamic_any(info, val));
+    str_count := get_string(*sb).count;
+    
+    
+    entered := string_entry(position, size, *str, *str_count, loc, 0);
+    if !entered return false;
+
+    success, end_index, is_float, int_value, float_value := parse_number(.{str_count, str.data}, 0);
+    if !success return true;
+    if end_index != str_count return true;
+
+    if is_float {
+        if info.type == .FLOAT {
+            assign_float(xx info, val, float_value);
+        } else {
+            assign_int(xx info, val, xx float_value);
+        }
+    } else {
+        if info.type == .INTEGER {
+            assign_int(xx info, val, int_value);
+        } else {
+            assign_float(xx info, val, xx int_value);
+        }
+    }
+
+    return true;
+}
+
+
 
 imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) {
     imgui_for_value(val, type_info(T), position, field_size, loc, id);
@@ -892,33 +948,38 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                 if contains(it.notes, "NoEditor") continue; // @Speed!
 
                 if it.type.type == {
-                    case .INTEGER; #through;
-                    case .FLOAT; #through;
                     case .STRING; #through;
                     case .ARRAY;
                         // @TODO: Implement editors for these
                         continue;
                 }
                
-                label_x := position.x + margin;
-                label_y := y + field_size.y / 2 + font.ascender / 2;
 
-                value_x := imgui_draw_text(it.name, round(Vector2.{label_x, label_y}), font, HIGHLIGHT_COLOR);
-                value_y := y;
+                label_position := Vector2.{
+                    position.x + margin,
+                    y + field_size.y / 2 + font.ascender / 2
+                };
+
+                text_end := imgui_draw_text(it.name, round(label_position), font, HIGHLIGHT_COLOR);
+
+                value_position: Vector2;
+                if it.type.type == .STRUCT {
+                    value_position = Vector2.{
+                        position.x + indent,
+                        y + field_size.y
+                    };
+                } else {
+                    value_position = Vector2.{
+                        text_end + margin,
+                        y
+                    };
+                }
                 
-                value_position := Vector2.{value_x, value_y};
                 value_size := Vector2.{
-                    position.x + field_size.x - value_x,
+                    position.x + field_size.x - value_position.x,
                     field_size.y
                 };
 
-
-
-                if it.type.type == .STRUCT {
-                    value_position.y += field_size.y;
-                    value_position.x += indent;
-                    value_size.x -= indent;
-                }
 
                 if it.type == type_info(Vector4) && contains(it.notes, "Color") {
                     y = color_selector(val + it.offset_in_bytes, value_position, value_size, loc, xx it_index);
@@ -937,7 +998,9 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
             enum_selector(val, enum_info, position, field_size, loc, 0);
             return position.y + field_size.y;
         case .INTEGER; #through;
-        case .FLOAT; #through;
+        case .FLOAT;
+            number_entry(position, field_size, val, info, loc, 0);
+            return position.y + field_size.y;
         case .STRING; #through;
         case .ARRAY;
             // @TODO: Implement editors for these

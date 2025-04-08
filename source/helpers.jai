@@ -416,6 +416,17 @@ assign_int :: (info: *Type_Info_Integer, ptr: *void, value: s64) {
 }
 
 
+assign_float :: (info: *Type_Info_Float, ptr: *void, value: float64) {
+    if info.runtime_size == {
+        case 4; 
+            cast(*float32, ptr).* = xx value;
+        case 8;
+            cast(*float64, ptr).* = value;
+        case; assert(false);
+    }
+}
+
+
 local_to_global_direction :: (x: float, z: float, yaw: float64) -> Vector3i {
     rotated := rotate(Vector2.{x, z}, yaw);
     dir: Vector3i;
@@ -432,3 +443,76 @@ get :: (str: string, $T: Type) -> T, string {
     data := str.data;
     return cast(*T, data).*, advance(str, size_of(T));
 }
+
+
+parse_number :: (str: string, start_index: int) -> success: bool, end_index: int, is_float: bool, int_value: s64, float_value: float64 {
+    assert(start_index <= str.count);
+
+    if str.count == start_index {
+        return false, 0, false, 0, 0;
+    }
+
+    index := start_index;
+    negative := false;
+
+    if str[index] == #char "-" {
+        negative = true;
+        index += 1;
+    }
+
+    if str.count == index {
+        return false, index, false, 0, 0;
+    }
+
+    if str[index] < #char "0" && #char "9" < str[index] {
+        return false, index, false, 0, 0;
+    }
+
+
+    value: u64 = xx (str[index] - #char "0");
+    index += 1;
+
+    while true {
+        if index >= str.count {
+            result := cast(s64, value);
+            if negative result *= -1;
+            return success=true, end_index=index, is_float=false, int_value=result, float_value=0;
+        }
+
+        if #char "0" <= str[index] && str[index] <= #char "9" {
+            value *= 10;
+            value += str[index] - #char "0";
+            index += 1;
+            continue;
+        }
+
+        if str[index] == #char "." {
+            index += 1;
+            fractional_value: float64 = 0;
+            current_place := 0.1;
+            while true {
+                if index >= str.count || (str[index] < #char "0" || #char "9" < str[index]) {
+                    result := cast(float64, value);
+                    if negative result *= -1;
+                    result += fractional_value;
+                    return success=true, end_index=index, is_float=true, int_value=0, float_value=result;
+                }
+
+                fractional_value += current_place * cast(float64, str[index] - #char "0");
+                index += 1;
+                current_place /= 10;
+            }
+            assert(false); // We should never get here.
+            continue;
+        }
+
+        result := cast(s64, value);
+        if negative then result *= -1;
+        return success=true, end_index=index, is_float=false, int_value=result, float_value=0;
+    }
+    
+    assert(false); // Unreachable
+    return false, 0, false, 0, 0;
+}
+
+

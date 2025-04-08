@@ -546,6 +546,8 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
     }
 
     head.y += item_height;
+    head.y += item_height; // A little spacing
+    
 
     if editor.selected {
         // glEnable(GL_SCISSOR_TEST);

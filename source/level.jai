@@ -176,6 +176,18 @@ Exit :: struct {
 }
 
 
+Level_Entrance :: struct {
+    using #as e: Entity;
+    color: Vector4;
+}
+
+
+Level_Exit :: struct {
+    using #as e: Entity;
+    entrance: Entity_Id;
+}
+
+
 Enemy_State :: enum u8 {
     IDLE;
     FALLING;
