@@ -397,6 +397,14 @@ game_update : Game_Update : (
                             // If there is some kind of breaking change that you need to make between versions of the
                             // serialization system, do whatever you need to do here.
 
+                            using data := cast(*Munge_Data, data_);
+                            free_level(level_ptr.*, arena);
+                            level_ptr.* = load_level_part_1_deserialize(level_name, arena);
+                            level := level_ptr.*;
+                            assert(level != null);
+                            assert(load_level_part_2_init_unserialized_fields(level_name, level, .EDITOR, arena));
+
+                            serialize_level(level);
                         }
 
                         assert(iterate_directory("levels", *munge_data, munge));

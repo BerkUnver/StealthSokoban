@@ -42,9 +42,14 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
             } else {
                 print_string(sb, "0");
             }
+
         case .ENUM;
             args := Any.[ dynamic_any(cast(*Type_Info_Enum, info).internal_type, val) ];
             print(sb, "%", ..args);
+
+        case .VARIANT;
+            variant_info := cast(*Type_Info_Variant, info);
+            serialize_next(sb, variant_info.variant_of, val, null, indent);
 
         case .ARRAY;
             array_info := cast(*Type_Info_Array, info);
@@ -286,6 +291,10 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
             assign_float(float_info, ptr, value);
 
             return OK;
+
+        case .VARIANT;
+            variant_info := cast(*Type_Info_Variant, info);
+            return deserialize_next(lexer, variant_info.variant_of, ptr, arena);
 
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);

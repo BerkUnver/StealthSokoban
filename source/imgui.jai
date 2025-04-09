@@ -765,7 +765,7 @@ string_entry :: (
                         str_count.* = string_entry.str_count;
                         deactivate();
                         event_count = 0;
-                        entered = true;
+                        entered = it.key == .ENTER;
                         break;
                     }
                     
@@ -1022,6 +1022,9 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
         case .FLOAT;
             number_entry(position, field_size, val, info, read_only=read_only, loc=loc);
             return position.y + field_size.y;
+        case .VARIANT;
+            variant_info := cast(*Type_Info_Variant, info);
+            return imgui_for_value(val, variant_info.variant_of, position, field_size, read_only=read_only, loc=loc);
         case .STRING; #through;
         case .ARRAY;
             // @TODO: Implement editors for these
