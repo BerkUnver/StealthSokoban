@@ -772,8 +772,25 @@ string_entry :: (
                     // @TODO: Handle all non-alphabetic keys that are modified by the SHIFT key
                     if (#char " " <= it.key && it.key <= #char "~") && it.state != .UP && string_entry.str_count < string_entry.str.count {
                         key := it.key;
-                        if !keys_down[Key.SHIFT] && #char "A" <= key && key <= #char "Z" {
-                            key = #char "a" + key - #char "A";
+
+                        if keys_down[Key.SHIFT] {   
+                            // @TODO: Number keys
+                            if key == {
+                                case #char "["; key = #char "{";
+                                case #char "]"; key = #char "}";
+                                case #char ";"; key = #char ":";
+                                case #char "/"; key = #char "?";
+                                case #char "."; key = #char ">";
+                                case #char ","; key = #char "<";
+                                case #char "'"; key = #char "\"";
+                                case #char"\\"; key = #char "|";
+                            }
+                        } else {
+                            // The capital letter being the keycode is a windows convention.
+                            // Should we just change them to being lowercase?
+                            if #char "A" <= key && key <= #char "Z" {
+                                key = #char "a" + key - #char "A";
+                            }
                         }
 
                         for #v2 < string_entry.cursor..string_entry.str_count-1 {

@@ -318,6 +318,18 @@ copy_string :: (arena: *Memory_Arena, str: string) -> string {
 }
 
 
+// Copied from jai/modules/String. Named "compare" there.
+strcmp :: (a: string, b: string) -> int {
+    for 0..min(a.count, b.count)-1 {
+        if a[it] > b[it] return 1;
+        if a[it] < b[it] return -1;
+    }
+    if a.count > b.count return 1;
+    if a.count < b.count return -1;
+    return 0;
+}
+
+
 init_from_info :: (info: *Type_Info_Struct, ptr: *void) {
     if info.initializer info.initializer(ptr);
     else memset(ptr, 0, info.runtime_size);

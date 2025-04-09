@@ -65,13 +65,19 @@ main :: () {
                         case VK_DOWN;       key = .DOWN_ARROW;
                         case VK_BACK;       key = .BACKSPACE;
                         case VK_DELETE;     key = .DELETE;
+                        case VK_OEM_1;      key = #char ";";
+                        case VK_OEM_2;      key = #char "/";
                         case VK_OEM_3;      key = .TILDE;
-                        case VK_RETURN;     key = .ENTER;
                         case VK_OEM_4;      key = #char "[";
+                        case VK_OEM_5;      key = #char "\\";
                         case VK_OEM_6;      key = #char "]";
+                        case VK_OEM_7;      key = #char "'";
                         case VK_OEM_PLUS;   key = #char "=";
                         case VK_OEM_MINUS;  key = #char "-";
+                        case VK_OEM_COMMA;  key = #char ",";
+                        case VK_OEM_PERIOD; key = #char ".";
                         case VK_TAB;        key = .TAB;    
+                        case VK_RETURN;     key = .ENTER;
                             // @TODO: Properly handle left and right alts, shifts, and ctrls.
                         case VK_SHIFT;      key = .SHIFT;
                         case VK_CONTROL;    key = .CTRL;
