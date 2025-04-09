@@ -62,8 +62,7 @@ test :: () {
     expect(i == -10923);
     
     {
-        mark := get_mark(*frame_arena);
-        defer restore_mark(*frame_arena, mark);
+        scope_mark(*frame_arena);
 
         expected := int.[1, 2, 3];
         view: [] int;
@@ -143,8 +142,7 @@ END
     }
 
     {
-        mark := get_mark(*frame_arena);
-        defer restore_mark(*frame_arena, mark);
+        scope_mark(*frame_arena);
 
         output: [..] int;
         err := deserialize("3[1 2 3]", *output, *frame_arena);
@@ -396,5 +394,17 @@ END
         sb := make_string_builder(buf);
         print(*sb, "%", 0.125 + 0.0625);
         expect("0.1875", get_string(*sb));
+    }
+
+    //
+    // Hash table
+    //
+
+    {
+        scope_mark(*frame_arena);
+        table := make_table(*frame_arena, 100, int, int);
+        add(*table, 2, 3);
+        v := get(*table, 2);
+        expect(v && v.* == 3);
     }
 }

@@ -16,6 +16,7 @@
 #load "level.jai";
 #load "editor.jai";
 #load "serialize.jai";
+#load "table.jai";
 #load "test.jai";
 
 #if OS == .WINDOWS {
@@ -449,7 +450,7 @@ game_update : Game_Update : (
                         free_level(editor_level, *editor_arena);
                         success, data := read_file(new_level_name, *frame_arena);
                         if success {
-                            editor_level = load_level_part_1_deserialize_mem(data, *editor_arena);
+                            editor_level = load_level_part_1_deserialize_mem(new_level_name, data, *editor_arena);
                             assert(editor_level != null);
                         } else {
                             editor_level = alloc(*editor_arena, Level, zero_init = false);

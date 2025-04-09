@@ -647,11 +647,11 @@ load_level_part_1_deserialize :: (level_name: string, arena: *Memory_Arena) -> *
         return null;
     } 
     
-    return load_level_part_1_deserialize_mem(data, arena);
+    return load_level_part_1_deserialize_mem(level_name, data, arena);
 }
 
 
-load_level_part_1_deserialize_mem :: (data: string, arena: *Memory_Arena) -> *Level {
+load_level_part_1_deserialize_mem :: (level_name: string, data: string, arena: *Memory_Arena) -> *Level {
     assert(arena.current == 0);
 
     mark := get_mark(arena);
@@ -659,7 +659,7 @@ load_level_part_1_deserialize_mem :: (data: string, arena: *Memory_Arena) -> *Le
     level := alloc(arena, Level); 
     err := deserialize(data, level, arena);
     if !err.ok {
-        log(.ERROR, "Encountered an error while deserializing level at byte %,%: %\n", err.loc.start, err.loc.count, err.message);
+        log(.ERROR, "Encountered an error while deserializing level \"%\" at byte %,%: %\n", level_name, err.loc.start, err.loc.count, err.message);
         restore_mark(arena, mark);
         return null;
     }
@@ -678,16 +678,16 @@ serialize_level :: (using level: *Level) {
 
 load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> gameplay_mode_load_succeeded: bool {
     name = copy_string(arena, level_name);
-   
-    // Give each entity an Entity_Id
+    
+    // Restore the type of each entity
     entity_count := 1;
     #insert -> string {
         buf: [1024] u8;
         sb := make_string_builder(buf);
         for ENTITIES {
             print(*sb, "for * _% {\n", it.name);
-            print(*sb, "    it.eid = xx entity_count;\n");
             print(*sb, "    it.type = .%;\n", it.name);
+            print(*sb, "    it.eid = xx entity_count;\n");
             print(*sb, "    entity_count += 1;\n");
             print(*sb, "}\n");
         }
