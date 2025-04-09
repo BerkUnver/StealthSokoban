@@ -128,6 +128,7 @@ deactivate :: () {
 
 HIGHLIGHT_COLOR :: Vector4.{1, 1, 1, 1};
 DULL_COLOR :: Vector4.{0.6, 0.6, 0.6, 1};
+READ_ONLY_COLOR :: Vector4.{0.3, 0.3, 0.3, 1};
 BACKGROUND_COLOR :: Vector4.{0, 0, 0, 1};
 
 
@@ -224,7 +225,7 @@ imgui_draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4)
 }
 
 
-toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location, id: u64 = 0) {
+toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc := #caller_location, id: u64 = 0) {
     using context.game_context;
     using context.game_context.imgui_state;
     
@@ -246,19 +247,28 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
     
     outline_outer_position := toggle_center - outline_outer_size / 2;
     outline_inner_position := toggle_center - outline_inner_size / 2;
-    
-    if current_widget_state == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
-        for [] Input_Event.{event_count, events.data} {
-            if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
-                val.* = !val.*;
+
+    color: Vector4;
+
+    if read_only {
+        color = READ_ONLY_COLOR;
+    } else {
+        color = HIGHLIGHT_COLOR;
+        if current_widget_state == .NO_ONE && inside(outline_outer_position, outline_outer_size, mouse) {
+            for [] Input_Event.{event_count, events.data} {
+                if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
+                    val.* = !val.*;
+                }
             }
         }
     }
+    
+
 
     glUseProgram(imm_color_shader);
     set_uniform("projection", imgui_to_camera);
 
-    imm_quad(round(outline_outer_position), round(outline_outer_size), HIGHLIGHT_COLOR);
+    imm_quad(round(outline_outer_position), round(outline_outer_size), color);
     imm_quad(round(outline_inner_position), round(outline_inner_size), BACKGROUND_COLOR);
     imm_flush();
 
@@ -266,7 +276,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, loc := #caller_location
         selected_width := font.ascender * 0.9;
         selected_size := Vector2.{selected_width, selected_width};
         selected_position := toggle_center - selected_size / 2;
-        imm_quad(round(selected_position), round(selected_size), HIGHLIGHT_COLOR);
+        imm_quad(round(selected_position), round(selected_size), color);
     }
 
     imm_flush();
@@ -696,6 +706,7 @@ string_entry :: (
     size: Vector2,
     str: *[STRING_ENTRY_MAX_COUNT] u8,
     str_count: *int,
+    read_only := false,
     loc := #caller_location,
     id: u64 = 0
 ) -> entered: bool {
@@ -736,75 +747,81 @@ string_entry :: (
     };
 
     entered: bool;
+
     if current_widget_state == {
         case .ACTIVE;
             using active_widget_data;
             assert(type == .STRING_ENTRY);
 
-            mouse_outside := !inside(outer_position, outer_size, mouse);
-            for [] Input_Event.{event_count, events.data} {
+            if read_only { // If we became read-only for some reason, deactivate this.
+                deactivate();
+                event_count = 0;
+            } else {
+                mouse_outside := !inside(outer_position, outer_size, mouse);
+                for [] Input_Event.{event_count, events.data} {
 
-                if (it.key == .ENTER || (mouse_outside && it.key == .MOUSE_LEFT_BUTTON)) && it.state == .DOWN {
-                    memcpy(str.data, string_entry.str.data, string_entry.str_count);
-                    str_count.* = string_entry.str_count;
-                    deactivate();
-                    event_count = 0;
-                    entered = true;
-                    break;
-                }
-                
-                // @TODO: Handle all non-alphabetic keys that are modified by the SHIFT key
-                if (#char " " <= it.key && it.key <= #char "~") && it.state != .UP && string_entry.str_count < string_entry.str.count {
-                    key := it.key;
-                    if !keys_down[Key.SHIFT] && #char "A" <= key && key <= #char "Z" {
-                        key = #char "a" + key - #char "A";
+                    if (it.key == .ENTER || (mouse_outside && it.key == .MOUSE_LEFT_BUTTON)) && it.state == .DOWN {
+                        memcpy(str.data, string_entry.str.data, string_entry.str_count);
+                        str_count.* = string_entry.str_count;
+                        deactivate();
+                        event_count = 0;
+                        entered = true;
+                        break;
                     }
-
-                    for #v2 < string_entry.cursor..string_entry.str_count-1 {
-                        string_entry.str[it + 1] = string_entry.str[it];
-                    }
-                    string_entry.str[string_entry.cursor] = xx key;
-                    string_entry.str_count += 1;
-                    string_entry.cursor += 1;
-
-                    continue;
-                }
-
-                if (it.key == .DELETE || it.key == .BACKSPACE) && it.state != .UP {
-                    if string_entry.str_count > 0 {
-                        start := ifx string_entry.cursor > 0 then string_entry.cursor else 1;
-                        for start..string_entry.str_count-1 {
-                            string_entry.str[it - 1] = string_entry.str[it];
+                    
+                    // @TODO: Handle all non-alphabetic keys that are modified by the SHIFT key
+                    if (#char " " <= it.key && it.key <= #char "~") && it.state != .UP && string_entry.str_count < string_entry.str.count {
+                        key := it.key;
+                        if !keys_down[Key.SHIFT] && #char "A" <= key && key <= #char "Z" {
+                            key = #char "a" + key - #char "A";
                         }
-                        string_entry.str_count -= 1;
-                        if string_entry.cursor > 0 string_entry.cursor -= 1;
+
+                        for #v2 < string_entry.cursor..string_entry.str_count-1 {
+                            string_entry.str[it + 1] = string_entry.str[it];
+                        }
+                        string_entry.str[string_entry.cursor] = xx key;
+                        string_entry.str_count += 1;
+                        string_entry.cursor += 1;
+
+                        continue;
                     }
-                    continue;
-                }
 
-                if it.key == .LEFT_ARROW && it.state != .UP {
-                    if string_entry.cursor > 0 string_entry.cursor -= 1;
-                    continue;
-                }
+                    if (it.key == .DELETE || it.key == .BACKSPACE) && it.state != .UP {
+                        if string_entry.str_count > 0 {
+                            start := ifx string_entry.cursor > 0 then string_entry.cursor else 1;
+                            for start..string_entry.str_count-1 {
+                                string_entry.str[it - 1] = string_entry.str[it];
+                            }
+                            string_entry.str_count -= 1;
+                            if string_entry.cursor > 0 string_entry.cursor -= 1;
+                        }
+                        continue;
+                    }
 
-                if it.key == .RIGHT_ARROW && it.state != .UP {
-                    if string_entry.cursor < string_entry.str_count string_entry.cursor += 1;
-                    continue;
-                }
+                    if it.key == .LEFT_ARROW && it.state != .UP {
+                        if string_entry.cursor > 0 string_entry.cursor -= 1;
+                        continue;
+                    }
 
-                if it.key == .HOME && it.state != .UP {
-                    string_entry.cursor = 0;
-                    continue;
-                }
+                    if it.key == .RIGHT_ARROW && it.state != .UP {
+                        if string_entry.cursor < string_entry.str_count string_entry.cursor += 1;
+                        continue;
+                    }
 
-                if it.key == .END && it.state != .UP {
-                    string_entry.cursor = string_entry.str_count;
-                    continue;
+                    if it.key == .HOME && it.state != .UP {
+                        string_entry.cursor = 0;
+                        continue;
+                    }
+
+                    if it.key == .END && it.state != .UP {
+                        string_entry.cursor = string_entry.str_count;
+                        continue;
+                    }
                 }
             }
 
         case .NO_ONE;
-            if inside(outer_position, outer_size, mouse) {
+            if !read_only && inside(outer_position, outer_size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
                     if it.state == .DOWN && it.key == .MOUSE_LEFT_BUTTON {    
                         data: Active_Widget_Data;
@@ -822,14 +839,15 @@ string_entry :: (
     
     color: Vector4;
     string_to_draw: string;
-
+    
     if #complete current_widget_state == {
         case .ACTIVE;
+            assert(!read_only);
             color = HIGHLIGHT_COLOR;
             string_to_draw = .{active_widget_data.string_entry.str_count, active_widget_data.string_entry.str.data};
         case .NOT_ME; #through;
         case .NO_ONE;
-            color = DULL_COLOR;
+            color = ifx read_only then READ_ONLY_COLOR else DULL_COLOR;
             string_to_draw = .{str_count.*, str.data};
     }
 
@@ -871,7 +889,7 @@ number_entry :: (
     loc := #caller_location,
     id: u64 = 0
 ) -> entered: bool {
-    return number_entry(position, size, val, type_info(T), loc, id);
+    return number_entry(position, size, val, type_info(T), loc=loc, id=id);
 }
 
 
@@ -880,6 +898,7 @@ number_entry :: (
     size: Vector2,
     val: *void,
     info: *Type_Info,
+    read_only := false,
     loc := #caller_location,
     id: u64 = 0
 ) -> entered: bool {
@@ -887,16 +906,15 @@ number_entry :: (
     using context.game_context.imgui_state;
     assert(info.type == .INTEGER || info.type == .FLOAT);
 
-    scope_widget(loc, id);
-
     str: [STRING_ENTRY_MAX_COUNT] u8;
     sb := make_string_builder(str);
     print(*sb, "%", dynamic_any(info, val));
     str_count := get_string(*sb).count;
     
     
-    entered := string_entry(position, size, *str, *str_count, loc, 0);
+    entered := string_entry(position, size, *str, *str_count, read_only=read_only, loc=loc, id=id);
     if !entered return false;
+    assert(!read_only);
 
     success, end_index, is_float, int_value, float_value := parse_number(.{str_count, str.data}, 0);
     if !success return true;
@@ -922,11 +940,11 @@ number_entry :: (
 
 
 imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) {
-    imgui_for_value(val, type_info(T), position, field_size, loc, id);
+    imgui_for_value(val, type_info(T), position, field_size, loc=loc, id=id);
 }
 
 
-imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) -> end_y: float {
+imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, read_only := false, loc := #caller_location, id: u64 = 0) -> end_y: float {
     using context.game_context;
     using context.game_context.imgui_state;
     scope_widget(loc, id);
@@ -945,7 +963,6 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                 // serialize... for now.
                 if !can_serialize_member(it, greatest_offset) continue;
                 greatest_offset = it.offset_in_bytes;
-                if contains(it.notes, "NoEditor") continue; // @Speed!
 
                 if it.type.type == {
                     case .STRING; #through;
@@ -953,6 +970,9 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                         // @TODO: Implement editors for these
                         continue;
                 }
+
+                member_read_only := read_only || contains(it.notes, "ReadOnly");
+                text_color := ifx member_read_only then READ_ONLY_COLOR else HIGHLIGHT_COLOR;
                
 
                 label_position := Vector2.{
@@ -960,7 +980,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                     y + field_size.y / 2 + font.ascender / 2
                 };
 
-                text_end := imgui_draw_text(it.name, round(label_position), font, HIGHLIGHT_COLOR);
+                text_end := imgui_draw_text(it.name, round(label_position), font, text_color);
 
                 value_position: Vector2;
                 if it.type.type == .STRUCT {
@@ -983,15 +1003,16 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
 
                 if it.type == type_info(Vector4) && contains(it.notes, "Color") {
                     y = color_selector(val + it.offset_in_bytes, value_position, value_size, loc, xx it_index);
+                    // @TODO: Implement a ReadOnly color selector
                 } else {
-                    new_y := imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, loc, xx it_index);
+                    new_y := imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, read_only=member_read_only, loc=loc, id=xx it_index);
                     if new_y < y + field_size.y y = field_size.y;
                     else y = new_y;
                 }
             }
             return y;
         case .BOOL;
-            toggle(val, position, field_size, loc);
+            toggle(val, position, field_size, read_only=read_only, loc=loc);
             return position.y + field_size.y;
         case .ENUM;
             enum_info := cast(*Type_Info_Enum, info);
@@ -999,7 +1020,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
             return position.y + field_size.y;
         case .INTEGER; #through;
         case .FLOAT;
-            number_entry(position, field_size, val, info, loc, 0);
+            number_entry(position, field_size, val, info, read_only=read_only, loc=loc);
             return position.y + field_size.y;
         case .STRING; #through;
         case .ARRAY;

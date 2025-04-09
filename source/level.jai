@@ -340,7 +340,7 @@ Enemy_Despawner :: struct {
 Block :: struct {
     using #as e: Entity;
 
-    size: Vector3i; @NoEditor
+    size: Vector3i; @ReadOnly
     filled: [] bool; // :BitArray
     color: Vector4; @Color
     moveable: bool;
@@ -352,7 +352,7 @@ Block :: struct {
 Door :: struct {
     using #as e: Entity;
 
-    size: Vector3i; @NoEditor
+    size: Vector3i; @ReadOnly
     filled: [] bool; // :BitArray
     mesh: Mesh; @NoSerialize
 
