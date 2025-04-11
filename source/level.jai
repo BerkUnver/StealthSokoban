@@ -3,9 +3,8 @@ Level :: struct {
     
     name: string; @NoSerialize // The file name
 
-    // @TODO: This should be a hash table... probably.
-    entities: [..] *Entity; @NoSerialize
     unused_eids: [..] Entity_Id; @NoSerialize
+    entities: Table(Entity_Id, *Entity); @NoSerialize
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
@@ -417,14 +416,14 @@ Add_Block_Result :: enum {
 }
 
 
+
+// @TODO: This was made under the assumption that we would need to backtrack if the move failed.
+// That is no longer true, this can be made simpler!
 add_block_to_collision :: (using level: *Level, block: *Block) -> Add_Block_Result {
     offset := block.position - level_position;
     end := offset + block.size;
     if !inside_positive_bounding_box(offset, level_size) return .OUT_OF_BOUNDS;
     if !inside_positive_bounding_box(end - Vector3i.{1, 1, 1}, level_size) return .OUT_OF_BOUNDS;
-
-    // @Speed we could just detect when the failure happens and unwind what we've
-    // already added instead of first checking, then adding.
 
     for :iterate_vector3i block.size {
         if !block.filled[it_index] continue;
@@ -602,20 +601,6 @@ raycast :: (ray_start: Vector3, ray_end: Vector3, $visitor: (position: Vector3i,
 }
 
 
-remove_block_from_collision :: (using level: *Level, block: *Block) {
-    offset := block.position - level_position;
-    for :iterate_vector3i block.size {
-        if !block.filled[it_index] continue;
-        in_bounds, index := get_3d_index(it + offset, level_size);
-        assert(in_bounds);
-        eid := collision[index];
-        assert(eid != 0);
-        assert(get_entity(level, eid) == block);
-        collision[index] = 0;
-    }
-}
-
-
 get_camera_pitch :: (using level: *Level) -> float {
     pitch := CAMERA_PITCH_VALUES[camera_pitch_index];
     return xx lerp(camera_pitch_old, pitch, camera_pitch_interp);
@@ -685,15 +670,16 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     name = copy_string(arena, level_name);
     
     // Restore the type of each entity
-    entity_count := 1;
+    entity_count := 0;
+    highest_eid: Entity_Id = 0;
     #insert -> string {
         buf: [1024] u8;
         sb := make_string_builder(buf);
         for ENTITIES {
             print(*sb, "for * _% {\n", it.name);
             print(*sb, "    it.type = .%;\n", it.name);
-            print(*sb, "    it.eid = xx entity_count;\n");
             print(*sb, "    entity_count += 1;\n");
+            print(*sb, "    if it.eid > highest_eid highest_eid = it.eid;\n");
             print(*sb, "}\n");
         }
         return get_string(*sb);
@@ -708,12 +694,15 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     }
 
     if #complete for_mode == {
-        case .EDITOR;
-            entities = alloc_array(arena, entity_count, *Entity, zero_init = false);
-            entities[0] = null;
-
+        case .EDITOR;   
+            entities = make_table(arena, entity_count, Entity_Id, *Entity);
+            
             for :iterate_entities types {
-                entities[it.eid] = it;
+                add(*entities, it.eid, it);
+            }
+
+            for 1..highest_eid {
+                if !get(*entities, it) append(*unused_eids, it, arena);
             }
 
             editor.camera_yaw = 0;
@@ -764,14 +753,16 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             }
             count += 1; // For the player we are about to add
 
-            entities = reserve_array(arena, reserved, *Entity, zero_init=false);
-            entities.count = count;
-            entities[0] = null;
+            entities = make_table(arena, reserved, Entity_Id, *Entity);
 
             unused_eids = reserve_array(arena, reserved, Entity_Id, zero_init=false);
-
+            
             for :iterate_entities types {
-                entities[it.eid] = it;
+                add(*entities, it.eid, it);
+            }
+
+            for 1..highest_eid {
+                if !get(*entities, it) append_no_resize(*unused_eids, it);
             }
 
             // @TODO: Make sure none of the other entities are outside of the level

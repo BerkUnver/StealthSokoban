@@ -1,6 +1,7 @@
 types
 	_Block 10[
 		e
+			eid 1
 			position
 				x -9
 				z -13
@@ -20,6 +21,7 @@ types
 			;
 		;
 		e
+			eid 2
 			position
 				x -4
 				y 1
@@ -40,6 +42,7 @@ types
 		moveable 1
 		;
 		e
+			eid 3
 			position
 				x -4
 				y 1
@@ -61,6 +64,7 @@ types
 		moveable 1
 		;
 		e
+			eid 4
 			position
 				x -4
 				y 1
@@ -80,6 +84,7 @@ types
 		moveable 1
 		;
 		e
+			eid 5
 			position
 				x -4
 				y 1
@@ -100,6 +105,7 @@ types
 		moveable 1
 		;
 		e
+			eid 6
 			position
 				x -4
 				y 1
@@ -119,6 +125,7 @@ types
 		moveable 1
 		;
 		e
+			eid 7
 			position
 				x -4
 				y 1
@@ -139,6 +146,7 @@ types
 		moveable 1
 		;
 		e
+			eid 8
 			position
 				x -4
 				y 1
@@ -158,6 +166,7 @@ types
 		moveable 1
 		;
 		e
+			eid 9
 			position
 				x -4
 				y 1
@@ -178,6 +187,7 @@ types
 		moveable 1
 		;
 		e
+			eid 10
 			position
 				x -4
 				y 1
@@ -200,6 +210,7 @@ types
 	]
 	_Player 1[
 		e
+			eid 11
 			position
 				x -6
 				y 1
@@ -210,6 +221,7 @@ types
 	]
 	_Exit 1[
 		e
+			eid 12
 			position
 				x 8
 				y 1

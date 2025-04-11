@@ -1,4 +1,4 @@
-expect :: (b: bool, loc := #caller_location) {
+expect :: (b: bool, loc := #caller_location) -> bool {
     using context.game_context;
     if b {
         set_console_text_color(.GREEN);
@@ -9,19 +9,23 @@ expect :: (b: bool, loc := #caller_location) {
         print("%(%) failure\n", loc.fully_pathed_filename, loc.line_number);
         set_console_text_color(.WHITE);
     }
+
+    return b;
 }
 
 
-expect :: (expected: string, result: string, loc := #caller_location) {
+expect :: (expected: string, result: string, loc := #caller_location) -> bool {
     success := expected == result;
     expect(success, loc);
     if !success {
         print("Expected string:\n\n%\n\nReceived string:\n\n%\n", expected, result);
     }
+
+    return success;
 }
 
 
-expect :: (err: Deserialization_Error, loc := #caller_location) {
+expect :: (err: Deserialization_Error, loc := #caller_location) -> bool {
     using context.game_context;
     if err.ok {
         set_console_text_color(.GREEN);
@@ -37,6 +41,8 @@ expect :: (err: Deserialization_Error, loc := #caller_location) {
             err.message
         );
     }
+
+    return err.ok;
 }
 
 
@@ -405,19 +411,16 @@ END
         table := make_table(*frame_arena, 100, int, int);
         add(*table, 2, 3);
         v := get(*table, 2);
-        expect(v && v.* == 3);
+        if expect(v != null) expect(v.* == 3);
     }
 
     {
         scope_mark(*frame_arena);
         table := make_table(*frame_arena, 100, int, int);
         add(*table, 2, 3);
-        deleted := delete(*table, 2);
 
-        expect(deleted);
-        if deleted {
-            v := get(*table, 2);
-            expect(!v);
+        if expect(delete(*table, 2)) {
+           expect(!get(*table, 2));
         }
     }
 
@@ -435,13 +438,18 @@ END
 
         v: *int;
         v = get(*table, 0);
-        expect(v && v.* == 0);
-        v = get(*table, 1);
-        expect(v && v.* == 1);
-        v = get(*table, 2);
-        expect(v && v.* == 2);
-        v = get(*table, 3);
-        expect(v && v.* == 3);
+        if expect(v != null) && expect(v.* == 0) {
+            v = get(*table, 1);
+            if expect(v != null) && expect(v.* == 1) {
+                v = get(*table, 2);
+                if expect(v != null) && expect(v.* == 2) {
+                    v = get(*table, 3);
+                    if expect(v != null) {
+                        expect(v.* == 3);
+                    }
+                }
+            }
+        }
     }
 
     { // Test skipping over removed values
@@ -454,11 +462,27 @@ END
         add(*table, 0, 0);
         add(*table, 1, 1);
         add(*table, 2, 2);
-        deleted := delete(*table, 1);
-        expect(deleted);
-        if deleted {
+        if expect(delete(*table, 1)) {
             v := get(*table, 2);
-            expect(v && v.* == 2);
+            if expect(v != null) expect(v.* == 2);
+        }
+    }
+
+    { // Test deleting, then inserting into the deleted slot
+        scope_mark(*frame_arena);
+        table := make_table(*frame_arena, 100, int, int);
+        add(*table, 0, 0);
+        delete(*table, 0);
+        add(*table, 0, 1);
+        v := get(*table, 0);
+        if expect(v != null) expect(v.* == 1);
+    }
+
+    { // Test resizing
+        scope_mark(*frame_arena);
+        table := make_table(*frame_arena, 2, int, int);
+        if expect(table.entries.count == 4) {
+
         }
     }
 

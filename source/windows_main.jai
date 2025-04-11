@@ -139,6 +139,17 @@ main :: () {
                         append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.UP});
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
+                    
+                    case WM_SYSKEYDOWN; #through;
+                    case WM_SYSKEYUP; #through;
+                    case WM_SYSCHAR;
+                        // @TODO: If we press alt or f10, then release, the entire application freezes until
+                        // you press another key.
+
+                        // This is because windows is waiting for the user to press another key for their
+                        // really old builtin keyboard shortcut system that nobody uses, where you press ALT
+                        // and then a letter in each menu option is highlighted, and you can press that key to
+                        // select that menu item
 
                     case WM_CLOSE;
                         PostQuitMessage(0);

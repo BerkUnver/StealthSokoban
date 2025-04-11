@@ -23,11 +23,13 @@ ENTITIES :: #insert -> string {
 }
 
 
-Entity_Id :: #type,distinct u32; // Literally just an index
+// 0 is our special null value, meaning "This eid is invalid, it doesn't refer to anything."
+// Do not call get_entity on these eids.
+Entity_Id :: #type,distinct u32;
 
 Entity :: struct {
     type: Entity_Type; @NoSerialize
-    eid: Entity_Id; @NoSerialize
+    eid: Entity_Id; @ReadOnly
     position: Vector3i; // As soon as there's an entity without this member,
     // move this out of here. I don't want to end up with a bunch of weirdly overlapping entities.
 }
@@ -67,7 +69,7 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
         for 0..array.count-1 {
             offset := it * type.runtime_size;
             e := cast(*Entity, array.data + offset);
-            entities[e.eid] = e;
+            set(*entities, e.eid, e);
         }
     }
 
@@ -78,16 +80,10 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
     e.type = xx index;
     
     success, eid := pop(*unused_eids);
-    if success {
-        entities[eid] = e;
-    } else {
-        eid = xx entities.count;
-        if arena append(*entities, e, arena);
-        else append_no_resize(*entities, e);
-    }
-
+    if !success eid = xx (entities.count + 1);
     e.eid = eid;
 
+    set(*entities, e.eid, e, arena);
 
     return e;
 }
@@ -110,11 +106,17 @@ make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *
 
 delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = null) {
     assert(eid != 0);
+    
+    // @TODO: If we delete the entity with the highest eid, it still gets appended here.
+    // That _might_ not be a problem, except for 
     if arena append(*unused_eids, eid, arena);
     else append_no_resize(*unused_eids, eid);
 
-    e := entities[eid];
-    entities[eid] = null;
+    
+    e_ptr := get(*entities, eid);
+    assert(e_ptr != null);
+    e := e_ptr.*;
+    set(*entities, eid, null);
     
     type_index := -1;
     entity_size := 0;
@@ -139,9 +141,8 @@ delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = nu
 
     final := cast(*Entity, cast(*u8, array.data) + array.count * entity_size);
     memcpy(e, final, entity_size);
-
-    assert(final.eid != 0);
-    entities[final.eid] = e;
+    assert(e.eid != 0);
+    set(*entities, e.eid, e); // Make sure we correctly update the lookup table for the eid we just removed
 }
 
 
@@ -163,7 +164,9 @@ as :: (e: *Entity, $T: Type) -> *T {
 
 get_entity :: (using level: *Level, eid: Entity_Id) -> *Entity {
     assert(eid != 0);
-    return entities[eid];
+    v := get(*entities, eid);
+    assert(v != null);
+    return v.*;
 }
 
 

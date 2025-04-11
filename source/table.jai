@@ -3,7 +3,9 @@
 Table :: struct(
     Key_Type: Type,
     Value_Type: Type,
-    hash_function: (string) -> u32
+    hash_function := djb2_hash
+    // hash_function is an autobake instead of a function pointer
+    // so dll hot-reloading will still work.
 ) {
     Entry :: struct {
         key: Key_Type;
@@ -50,6 +52,8 @@ make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_f
     while entries_count > power power <<= 1;
     entries_count = power;
 
+    max_count = xx ceil(cast(float, entries_count) * LOAD_FACTOR);
+
     return .{
         entries = alloc_view(arena, entries_count, Table(K, V, hash_function).Entry),
         max_count = max_count
@@ -57,9 +61,21 @@ make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_f
 }
 
 
-add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type) {
-    assert(count < max_count);
-    assert(entries.count >= 2);
+// @TODO: Add growing the table
+add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type, arena: *Memory_Arena = null) {
+    if count >= max_count {
+        assert(arena != null);
+        
+        old_entries := table.entries;
+
+        table.* = make_table(arena, count + 1, table.Key_Type, table.Value_Type, table.hash_function);
+        
+        for * old_entries {
+            if it.hash >= FIRST_VALID_HASH {
+                add(table, it.key, it.value);
+            }
+        }
+    }
     
     hash := table_hash(table, key);
 
@@ -76,6 +92,18 @@ add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type) {
         value=value,
         hash=hash
     };
+
+    count += 1;
+}
+
+
+set :: (using table: *Table, key: table.Key_Type, value: table.Value_Type, arena: *Memory_Arena = null) {
+    v := get(table, key);
+    if v {
+        v.* = value;
+    } else {
+        add(table, key, value, arena);
+    }
 }
 
 

@@ -1,6 +1,7 @@
 types
 	_Block 5[
 		e
+			eid 1
 			position
 				x -6
 				y -1
@@ -21,6 +22,7 @@ types
 			;
 		;
 		e
+			eid 2
 			position
 				x -2
 				y -1
@@ -41,6 +43,7 @@ types
 		moveable 1
 		;
 		e
+			eid 3
 			position
 				x -2
 				z 2
@@ -60,6 +63,7 @@ types
 		moveable 1
 		;
 		e
+			eid 4
 			position
 				x -2
 				y -1
@@ -80,6 +84,7 @@ types
 		moveable 1
 		;
 		e
+			eid 5
 			position
 				x -6
 				z -4
@@ -102,6 +107,7 @@ types
 	]
 	_Door 3[
 		e
+			eid 6
 			position
 				x 5
 				z 3
@@ -115,6 +121,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 7
 			position
 				x -5
 				z 3
@@ -128,6 +135,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 8
 			position
 				x -2
 				z -4
@@ -143,6 +151,7 @@ types
 	]
 	_Enemy_Spawner 2[
 		e
+			eid 9
 			position
 				x -5
 				z -4
@@ -152,6 +161,7 @@ types
 		facing 1
 		;
 		e
+			eid 10
 			position
 				x 5
 				z -4
@@ -163,11 +173,13 @@ types
 	]
 	_Player 1[
 		e
+			eid 11
 			;
 		;
 	]
 	_Exit 1[
 		e
+			eid 12
 			position
 				z 10
 				;

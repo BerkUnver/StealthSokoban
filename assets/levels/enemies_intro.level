@@ -1,6 +1,7 @@
 types
 	_Block 6[
 		e
+			eid 1
 			position
 				x -2
 				z -16
@@ -20,6 +21,7 @@ types
 			;
 		;
 		e
+			eid 2
 			position
 				x 12
 				y 1
@@ -40,6 +42,7 @@ types
 		moveable 1
 		;
 		e
+			eid 3
 			position
 				x 12
 				y 1
@@ -61,6 +64,7 @@ types
 		moveable 1
 		;
 		e
+			eid 4
 			position
 				x 1
 				y 1
@@ -80,6 +84,7 @@ types
 		moveable 1
 		;
 		e
+			eid 5
 			position
 				x 14
 				y 1
@@ -101,6 +106,7 @@ types
 		moveable 1
 		;
 		e
+			eid 6
 			position
 				x -2
 				y 1
@@ -123,6 +129,7 @@ types
 	]
 	_Door 7[
 		e
+			eid 7
 			position
 				x 3
 				y 1
@@ -137,6 +144,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 8
 			position
 				x 9
 				y 1
@@ -151,6 +159,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 9
 			position
 				x -2
 				y 1
@@ -165,6 +174,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 10
 			position
 				x 15
 				y 1
@@ -179,6 +189,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 11
 			position
 				x 15
 				y 1
@@ -193,6 +204,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 12
 			position
 				y 1
 				z -7
@@ -206,6 +218,7 @@ types
 		filled 1[ 1 ]
 		;
 		e
+			eid 13
 			position
 				x 4
 				y 1
@@ -222,6 +235,7 @@ types
 	]
 	_Enemy 28[
 		e
+			eid 14
 			position
 				x 4
 				y 1
@@ -230,6 +244,7 @@ types
 			;
 		;
 		e
+			eid 15
 			position
 				x -2
 				y 1
@@ -238,6 +253,7 @@ types
 			;
 		;
 		e
+			eid 16
 			position
 				x 3
 				y 1
@@ -246,6 +262,7 @@ types
 			;
 		;
 		e
+			eid 17
 			position
 				x -1
 				y 1
@@ -254,6 +271,7 @@ types
 			;
 		;
 		e
+			eid 18
 			position
 				y 1
 				z -1
@@ -261,6 +279,7 @@ types
 			;
 		;
 		e
+			eid 19
 			position
 				x 1
 				y 1
@@ -269,6 +288,7 @@ types
 			;
 		;
 		e
+			eid 20
 			position
 				x 2
 				y 1
@@ -277,6 +297,7 @@ types
 			;
 		;
 		e
+			eid 21
 			position
 				x -2
 				y 1
@@ -285,6 +306,7 @@ types
 			;
 		;
 		e
+			eid 22
 			position
 				x 3
 				y 1
@@ -294,6 +316,7 @@ types
 		facing 1
 		;
 		e
+			eid 23
 			position
 				x 3
 				y 1
@@ -303,6 +326,7 @@ types
 		facing 1
 		;
 		e
+			eid 24
 			position
 				x 3
 				y 1
@@ -312,6 +336,7 @@ types
 		facing 1
 		;
 		e
+			eid 25
 			position
 				x 3
 				y 1
@@ -321,6 +346,7 @@ types
 		facing 1
 		;
 		e
+			eid 26
 			position
 				x 3
 				y 1
@@ -330,6 +356,7 @@ types
 		facing 1
 		;
 		e
+			eid 27
 			position
 				x 5
 				y 1
@@ -339,6 +366,7 @@ types
 		facing 1
 		;
 		e
+			eid 28
 			position
 				x 5
 				y 1
@@ -348,6 +376,7 @@ types
 		facing 1
 		;
 		e
+			eid 29
 			position
 				x 5
 				y 1
@@ -357,6 +386,7 @@ types
 		facing 1
 		;
 		e
+			eid 30
 			position
 				x 5
 				y 1
@@ -366,6 +396,7 @@ types
 		facing 1
 		;
 		e
+			eid 31
 			position
 				x 5
 				y 1
@@ -375,6 +406,7 @@ types
 		facing 1
 		;
 		e
+			eid 32
 			position
 				x 11
 				y 1
@@ -383,6 +415,7 @@ types
 			;
 		;
 		e
+			eid 33
 			position
 				x 12
 				y 1
@@ -391,6 +424,7 @@ types
 			;
 		;
 		e
+			eid 34
 			position
 				x 13
 				y 1
@@ -399,6 +433,7 @@ types
 			;
 		;
 		e
+			eid 35
 			position
 				x 14
 				y 1
@@ -407,6 +442,7 @@ types
 			;
 		;
 		e
+			eid 36
 			position
 				x 15
 				y 1
@@ -415,6 +451,7 @@ types
 			;
 		;
 		e
+			eid 37
 			position
 				x 11
 				y 1
@@ -423,6 +460,7 @@ types
 			;
 		;
 		e
+			eid 38
 			position
 				x 12
 				y 1
@@ -431,6 +469,7 @@ types
 			;
 		;
 		e
+			eid 39
 			position
 				x 13
 				y 1
@@ -439,6 +478,7 @@ types
 			;
 		;
 		e
+			eid 40
 			position
 				x 14
 				y 1
@@ -447,6 +487,7 @@ types
 			;
 		;
 		e
+			eid 41
 			position
 				x 15
 				y 1
@@ -457,6 +498,7 @@ types
 	]
 	_Enemy_Spawner 9[
 		e
+			eid 42
 			position
 				x -2
 				y 1
@@ -466,6 +508,7 @@ types
 		enemy_spawner_type 1
 		;
 		e
+			eid 43
 			position
 				x 3
 				y 1
@@ -476,6 +519,7 @@ types
 		facing 2
 		;
 		e
+			eid 44
 			position
 				x 5
 				y 1
@@ -485,6 +529,7 @@ types
 		enemy_spawner_type 1
 		;
 		e
+			eid 45
 			position
 				x 10
 				y 1
@@ -494,6 +539,7 @@ types
 		enemy_spawner_type 1
 		;
 		e
+			eid 46
 			position
 				x 10
 				y 1
@@ -503,6 +549,7 @@ types
 		enemy_spawner_type 1
 		;
 		e
+			eid 47
 			position
 				x 14
 				y 1
@@ -513,6 +560,7 @@ types
 		facing 3
 		;
 		e
+			eid 48
 			position
 				x 10
 				y 1
@@ -523,6 +571,7 @@ types
 		facing 3
 		;
 		e
+			eid 49
 			position
 				x 13
 				y 1
@@ -533,6 +582,7 @@ types
 		facing 2
 		;
 		e
+			eid 50
 			position
 				x 13
 				y 1
@@ -545,6 +595,7 @@ types
 	]
 	_Enemy_Despawner 5[
 		e
+			eid 51
 			position
 				x 5
 				y 1
@@ -553,6 +604,7 @@ types
 			;
 		;
 		e
+			eid 52
 			position
 				x 5
 				y 1
@@ -561,6 +613,7 @@ types
 			;
 		;
 		e
+			eid 53
 			position
 				x 3
 				y 1
@@ -569,6 +622,7 @@ types
 			;
 		;
 		e
+			eid 54
 			position
 				x 15
 				y 1
@@ -577,6 +631,7 @@ types
 			;
 		;
 		e
+			eid 55
 			position
 				x 15
 				y 1
@@ -587,6 +642,7 @@ types
 	]
 	_Player 1[
 		e
+			eid 56
 			position
 				y 1
 				z -14
@@ -596,6 +652,7 @@ types
 	]
 	_Exit 1[
 		e
+			eid 57
 			position
 				x 6
 				y 1

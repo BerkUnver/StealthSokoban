@@ -1,6 +1,7 @@
 types
 	_Block 3[
 		e
+			eid 1
 			position
 				x -3
 				y -1
@@ -21,6 +22,7 @@ types
 			;
 		;
 		e
+			eid 2
 			position
 				x -3
 				z -2
@@ -40,6 +42,7 @@ types
 			;
 		;
 		e
+			eid 3
 			position
 				x -1
 				z 4
@@ -60,12 +63,14 @@ types
 	]
 	_Enemy 2[
 		e
+			eid 4
 			position
 				z 2
 				;
 			;
 		;
 		e
+			eid 5
 			position
 				x -1
 				z 2
@@ -75,6 +80,7 @@ types
 	]
 	_Enemy_Spawner 1[
 		e
+			eid 6
 			position
 				x 2
 				z 2
@@ -85,6 +91,7 @@ types
 	]
 	_Player 1[
 		e
+			eid 7
 			position
 				x -1
 				z -1
@@ -94,6 +101,7 @@ types
 	]
 	_Exit 1[
 		e
+			eid 8
 			position
 				x 2
 				z -1
