@@ -331,11 +331,83 @@ game_update : Game_Update : (
                 continue;
             }
 
+
+            load_next_level :: (ascending: bool, mode: Game_Mode, level: **Level, arena: *Memory_Arena) {
+                using context.game_context;
+
+                Find_Data :: struct {
+                    level: *Level;
+                    closest_name: string;
+                    furthest_name: string;
+                    mark: s64;
+                    ascending: bool;
+                }
+                
+                // right now, iterate_directory does not hit the frame_arena, so we can 
+                // just store the closest_name on top of the frame_arena.
+
+                find :: (data_: *void, level_name: string) {
+                    using context.game_context;
+                    using data := cast(*Find_Data, data_);
+
+                    if !closest_name {
+                        comparison := strcmp(level_name, level.name);
+                        if (ascending && comparison > 0) || (!ascending && comparison < 0) {
+                            closest_name = copy_string(*frame_arena, level_name);
+                        }
+                    } else {    
+                        closest_name_comparison := strcmp(level_name, closest_name);
+                        level_name_comparison := strcmp(level_name, level.name);
+
+                        if (ascending && level_name_comparison > 0 && closest_name_comparison < 0)
+                        || (!ascending && closest_name_comparison > 0 && level_name_comparison < 0) {
+                            restore_mark(*frame_arena, mark);
+                            closest_name = copy_string(*frame_arena, level_name);
+                        }
+                    }
+                }
+
+                data := Find_Data.{
+                    level = level.*,
+                    mark = get_mark(*frame_arena),
+                    ascending = ascending
+                };
+
+
+                iterate_directory("levels", *data, find);
+
+                if data.closest_name {
+                    free_level(level.*, arena);
+                    level.* = load_level_part_1_deserialize(data.closest_name, arena);
+                    assert(level.* != null);
+                    assert(load_level_part_2_init_unserialized_fields(data.closest_name, level.*, mode, arena));
+                }
+
+                restore_mark(*frame_arena, data.mark);
+            }
+
+            if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
+                if #complete mode == {
+                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay_level, *gameplay_arena);
+                    case .EDITOR;   load_next_level(false, .EDITOR,   *editor_level,   *editor_arena);
+                }
+                continue;
+            }
+
+            if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
+                if #complete mode == {
+                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay_level, *gameplay_arena);
+                    case .EDITOR;   load_next_level(true, .EDITOR,   *editor_level,   *editor_arena);
+                }
+                continue;
+
+            }
+
+
             if #complete mode == {
                 case .GAMEPLAY;
                     using gameplay_level;
-                    
-                    // Reload the current level from disc hotkey. All progress is lost.
+
                     if it.key == #char "R" && it.state == .DOWN {
                         scope_mark(*frame_arena);
 
@@ -352,82 +424,10 @@ game_update : Game_Update : (
                         }
                         continue;
                     }
-                    
-
-                    load_next_level :: (ascending: bool, mode: Game_Mode, level: **Level, arena: *Memory_Arena) {
-                        using context.game_context;
-
-                        Find_Data :: struct {
-                            level: *Level;
-                            closest_name: string;
-                            furthest_name: string;
-                            mark: s64;
-                            ascending: bool;
-                        }
-                        
-                        // right now, iterate_directory does not hit the frame_arena, so we can 
-                        // just store the closest_name on top of the frame_arena.
-
-                        find :: (data_: *void, level_name: string) {
-                            using context.game_context;
-                            using data := cast(*Find_Data, data_);
-
-                            if !closest_name {
-                                comparison := strcmp(level_name, level.name);
-                                if (ascending && comparison > 0) || (!ascending && comparison < 0) {
-                                    closest_name = copy_string(*frame_arena, level_name);
-                                }
-                            } else {    
-                                closest_name_comparison := strcmp(level_name, closest_name);
-                                level_name_comparison := strcmp(level_name, level.name);
-
-                                if (ascending && level_name_comparison > 0 && closest_name_comparison < 0)
-                                || (!ascending && closest_name_comparison > 0 && level_name_comparison < 0) {
-                                    restore_mark(*frame_arena, mark);
-                                    closest_name = copy_string(*frame_arena, level_name);
-                                }
-                            }
-                        }
-
-                        data := Find_Data.{
-                            level = level.*,
-                            mark = get_mark(*frame_arena),
-                            ascending = ascending
-                        };
-
-
-                        iterate_directory("levels", *data, find);
-
-                        if data.closest_name {
-                            free_level(level.*, arena);
-                            level.* = load_level_part_1_deserialize(data.closest_name, arena);
-                            assert(level.* != null);
-                            assert(load_level_part_2_init_unserialized_fields(data.closest_name, level.*, mode, arena));
-                        }
-
-                        restore_mark(*frame_arena, data.mark);
-                    }
-
-                    
-                    if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {   
-                        load_next_level(false, .GAMEPLAY, *gameplay_level, *gameplay_arena);
-                        continue;
-                    }
-
-                    if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
-                        load_next_level(true, .GAMEPLAY, *gameplay_level, *gameplay_arena);
-                        continue;
-                    }
-
-
                     gameplay_handle_input(gameplay_level, it);
 
                 case .EDITOR;
                     using editor_level;
-                    imgui_capturing_input := 
-                        !editor_imgui_disabled
-                     && editor.mode == .IDLE 
-                     && (imgui_state.active_widget_exists || inside(IMGUI_POSITION, IMGUI_SIZE, imgui_state.mouse));
                     
                     // Is it weird that I manually make these higher-priority than the imgui?
                     // I do this so if you try to save while an imgui widget is active, you can still save and don't
@@ -437,6 +437,14 @@ game_update : Game_Update : (
                         log(.OK, "Serialized level.\n");
                         continue;
                     }
+
+                    
+                    imgui_capturing_input: bool;
+                    if !editor_imgui_disabled && editor.mode == .IDLE {
+                        if imgui_state.active_widget_exists || (inside(IMGUI_POSITION, IMGUI_SIZE, imgui_state.mouse) && it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN) {
+                           imgui_capturing_input = true;
+                        }
+                    } 
 
                     if imgui_capturing_input {
                         assert(imgui_state.event_count < imgui_state.events.count);

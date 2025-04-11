@@ -1,6 +1,10 @@
 // Based on the Jai standard hash table
 
-Table :: struct(Key_Type: Type, Value_Type: Type) {
+Table :: struct(
+    Key_Type: Type,
+    Value_Type: Type,
+    hash_function: (string) -> u32
+) {
     Entry :: struct {
         key: Key_Type;
         value: Value_Type;
@@ -28,14 +32,14 @@ djb2_hash :: (s: string) -> u32 {
 }
 
 
-table_hash :: (val: $T) -> u32 {
-    hash := djb2_hash(.{size_of(T), xx *val});
+table_hash :: (table: *Table, val: $T) -> u32 {
+    hash := table.hash_function(.{size_of(T), xx *val});
     if hash < FIRST_VALID_HASH hash += FIRST_VALID_HASH;
     return hash;
 }
 
 
-make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type) -> Table(K, V) {
+make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_function := djb2_hash) -> result: Table(K, V, hash_function) {
     // @TODO: Test what happens when max_count close to zero.
     assert(max_count > 0);
     entries_count := cast(int, ceil(cast(float, max_count) / LOAD_FACTOR));
@@ -47,7 +51,7 @@ make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type) -> Tabl
     entries_count = power;
 
     return .{
-        entries = alloc_view(arena, entries_count, Table(K, V).Entry),
+        entries = alloc_view(arena, entries_count, Table(K, V, hash_function).Entry),
         max_count = max_count
     };
 }
@@ -57,7 +61,7 @@ add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type) {
     assert(count < max_count);
     assert(entries.count >= 2);
     
-    hash := table_hash(key);
+    hash := table_hash(table, key);
 
     index := hash % entries.count;
     increment := 0;
@@ -77,10 +81,10 @@ add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type) {
 
 // "remove" is a keyword, so I can't use it for the name of
 // this procedure...
-evict :: (using table: *Table, key: table.Key_Type) -> bool {
+delete :: (using table: *Table, key: table.Key_Type) -> bool {
     assert(count <= max_count);
 
-    hash := table_hash(key);
+    hash := table_hash(table, key);
 
     index := hash % entries.count;
     increment := 0;
@@ -104,7 +108,7 @@ evict :: (using table: *Table, key: table.Key_Type) -> bool {
 get :: (using table: *Table, key: table.Key_Type) -> *table.Value_Type {
     assert(count <= max_count);
 
-    hash := table_hash(key);
+    hash := table_hash(table, key);
 
     index := hash % entries.count;
     increment := 0; 
@@ -124,3 +128,4 @@ get :: (using table: *Table, key: table.Key_Type) -> *table.Value_Type {
 
     return null;
 }
+

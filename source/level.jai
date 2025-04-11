@@ -34,7 +34,7 @@ Level :: struct {
 
         camera_landing_interp: float;
 
-        camera_pitch_ticks: s8 = 1;
+        camera_pitch_index: s8 = 1;
         camera_pitch_interp := 1.0;
         camera_pitch_old: float64;
 
@@ -105,9 +105,14 @@ Level :: struct {
 }
 
 
-CAMERA_PITCH_TICK_COUNT :: 5; // Starts at zero
-CAMERA_MIN_PITCH :: -PI / 2;
-CAMERA_MAX_PITCH :: PI / 2;
+CAMERA_PITCH_VALUES :: float.[
+    -PI / 2,
+    -PI / 2 + 0.15 * PI,
+    -PI / 2 + 0.35 * PI,
+    -PI / 2 + 0.65 * PI,
+    -PI / 2 + 0.85 * PI,
+    PI / 2,
+];
 
 CAMERA_YAW_TICK_COUNT :: 12;
 
@@ -612,7 +617,7 @@ remove_block_from_collision :: (using level: *Level, block: *Block) {
 
 
 get_camera_pitch :: (using level: *Level) -> float {
-    pitch := lerp(CAMERA_MIN_PITCH, CAMERA_MAX_PITCH, cast(float, camera_pitch_ticks) / cast(float, CAMERA_PITCH_TICK_COUNT));
+    pitch := CAMERA_PITCH_VALUES[camera_pitch_index];
     return xx lerp(camera_pitch_old, pitch, camera_pitch_interp);
 }
 
@@ -1167,14 +1172,14 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if event.key == #char "K" && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
-        camera_pitch_ticks = max(camera_pitch_ticks - 1, 0);
+        camera_pitch_index = max(camera_pitch_index - 1, 0);
         camera_pitch_interp = 0;
         return;
     }
 
     if event.key == #char "I" && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
-        camera_pitch_ticks = min(camera_pitch_ticks + 1, CAMERA_PITCH_TICK_COUNT);
+        camera_pitch_index = min(camera_pitch_index + 1, CAMERA_PITCH_VALUES.count-1);
         camera_pitch_interp = 0;
         return;
     } 

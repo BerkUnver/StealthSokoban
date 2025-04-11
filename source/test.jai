@@ -407,4 +407,59 @@ END
         v := get(*table, 2);
         expect(v && v.* == 3);
     }
+
+    {
+        scope_mark(*frame_arena);
+        table := make_table(*frame_arena, 100, int, int);
+        add(*table, 2, 3);
+        deleted := delete(*table, 2);
+
+        expect(deleted);
+        if deleted {
+            v := get(*table, 2);
+            expect(!v);
+        }
+    }
+
+    { // Test collisions
+        hash :: (s: string) -> u32 {
+            return 0;
+        }
+
+        scope_mark(*frame_arena);
+        table := make_table(*frame_arena, 100, int, int, hash);
+        add(*table, 0, 0);
+        add(*table, 1, 1);
+        add(*table, 2, 2);
+        add(*table, 3, 3);
+
+        v: *int;
+        v = get(*table, 0);
+        expect(v && v.* == 0);
+        v = get(*table, 1);
+        expect(v && v.* == 1);
+        v = get(*table, 2);
+        expect(v && v.* == 2);
+        v = get(*table, 3);
+        expect(v && v.* == 3);
+    }
+
+    { // Test skipping over removed values
+        hash :: (s: string) -> u32 {
+            return 0;
+        }
+
+        scope_mark(*frame_arena);
+        table := make_table(*frame_arena, 100, int, int, hash);
+        add(*table, 0, 0);
+        add(*table, 1, 1);
+        add(*table, 2, 2);
+        deleted := delete(*table, 1);
+        expect(deleted);
+        if deleted {
+            v := get(*table, 2);
+            expect(v && v.* == 2);
+        }
+    }
+
 }
