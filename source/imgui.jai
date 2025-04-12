@@ -186,9 +186,8 @@ imgui_init :: () -> Imgui_State {
 
 imgui_draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> end_x: float {
     using context.game_context;
-
-    glUseProgram(imm_text_shader);
     
+    set_shader(imm_text_shader, .{flags = .BLEND});
     set_uniform_bitmap("bitmap", 0, font.bitmap);
     set_uniform("projection", imgui_state.imgui_to_camera);
     
@@ -263,9 +262,8 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc
         }
     }
     
-
-
-    glUseProgram(imm_color_shader);
+    
+    set_shader(imm_color_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
 
     imm_quad(round(outline_outer_position), round(outline_outer_size), color);
@@ -353,8 +351,8 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
         bar_width,
         size.y
     };
-
-    glUseProgram(imm_color_shader);
+    
+    set_shader(imm_color_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     imm_quad(bar_position, bar_size, HIGHLIGHT_COLOR);
     imm_flush();
@@ -414,7 +412,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     // the y value.
 
     // @TODO: Draw a little alpha checkerboard texture underneath this.
-    glUseProgram(imm_color_shader);
+    set_shader(imm_color_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     alpha_x0 := alpha_position.x;
     alpha_y0 := alpha_position.y;
@@ -429,8 +427,8 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     imm_flush();
 
     slider(*color.w, alpha_position, alpha_size, loc=loc, id=0);
-
-    glUseProgram(imm_hue_shader);
+    
+    set_shader(imm_hue_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     imm_vertex(.{hue_x0, hue_y0, 0}, .{0, 0});
     imm_vertex(.{hue_x1, hue_y0, 0}, .{1, 0});
@@ -539,8 +537,8 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
         sv_cursor_offset_small * 2,
     };
 
-
-    glUseProgram(imm_saturation_value_shader);
+    
+    set_shader(imm_saturation_value_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     set_uniform("hue", hue);
     imm_vertex(.{sv_x0, sv_y0, 0}, .{0, 1});
@@ -550,8 +548,8 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     imm_vertex(.{sv_x1, sv_y1, 0}, .{1, 0});
     imm_vertex(.{sv_x0, sv_y1, 0}, .{0, 0});
     imm_flush();
-
-    glUseProgram(imm_color_shader);
+    
+    set_shader(imm_color_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     imm_quad(sample_position, sample_size, color.*);
     imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, HIGHLIGHT_COLOR);
@@ -682,8 +680,8 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     font := *consolas;
 
     width := floor(font.ascender * 0.05);
-
-    glUseProgram(imm_color_shader);
+    
+    set_shader(imm_color_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     imm_quad(position, size, color);
     
@@ -868,8 +866,8 @@ string_entry :: (
             string_to_draw = .{str_count.*, str.data};
     }
 
-
-    glUseProgram(imm_color_shader);
+    
+    set_shader(imm_color_shader, .{flags = 0});
     set_uniform("projection", imgui_to_camera);
     imm_quad(outer_position, outer_size, color);
     imm_quad(inner_position, inner_size, BACKGROUND_COLOR);

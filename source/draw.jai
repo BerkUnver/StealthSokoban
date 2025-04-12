@@ -703,31 +703,6 @@ update_view_texture :: (tex: *View_Texture, size: Vector3i, data: [] View_State)
 }
 
 
-draw_wireframe_mesh :: (mesh: *Mesh, projection: Matrix4, color: Vector4) {
-    using context.game_context;
-
-    glUseProgram(wireframe_shader);
-
-    projection_loc := glGetUniformLocation(wireframe_shader, "projection");
-    assert(projection_loc >= 0);
-    glUniformMatrix4fv(projection_loc, 1, GL_TRUE, *projection._11);
-
-    color_loc := glGetUniformLocation(wireframe_shader, "color");
-    assert(color_loc >= 0);
-    glUniform4f(color_loc, color.x, color.y, color.z, color.w);
-    
-    // @TODO: Make sure that we make a VAO where the vertex format matches the input mesh vertex format.
-    // The only reason it works right now is because all the vertex formats have position as their first element.
-
-    glBindVertexArray(mesh.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
-    
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
-    glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-}
-
-
 load_bitmap :: (file_name: string) -> GLuint {
     using context.game_context;
 
@@ -945,6 +920,53 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
         assert(false);
     }
     return program;
+}
+
+
+Pipeline :: struct {
+    flags: enum_flags u8 {
+        BLEND;
+        DEPTH_TEST;
+        CULL_FACE;
+        STENCIL_TEST;
+    } = .DEPTH_TEST | .CULL_FACE;
+    polygon_mode: enum u8 {
+        FILL;
+        LINE;
+    }
+    depth_func: enum u8 {
+        // These are the only two we use right now
+        LESS;
+        GREATER;
+    }
+}
+
+
+set_shader :: (shader: GLuint, using pipeline := Pipeline.{}) {
+    using context.game_context;
+    glUseProgram(shader);
+
+    if flags & .BLEND glEnable(GL_BLEND);
+    else              glDisable(GL_BLEND);
+
+    if flags & .DEPTH_TEST glEnable(GL_DEPTH_TEST);
+    else                   glDisable(GL_DEPTH_TEST);
+
+    if flags & .CULL_FACE glEnable(GL_CULL_FACE);
+    else                  glDisable(GL_CULL_FACE);
+
+    if flags & .STENCIL_TEST glEnable(GL_STENCIL_TEST);
+    else                     glDisable(GL_STENCIL_TEST);
+
+    if #complete polygon_mode == {
+        case .FILL; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        case .LINE; glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+
+    if #complete depth_func == {
+        case .LESS;    glDepthFunc(GL_LESS);
+        case .GREATER; glDepthFunc(GL_GREATER);
+    }
 }
 
 

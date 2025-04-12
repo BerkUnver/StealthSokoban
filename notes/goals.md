@@ -55,3 +55,17 @@ WE SHOULD PROFILE SOON AND PROFILE OFTEN. As soon as we have stuff drawing on th
 If things are not going well and I've spent a year working on this, I should give myself an escape hatch and be able to abandon the project. This is okay, and will be a learning experience about systems programming, etc.
 If things are going mediocrely well, I can release this as freeware.
 If things are going really well, we can consider a Steam release. There is too much bullshit on Steam, and I only want to put something there if I feel it is very high-quality and worth people's time.
+
+
+
+
+
+
+##### 2025 - 4 - 11 Addendum: Course Correction
+I'm getting too hackerman right now. It's turning into a bs game engine project. Level design was going okay early on, it's getting cut short now. I will restore it to its rightful place as I have solidified the old schedule and will get back to it. I have made some programming mistakes by following Handmade Hero BS. It would have been better to not have DLL hotloading or memory arenas (I'm fairly certain, not 100%). However, I don't want fix this now because I NEED to focus on gameplay features for the exhibition. 
+
+Adding the level name entry bar was a mistake. I will only add editor features when I get sufficiently fed up with the thing I had before. After the new dragging widget is done, no more editor programming unless something becomes annoying and I know how I can fix it with an editor widget.
+
+Getting gameplay features into a good-enough state for the exhibition is the PRIORITY.
+
+For after the exhibition, I need to address the fact that this doesn't feel like _my_ game, it just feels like a game. Like I had some ideas one day and thought, "That would be cool, I guess". I need to understand how to make it my own, but I can't do that right now because the exhibition is a month away.

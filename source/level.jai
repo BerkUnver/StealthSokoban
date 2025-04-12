@@ -87,10 +87,14 @@ Level :: struct {
                 deletion: bool;
             }
 
-            drag: struct {
+            drag_old: struct {
                 mouse_start: Vector2;
                 selectable_start: Vector3i;
                 index: u8;
+            }
+
+            drag: struct {
+
             }
         }
         
@@ -180,13 +184,13 @@ Exit :: struct {
 }
 
 
-Level_Entrance :: struct {
+Overworld_Entrance :: struct {
     using #as e: Entity;
     color: Vector4;
 }
 
 
-Level_Exit :: struct {
+Overworld_Exit :: struct {
     using #as e: Entity;
     entrance: Entity_Id;
 }
@@ -673,7 +677,7 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
     entity_count := 0;
     highest_eid: Entity_Id = 0;
     #insert -> string {
-        buf: [1024] u8;
+        buf: [4096] u8 = ---;
         sb := make_string_builder(buf);
         for ENTITIES {
             print(*sb, "for * _% {\n", it.name);

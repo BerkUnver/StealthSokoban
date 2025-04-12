@@ -5,6 +5,8 @@ Entity_Type :: enum {
     Enemy;
     Enemy_Spawner;
     Enemy_Despawner;
+    Overworld_Entrance;
+    Overworld_Exit;
     Checkpoint;
     Player;
     Exit;
@@ -220,6 +222,10 @@ entity_mesh :: (e: *Entity) -> *Mesh {
             return *enemy_despawner_mesh;
         case .Checkpoint;
             return *checkpoint_mesh;
+        case .Overworld_Entrance;
+            return *overworld_entrance_mesh;
+        case .Overworld_Exit;
+            return *overworld_exit_mesh;
     }
 
     return null;

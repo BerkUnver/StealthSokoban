@@ -80,6 +80,8 @@ Game_Context :: struct {
         player_mesh: Mesh;
         player_bitmap: GLuint;
         exit_mesh: Mesh;
+        overworld_entrance_mesh: Mesh;
+        overworld_exit_mesh: Mesh;
     };
 }
 
@@ -172,12 +174,13 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         }
 
         game_dll_hotloaded_init();
-
+        
+        // We only ever set this stuff once.
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilMask(0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
         assert(FT_Init_FreeType(*freetype) == 0);
         success:, shader_include = read_file("shaders/include.gl", *permanent_arena);
@@ -212,6 +215,8 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        overworld_entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        overworld_exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         checkpoint_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
@@ -576,10 +581,7 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
     using context.game_context;
 
     
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-
-    glUseProgram(imm_color_shader);
+    set_shader(imm_color_shader, .{flags = .BLEND});
     set_uniform("projection", imgui_state.imgui_to_camera);
     imm_quad(IMGUI_POSITION, IMGUI_SIZE, .{0, 0, 0, 1});
     imm_flush();
@@ -662,14 +664,9 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
 editor_draw :: (using level: *Level) {
     using context.game_context;
 
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glDisable(GL_BLEND);
-
     world_to_camera := get_editor_camera_matrix(level);
-
-    glUseProgram(editor_gridlike_shader);
-
+    
+    set_shader(editor_gridlike_shader);
     set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
     set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
     for * _Block {
@@ -686,7 +683,7 @@ editor_draw :: (using level: *Level) {
         bind_and_draw(*it.mesh);
     }
 
-    glUseProgram(color_shader);
+    set_shader(color_shader);
 
     for * _Enemy_Spawner {
         matrix, color := get_enemy_spawner_draw_info(it); 
@@ -710,9 +707,8 @@ editor_draw :: (using level: *Level) {
     draw_entities(_Exit, *exit_mesh);
     draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
-
-    glUseProgram(bitmap_shader);
-
+    
+    set_shader(bitmap_shader);
     for * _Enemy {
         matrix, bitmap := get_enemy_draw_info(level, it);
         set_uniform("projection", world_to_camera * matrix);
@@ -731,53 +727,6 @@ editor_draw :: (using level: *Level) {
         bind_and_draw(*player_mesh);
     }
 
-    
-    if editor.selected {
-        t := (cos(editor.selected_timer * TAU) + 1) / 2;
-        color := Vector4.{t, t, t, 1};
-        
-        e := get_entity(level, editor.selected);
-        mesh := entity_mesh(e);
-        mesh_to_world := entity_mesh_to_world_matrix(level, e);
-        
-        glUseProgram(wireframe_shader);
-        set_uniform("projection", world_to_camera * mesh_to_world);
-        set_uniform("color", color);
-
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
-        bind_and_draw(mesh);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    }
-
-    if editor.mode == .EXTRUDE {
-        using editor.extrude;
-
-        start := start_position;
-        end := to_vector3i(floor(end_intersection));
-
-        position, size := get_editor_extrude_size(level);
-
-        glUseProgram(imm_color_shader);
-        set_uniform("projection", world_to_camera);
-
-        R :: Vector3.{0.1, 0.1, 0.1};
-
-        imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
-        imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
-        WIDTH :: 0.03;
-        
-        color: Vector4;
-        if deletion color = .{1, 0, 0, 1};
-        else        color = .{1, 1, 1, 1};
-
-        for :iterate_vector3i size {
-            cuboid_position := to_vector3(position + it);
-            imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
-        }
-
-        imm_flush();
-    }
-    
 
     //
     // Detect the overlapping blocks in each level and draw where they are.
@@ -807,10 +756,7 @@ editor_draw :: (using level: *Level) {
         }
 
        
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-
-        glUseProgram(imm_color_shader);
+        set_shader(imm_color_shader, .{flags = .BLEND | .CULL_FACE});
         set_uniform("projection", world_to_camera);
 
         OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
@@ -826,16 +772,81 @@ editor_draw :: (using level: *Level) {
 
         imm_flush();
     }
+
+    if editor.selected {
+        t := (cos(editor.selected_timer * TAU) + 1) / 2;
+        color := Vector4.{t, t, t, 1};
+        
+        e := get_entity(level, editor.selected);
+        mesh := entity_mesh(e);
+        mesh_to_world := entity_mesh_to_world_matrix(level, e);
+        
+        set_shader(wireframe_shader);
+        set_uniform("projection", world_to_camera * mesh_to_world);
+        set_uniform("color", color);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
+        bind_and_draw(mesh);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
+
+    if editor.mode == {
+        case .EXTRUDE;
+            using editor.extrude;
+
+            start := start_position;
+            end := to_vector3i(floor(end_intersection));
+
+            position, size := get_editor_extrude_size(level);
+            
+            set_shader(imm_color_shader);
+            set_uniform("projection", world_to_camera);
+
+            R :: Vector3.{0.1, 0.1, 0.1};
+
+            imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
+            imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
+            WIDTH :: 0.03;
+            
+            color: Vector4;
+            if deletion color = .{1, 0, 0, 1};
+            else        color = .{1, 1, 1, 1};
+
+            for :iterate_vector3i size {
+                cuboid_position := to_vector3(position + it);
+                imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
+            }
+
+            imm_flush();
+        
+        case .IDLE;
+            if editor.selected {
+                e := get_entity(level, editor.selected);
+                
+                set_shader(imm_color_shader, .{flags = 0});
+                set_uniform("projection", world_to_camera);
+                
+                y := cast(float, e.position.y);
+                x0 := e.position.x + 0.15;
+                z0 := e.position.z + 0.15;
+                x1 := e.position.x + 0.85;
+                z1 := e.position.z + 0.85;
+
+                COLOR :: Vector4.{1, 0.5, 0.5, 1};
+                imm_vertex(.{x0, y, z0}, COLOR);
+                imm_vertex(.{x1, y, z0}, COLOR);
+                imm_vertex(.{x1, y, z1}, COLOR);
+                imm_vertex(.{x0, y, z0}, COLOR);
+                imm_vertex(.{x1, y, z1}, COLOR);
+                imm_vertex(.{x0, y, z1}, COLOR);
+                imm_flush();
+            }
+    }
 }
 
 
 gameplay_draw :: (using level: *Level) {
     using context.game_context;
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glDisable(GL_BLEND);
-
     //
     // Draw blocks.
     //
@@ -847,8 +858,7 @@ gameplay_draw :: (using level: *Level) {
 
     world_to_camera := get_gameplay_camera_matrix(level);
 
-    glUseProgram(gameplay_gridlike_shader);
-    
+    set_shader(gameplay_gridlike_shader);
     set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
     set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
     set_uniform_bitmap("viewed", 2, view_texture.tbo, GL_TEXTURE_BUFFER);
@@ -882,8 +892,8 @@ gameplay_draw :: (using level: *Level) {
         set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
         set_uniform("world_to_camera", world_to_camera);
     }
-
-    glUseProgram(item_and_color_shader);
+    
+    set_shader(item_and_color_shader);
     set_item_shader_uniforms();
 
 
@@ -925,8 +935,8 @@ gameplay_draw :: (using level: *Level) {
     draw_entities(_Exit, *exit_mesh);
     draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
-    
-    glUseProgram(item_and_bitmap_shader);
+         
+    set_shader(item_and_bitmap_shader);
     set_item_shader_uniforms();
 
     for * _Enemy {
@@ -941,10 +951,10 @@ gameplay_draw :: (using level: *Level) {
     // Draw the mesh to conceal the invisible level parts
     //
 
-    glEnable(GL_CULL_FACE);
 
     // Because this changes so frequently, it makes the most sense for me to draw this in immediate mode.
-    glUseProgram(imm_color_shader); 
+
+    set_shader(imm_color_shader);
     set_uniform("projection", world_to_camera);
     
     // @Speed this is taking 1ms... Look into optimizing this.
@@ -1003,14 +1013,8 @@ gameplay_draw :: (using level: *Level) {
     // @TODO: Depth sorting. Possibly for when we need a real renderer.
 
     glDepthFunc(GL_GREATER);
-    glEnable(GL_BLEND);
-    glEnable(GL_STENCIL_TEST);
-    glDepthMask(GL_FALSE);
-    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-    glStencilMask(0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
-    glUseProgram(occlusion_shader);
+    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE});
     
 
     set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
@@ -1028,8 +1032,6 @@ gameplay_draw :: (using level: *Level) {
     }
 
     glDepthFunc(GL_LESS);
-    glDepthMask(GL_TRUE);
-    glDisable(GL_STENCIL_TEST);
     
     //
     // Draw the player
@@ -1038,7 +1040,7 @@ gameplay_draw :: (using level: *Level) {
     // We draw the player after so the player always draws on top
     // of the exit.
 
-    glUseProgram(bitmap_shader);
+    set_shader(bitmap_shader);
     set_uniform_bitmap("bitmap", 0, player_bitmap);
     for * _Player {
         matrix := world_to_camera * get_player_draw_info(it);
