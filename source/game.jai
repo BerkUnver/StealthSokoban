@@ -774,6 +774,10 @@ editor_draw :: (using level: *Level) {
     }
 
     if editor.selected {
+        //
+        // Draw the wireframe
+        //
+
         t := (cos(editor.selected_timer * TAU) + 1) / 2;
         color := Vector4.{t, t, t, 1};
         
@@ -781,13 +785,76 @@ editor_draw :: (using level: *Level) {
         mesh := entity_mesh(e);
         mesh_to_world := entity_mesh_to_world_matrix(level, e);
         
-        set_shader(wireframe_shader);
+        set_shader(wireframe_shader, .{polygon_mode = .LINE});
         set_uniform("projection", world_to_camera * mesh_to_world);
         set_uniform("color", color);
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); // I don't think this will be set very often so we'll set then unset.
         bind_and_draw(mesh);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+        
+        //
+        // Draw the dragging widget
+        //
+        
+        if editor.mode == .IDLE || editor.mode == .DRAG || editor.mode == .CAMERA {
+            set_shader(imm_color_shader, .{flags = .BLEND});
+            set_uniform("projection", world_to_camera);
+            
+            COLORS :: Vector4.[
+                .{1, 0.5, 0.5, 1},
+                .{0.5, 1, 0.5, 1},
+                .{0.5, 0.5, 1, 1},
+            ];
+
+            for 0..2 {
+                a_index := (it + 1) % 3;
+                b_index := (it + 2) % 3;
+
+                a_sign := ifx editor.camera_position.component[a_index] > xx e.position.component[a_index] then 1 else -1;
+                b_sign := ifx editor.camera_position.component[b_index] > xx e.position.component[b_index] then 1 else -1;
+
+                a0 := e.position.component[a_index] + DRAG_START * a_sign;
+                b0 := e.position.component[b_index] + DRAG_START * b_sign;
+                a1 := e.position.component[a_index] + DRAG_END * a_sign;
+                b1 := e.position.component[b_index] + DRAG_END * b_sign;
+
+                c := cast(float, e.position.component[it]);
+
+                p0, p1, p2, p3: Vector3;
+
+                p0.component[it] = c;
+                p0.component[a_index] = a0;
+                p0.component[b_index] = b0;
+
+                p1.component[it] = c;
+                p1.component[a_index] = a1;
+                p1.component[b_index] = b0;
+
+                p2.component[it] = c;
+                p2.component[a_index] = a1;
+                p2.component[b_index] = b1;
+
+                p3.component[it] = c;
+                p3.component[a_index] = a0;
+                p3.component[b_index] = b1;
+
+                color := COLORS[it];
+                if editor.mode == .DRAG && editor.drag.index == it {
+                    color.w = 0.8;
+                } else {
+                    color.w = 0.5;
+                }
+
+                imm_vertex(p0, color);
+                imm_vertex(p1, color);
+                imm_vertex(p2, color);
+                imm_vertex(p0, color);
+                imm_vertex(p2, color);
+                imm_vertex(p3, color);
+
+                imm_flush();
+            }
+        }
     }
 
     if editor.mode == {
@@ -818,29 +885,6 @@ editor_draw :: (using level: *Level) {
             }
 
             imm_flush();
-        
-        case .IDLE;
-            if editor.selected {
-                e := get_entity(level, editor.selected);
-                
-                set_shader(imm_color_shader, .{flags = 0});
-                set_uniform("projection", world_to_camera);
-                
-                y := cast(float, e.position.y);
-                x0 := e.position.x + 0.15;
-                z0 := e.position.z + 0.15;
-                x1 := e.position.x + 0.85;
-                z1 := e.position.z + 0.85;
-
-                COLOR :: Vector4.{1, 0.5, 0.5, 1};
-                imm_vertex(.{x0, y, z0}, COLOR);
-                imm_vertex(.{x1, y, z0}, COLOR);
-                imm_vertex(.{x1, y, z1}, COLOR);
-                imm_vertex(.{x0, y, z0}, COLOR);
-                imm_vertex(.{x1, y, z1}, COLOR);
-                imm_vertex(.{x0, y, z1}, COLOR);
-                imm_flush();
-            }
     }
 }
 
@@ -1010,13 +1054,7 @@ gameplay_draw :: (using level: *Level) {
     // Draw the occlusion effects
     //
 
-    // @TODO: Depth sorting. Possibly for when we need a real renderer.
-
-    glDepthFunc(GL_GREATER);
-
-    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE});
-    
-
+    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE, depth_func = .GREATER});
     set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
     for * _Player {
         matrix := world_to_camera * get_player_draw_info(it);
@@ -1030,8 +1068,6 @@ gameplay_draw :: (using level: *Level) {
         set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
         bind_and_draw(*exit_mesh);
     }
-
-    glDepthFunc(GL_LESS);
     
     //
     // Draw the player

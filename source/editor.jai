@@ -23,6 +23,10 @@ EDITOR_FRUSTUM :: #run -> Matrix4 {
 }
 
 
+DRAG_START :: 0.15;
+DRAG_END :: 0.85;
+
+
 get_editor_camera_matrix :: (using level: *Level) -> Matrix4 {
     position_matrix := make_translation_matrix4(-editor.camera_position);
     pitch_matrix := make_x_rotation_matrix(Matrix4, -editor.camera_pitch);
@@ -181,13 +185,58 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
 
 
             if event.key == .MOUSE_LEFT_BUTTON && event.state == .DOWN {
-                success, selected, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
-                
-                if success {
-                    editor.selected = selected;
-                    editor.selected_timer = 0;
-                } else {
-                    editor.selected = 0;
+                drag_clicked := false;
+
+                if editor.selected {
+                    e := get_entity(level, editor.selected);
+
+                    
+                    smallest_exists := false;
+                    smallest_t: float;
+                    smallest_index: int;
+
+                    for 0..2 {
+                        normal: Vector3;
+                        normal.component[it] = 1;
+                        
+                        parallel, point, t := get_intersection_between_line_and_plane(mouse_start, mouse_direction, to_vector3(e.position), normal);
+
+                        if !parallel && !smallest_exists || (smallest_exists && t < smallest_t) {
+                            a_index := (it + 1) % 3;
+                            a := point.component[a_index] - cast(float, e.position.component[a_index]);
+                            a_positive := editor.camera_position.component[a_index] < xx e.position.component[a_index];
+
+                            b_index := (it + 2) % 3;
+                            b := point.component[b_index] - cast(float, e.position.component[b_index]);
+                            b_positive := editor.camera_position.component[b_index] < xx e.position.component[b_index];
+
+                            if (a_positive && DRAG_START < a && a < DRAG_END)
+                            || (!a_positive && -DRAG_END < a && a < -DRAG_START)
+                            || (b_positive && DRAG_START < b && b < DRAG_END)
+                            || (!b_positive && -DRAG_END < b && b < -DRAG_START) {
+                                smallest_exists = true;
+                                smallest_t = t;
+                                smallest_index = it;
+                            }
+                        }
+                    }
+
+                    if smallest_exists {
+                        drag_clicked = true;
+                        editor.mode = .DRAG;
+                        editor.drag = .{index = xx smallest_index};
+                    }
+                }
+
+                if !drag_clicked {
+                    success, selected, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
+
+                    if success {
+                        editor.selected = selected;
+                        editor.selected_timer = 0;
+                    } else {
+                        editor.selected = 0;
+                    }
                 }
 
                 return;
@@ -432,6 +481,11 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 // @TODO: change level_position or level_size to accomadate the new position.
                 editor.mode = .IDLE;
             }
+
+        case .DRAG;
+            if event.key == .MOUSE_LEFT_BUTTON && event.state == .UP {
+                editor.mode = .IDLE;
+            }
     }
 }
 
@@ -601,6 +655,26 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
                 movement := intersection.component[index] - initial_intersection.component[index];
                 new_position_component := cast(s32, round(cast(float, selectable_start.component[index]) + movement));
                 e.position.component[index] = new_position_component;
+            }
+
+        case .DRAG;
+            using editor.drag;
+            camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(level);
+            camera_to_world := inverse(get_editor_camera_matrix(level));
+            mouse_start := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
+            mouse_direction := mouse_start - editor.camera_position;
+
+
+            assert(editor.selected != 0);
+            e := get_entity(level, editor.selected);
+
+            normal: Vector3;
+            normal.component[index] = 1;
+
+            parallel, point, t := get_intersection_between_line_and_plane(mouse_start, mouse_direction, to_vector3(e.position), normal);
+            if !parallel {
+                e.position.component[(index + 1) % 3] = xx floor(point.component[(index + 1) % 3]);
+                e.position.component[(index + 2) % 3] = xx floor(point.component[(index + 2) % 3]);
             }
     }
     

@@ -94,7 +94,7 @@ Level :: struct {
             }
 
             drag: struct {
-
+                index: u8;
             }
         }
         
