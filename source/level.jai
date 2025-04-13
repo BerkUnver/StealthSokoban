@@ -6,6 +6,8 @@ Level :: struct {
     unused_eids: [..] Entity_Id; @NoSerialize
     entities: Table(Entity_Id, *Entity); @NoSerialize
     
+    view_texture: View_Texture; @NoSerialize
+    
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
     // pure-data representation of the scene) and what is gameplay state. We could use
@@ -55,10 +57,7 @@ Level :: struct {
         // This makes sense from the perspective of wanting to be
         // able to type levels directly into code for this initial
         // development period, but may make less sense later.
-        // Consider coming back to this.
-
-        view_texture: View_Texture;
-        
+        // Consider coming back to this. 
 
         // @Temporary This is very basic, just to get sound to work for now.
         playing_sound_count: int;
@@ -712,21 +711,21 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
             editor.camera_yaw = 0;
             editor.camera_pitch = -PI / 3;
 
-            if _Block.count != 0 {
-                // :LevelSizeInEditor
-                // It makes me slightly uncomfortable at how this code overlaps with the 
-                // gameplay code but we don't have access to the level size in the editor.
+            // :LevelSizeInEditor
+            // It makes me slightly uncomfortable at how this code overlaps with the 
+            // gameplay code but we don't have access to the level size in the editor.
 
-                position, size := get_block_extents(_Block);
-                level_center := to_vector3(position) + to_vector3(size) / 2;
-                level_radius := cast(float, max(size.x, max(size.y, size.z)));
+            position, size := get_block_extents(_Block);
+            level_center := to_vector3(position) + to_vector3(size) / 2;
+            level_radius := cast(float, max(size.x, max(size.y, size.z)));
 
-                camera_distance := level_radius * 2;
-                camera_y := sin(PI / 3) * camera_distance;
-                camera_z := cos(PI / 3) * camera_distance;
+            camera_distance := level_radius * 2;
+            camera_y := sin(PI / 3) * camera_distance;
+            camera_z := cos(PI / 3) * camera_distance;
 
-                editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
-            }
+            editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+
+            view_texture = make_view_texture(size);
             return true;
 
         case .GAMEPLAY;
@@ -1960,8 +1959,6 @@ gameplay_level_update :: (using level: *Level, dt: float) {
         check_axis(1);
         check_axis(2);
     }
-
-
 
     update_view_texture(*view_texture, level_size, viewed);
 }

@@ -478,7 +478,6 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
             if event.state == .UP && ((index == 0 && event.key == xx #char "1")
                                    || (index == 1 && event.key == xx #char "2")
                                    || (index == 2 && event.key == xx #char "3")) {
-                // @TODO: change level_position or level_size to accomadate the new position.
                 editor.mode = .IDLE;
             }
 
@@ -681,6 +680,20 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
     FLASH_TIME :: 1;
     if editor.selected {
         editor.selected_timer = fmod_cycling(editor.selected_timer + dt / FLASH_TIME, 1);
+    }
+
+    {
+        _, size := get_block_extents(_Block); // :LevelSizeInEditor
+        if size != view_texture.size {
+
+            scope_mark(*frame_arena);
+
+            size_1d := size.x * size.y * size.z;
+            data := alloc_view(*frame_arena, size_1d, View_State, zero_init = false);
+            memset(data.data, xx (View_State.SEEN | .VISIBLE), size_1d);
+
+            update_view_texture(*view_texture, size, data);
+        }
     }
 }
 

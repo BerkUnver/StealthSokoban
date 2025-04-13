@@ -81,6 +81,7 @@ Game_Context :: struct {
         player_bitmap: GLuint;
         exit_mesh: Mesh;
         overworld_entrance_mesh: Mesh;
+        overworld_entrance_bitmap: GLuint;
         overworld_exit_mesh: Mesh;
     };
 }
@@ -520,7 +521,7 @@ game_update : Game_Update : (
         if #complete mode == {
             case .EDITOR;
                 editor_update(editor_level, mouse, dt);
-                editor_draw(editor_level);
+                draw(editor_level, .EDITOR);
 
                 scope_mark(*frame_arena);
 
@@ -541,7 +542,7 @@ game_update : Game_Update : (
                 }
             case .GAMEPLAY;
                 gameplay_level_update(gameplay_level, dt);
-                gameplay_draw(gameplay_level);
+                draw(gameplay_level, .GAMEPLAY);
         }
 
         if screenshot_requested {
@@ -661,65 +662,210 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
 // too much complication for this initial phase of development, so I'm okay with doing this.
 //          -berk, 2025 - 2 - 26
 
-editor_draw :: (using level: *Level) {
+
+
+draw :: (using level: *Level, mode: Game_Mode) {
     using context.game_context;
 
-    world_to_camera := get_editor_camera_matrix(level);
+    world_to_camera: Matrix4;
+    if #complete mode == {
+        case .GAMEPLAY;
+            world_to_camera = get_gameplay_camera_matrix(level);
+        case .EDITOR;
+            world_to_camera = get_editor_camera_matrix(level);
+    }
+
+
+    if #complete mode == {
+        case .GAMEPLAY;
+            set_shader(gameplay_gridlike_shader);
+            set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
+            set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
+            set_uniform_bitmap("viewed", 2, view_texture.tbo, GL_TEXTURE_BUFFER);
+            set_uniform("viewed_size", level_size);
+
+            for * _Block {
+                projection := translate(world_to_camera, to_vector3(it.position));
+                set_uniform("viewed_position", it.position - level_position);
+                set_uniform("projection", projection);
+                set_uniform("color", it.color);
+                bind_and_draw(*it.mesh);
+            } 
+
+            set_uniform("color", Door.COLOR);
+            for * _Door {
+                projection := translate(world_to_camera, to_vector3(it.position));
+                set_uniform("viewed_position", it.position - level_position);
+                set_uniform("projection", projection);
+                bind_and_draw(*it.mesh);
+            }
+
+
+        case .EDITOR;
+            set_shader(editor_gridlike_shader);
+            set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
+            set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
+            for * _Block {
+                projection := translate(world_to_camera, to_vector3(it.position));
+                set_uniform("projection", projection);
+                set_uniform("color", it.color);
+                bind_and_draw(*it.mesh);
+            }
+
+            set_uniform("color", Door.COLOR);
+            for * _Door {
+                projection := translate(world_to_camera, to_vector3(it.position));
+                set_uniform("projection", projection);
+                bind_and_draw(*it.mesh);
+            }
+    }
+
+
+    set_item_shader_uniforms :: () #expand {
+        set_uniform("viewed_position", level_position);
+        set_uniform("viewed_size", level_size);
+        set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
+        set_uniform("world_to_camera", world_to_camera);
+    }
     
-    set_shader(editor_gridlike_shader);
-    set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
-    set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
-    for * _Block {
-        projection := translate(world_to_camera, to_vector3(it.position));
-        set_uniform("projection", projection);
-        set_uniform("color", it.color);
-        bind_and_draw(*it.mesh);
+    set_shader(item_and_color_shader);
+    set_item_shader_uniforms();
+
+
+    set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
+    for mutual_annihilations {
+        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+        bind_and_draw(*enemy_annihilation_mesh);
     }
 
-    set_uniform("color", Door.COLOR);
-    for * _Door {
-        projection := translate(world_to_camera, to_vector3(it.position));
-        set_uniform("projection", projection);
-        bind_and_draw(*it.mesh);
-    }
-
-    set_shader(color_shader);
 
     for * _Enemy_Spawner {
         matrix, color := get_enemy_spawner_draw_info(it); 
-        set_uniform("projection", world_to_camera * matrix);
+        set_uniform("model_to_world", matrix);
         set_uniform("color", color);
         bind_and_draw(*enemy_spawner_mesh);
     }
 
 
-    draw_entities :: (e: [] $T/Entity, mesh: *Mesh) #expand {
+    // @TODO: Get checkpoints to actually work
+    /*
+    for * _Checkpoint {
+        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+        if checkpoint != 0 && checkpoint == it.eid {
+            set_uniform("color", Checkpoint.ACTIVE_COLOR);
+        } else {
+            set_uniform("color", Checkpoint.COLOR);
+        }
+        bind_and_draw(*checkpoint_mesh);    
+    }
+    */
+
+
+    draw_entities :: (entities: [] $T/Entity, mesh: *Mesh) #expand {
         set_uniform("color", T.COLOR);
-        for * e {
-            matrix := world_to_camera * entity_mesh_to_world_matrix(level, it);
-            set_uniform("projection", matrix);
+        for * entities {
+            model_to_world := make_translation_matrix4(to_vector3(it.position));
+            set_uniform("model_to_world", model_to_world);
             bind_and_draw(mesh);
         }
     }
 
-    
-    draw_entities(_Checkpoint, *checkpoint_mesh);
     draw_entities(_Exit, *exit_mesh);
     draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
-    
-    set_shader(bitmap_shader);
+         
+    set_shader(item_and_bitmap_shader);
+    set_item_shader_uniforms();
+
     for * _Enemy {
         matrix, bitmap := get_enemy_draw_info(level, it);
-        set_uniform("projection", world_to_camera * matrix);
-        
-        // @Copypasta from the ordinary enemy drawing code.
-        // Eventually enemies will just be one mesh anyway.
-        set_uniform_bitmap("bitmap", 0, bitmap);
+        set_uniform("model_to_world", matrix);
+        set_uniform_bitmap("bitmap", 1, bitmap);
         bind_and_draw(*enemy_mesh);
     }
 
 
+    if mode == .GAMEPLAY {
+        set_shader(imm_color_shader);
+        set_uniform("projection", world_to_camera);
+        
+        // @Speed this is taking 1ms... Look into optimizing this.
+        for :iterate_vector3i level_size {
+            hidden := viewed[it_index] & (.SEEN | .VISIBLE) == 0;
+        
+            is_a_gridlike_at :: (using level: *Level, index: int) -> bool {
+                block_eid := collision[index];
+                if block_eid {
+                    if get_entity(level, block_eid).type == .Block return true;
+                } 
+
+                door_eid := doors[index];
+                if door_eid {
+                    return true;
+                }
+                
+                return false;
+            }
+
+            a_gridlike_is_here := is_a_gridlike_at(level, it_index);
+
+            origin := to_vector3(level_position + it);
+
+            check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
+                in_bounds, index := get_3d_index(position, level_size);
+                
+                COLOR :: Vector4.{43.0/255.0, 42.0/255.0, 76.0/255.0, 1};
+                if !in_bounds {
+                    if hidden || a_gridlike_is_here {
+                        for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                    }
+                } else {
+                    if hidden && !a_gridlike_is_here && viewed[index] & .SEEN != 0 {
+                        if !is_a_gridlike_at(level, index) {
+                            for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                        }
+                    }
+                }
+            }
+
+            check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
+            check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
+            check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
+            check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
+            check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
+            check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
+        }
+        imm_flush();
+    }
+
+
+    //
+    // Draw the occlusion effects
+    //
+
+    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE, depth_func = .GREATER});
+    set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
+    for * _Player {
+        matrix := world_to_camera * get_player_draw_info(it);
+        set_uniform("projection", matrix);
+        bind_and_draw(*player_mesh);
+    }
+
+    
+    set_uniform("color", Vector4.{Exit.COLOR.x, Exit.COLOR.y, Exit.COLOR.z, 0.5});
+    for * _Exit {
+        set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
+        bind_and_draw(*exit_mesh);
+    }
+    
+    //
+    // Draw the player
+    //
+
+    // We draw the player after so the player always draws on top
+    // of the exit.
+
+    set_shader(bitmap_shader);
     set_uniform_bitmap("bitmap", 0, player_bitmap);
     for * _Player {
         matrix := world_to_camera * get_player_draw_info(it);
@@ -728,75 +874,102 @@ editor_draw :: (using level: *Level) {
     }
 
 
-    //
-    // Detect the overlapping blocks in each level and draw where they are.
-    // @Speed This is at worst (size_of_the_level * block_count time). This could get slow.
-    // We could instead update this every time a Block is moved.
-    //
-    
-    {
-        mark := get_mark(*frame_arena);
-        defer restore_mark(*frame_arena, mark);
+    if mode == .EDITOR {
+        {
+            mark := get_mark(*frame_arena);
+            defer restore_mark(*frame_arena, mark);
 
-        position, size := get_block_extents(_Block);
-        
-        overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
+            position, size := get_block_extents(_Block);
+            
+            overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
 
-        for * block: _Block {
-            offset := block.position - position;
-            for :iterate_vector3i block.size {
-                filled := block.filled[it_index];
-                if !filled continue;
+            for * block: _Block {
+                offset := block.position - position;
+                for :iterate_vector3i block.size {
+                    filled := block.filled[it_index];
+                    if !filled continue;
 
-                success, index := get_3d_index(it + offset, size);
-                assert(success);
-                
-                overlapping[index] += 1;
+                    success, index := get_3d_index(it + offset, size);
+                    assert(success);
+                    
+                    overlapping[index] += 1;
+                }
             }
+
+           
+            set_shader(imm_color_shader, .{flags = .BLEND | .CULL_FACE});
+            set_uniform("projection", world_to_camera);
+
+            OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+
+            for :iterate_vector3i size {
+                count := overlapping[it_index];
+                if count > 1 {
+                    start := position + it;
+                    end := start + Vector3i.{1,1,1};
+                    imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                }
+            }
+
+            imm_flush();
         }
 
-       
-        set_shader(imm_color_shader, .{flags = .BLEND | .CULL_FACE});
-        set_uniform("projection", world_to_camera);
+        if editor.selected {
+            //
+            // Draw the wireframe
+            //
 
-        OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+            t := (cos(editor.selected_timer * TAU) + 1) / 2;
+            color := Vector4.{t, t, t, 1};
+            
+            e := get_entity(level, editor.selected);
+            mesh := entity_mesh(e);
+            mesh_to_world := entity_mesh_to_world_matrix(level, e);
+            
+            set_shader(wireframe_shader, .{polygon_mode = .LINE});
+            set_uniform("projection", world_to_camera * mesh_to_world);
+            set_uniform("color", color);
 
-        for :iterate_vector3i size {
-            count := overlapping[it_index];
-            if count > 1 {
-                start := position + it;
-                end := start + Vector3i.{1,1,1};
-                imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
-            }
+            bind_and_draw(mesh);
+
         }
 
-        imm_flush();
-    }
+        if editor.mode == .EXTRUDE {
+            using editor.extrude;
 
-    if editor.selected {
-        //
-        // Draw the wireframe
-        //
+            start := start_position;
+            end := to_vector3i(floor(end_intersection));
 
-        t := (cos(editor.selected_timer * TAU) + 1) / 2;
-        color := Vector4.{t, t, t, 1};
-        
-        e := get_entity(level, editor.selected);
-        mesh := entity_mesh(e);
-        mesh_to_world := entity_mesh_to_world_matrix(level, e);
-        
-        set_shader(wireframe_shader, .{polygon_mode = .LINE});
-        set_uniform("projection", world_to_camera * mesh_to_world);
-        set_uniform("color", color);
+            position, size := get_editor_extrude_size(level);
 
-        bind_and_draw(mesh);
+            set_shader(imm_color_shader);
+            set_uniform("projection", world_to_camera);
 
-        
+            R :: Vector3.{0.1, 0.1, 0.1};
+
+            imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
+            imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
+            WIDTH :: 0.03;
+
+            color: Vector4;
+            if deletion color = .{1, 0, 0, 1};
+            else        color = .{1, 1, 1, 1};
+
+            for :iterate_vector3i size {
+                cuboid_position := to_vector3(position + it);
+                imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
+            }
+
+            imm_flush();
+        }
+            
         //
         // Draw the dragging widget
         //
-        
-        if editor.mode == .IDLE || editor.mode == .DRAG || editor.mode == .CAMERA {
+            
+        if editor.selected && (editor.mode == .IDLE || editor.mode == .DRAG || editor.mode == .CAMERA) {
+            e := get_entity(level, editor.selected);
+
             set_shader(imm_color_shader, .{flags = .BLEND});
             set_uniform("projection", world_to_camera);
             
@@ -855,233 +1028,6 @@ editor_draw :: (using level: *Level) {
                 imm_flush();
             }
         }
-    }
-
-    if editor.mode == {
-        case .EXTRUDE;
-            using editor.extrude;
-
-            start := start_position;
-            end := to_vector3i(floor(end_intersection));
-
-            position, size := get_editor_extrude_size(level);
-            
-            set_shader(imm_color_shader);
-            set_uniform("projection", world_to_camera);
-
-            R :: Vector3.{0.1, 0.1, 0.1};
-
-            imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
-            imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
-            WIDTH :: 0.03;
-            
-            color: Vector4;
-            if deletion color = .{1, 0, 0, 1};
-            else        color = .{1, 1, 1, 1};
-
-            for :iterate_vector3i size {
-                cuboid_position := to_vector3(position + it);
-                imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
-            }
-
-            imm_flush();
-    }
-}
-
-
-gameplay_draw :: (using level: *Level) {
-    using context.game_context;
-    //
-    // Draw blocks.
-    //
-    
-    // We need a special shader for blocks because blocks are grid-aligned.
-    // We would get floating-point precision error if we just tried to 
-    // determine which collision cell each vertex mapped to using just its
-    // position.
-
-    world_to_camera := get_gameplay_camera_matrix(level);
-
-    set_shader(gameplay_gridlike_shader);
-    set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
-    set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
-    set_uniform_bitmap("viewed", 2, view_texture.tbo, GL_TEXTURE_BUFFER);
-    set_uniform("viewed_size", level_size);
-
-    for * _Block {
-        projection := translate(world_to_camera, to_vector3(it.position));
-        set_uniform("viewed_position", it.position - level_position);
-        set_uniform("projection", projection);
-        set_uniform("color", it.color);
-        bind_and_draw(*it.mesh);
-    } 
-
-    set_uniform("color", Door.COLOR);
-    for * _Door {
-        projection := translate(world_to_camera, to_vector3(it.position));
-        set_uniform("viewed_position", it.position - level_position);
-        set_uniform("projection", projection);
-        bind_and_draw(*it.mesh);
-    }
-
-
-
-    //
-    // Draw the other level elements
-    //
-
-    set_item_shader_uniforms :: () #expand {
-        set_uniform("viewed_position", level_position);
-        set_uniform("viewed_size", level_size);
-        set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
-        set_uniform("world_to_camera", world_to_camera);
-    }
-    
-    set_shader(item_and_color_shader);
-    set_item_shader_uniforms();
-
-
-    set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
-    for mutual_annihilations {
-        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-        bind_and_draw(*enemy_annihilation_mesh);
-    }
-
-
-    for * _Enemy_Spawner {
-        matrix, color := get_enemy_spawner_draw_info(it); 
-        set_uniform("model_to_world", matrix);
-        set_uniform("color", color);
-        bind_and_draw(*enemy_spawner_mesh);
-    }
-
-
-    for * _Checkpoint {
-        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-        if checkpoint != 0 && checkpoint == it.eid {
-            set_uniform("color", Checkpoint.ACTIVE_COLOR);
-        } else {
-            set_uniform("color", Checkpoint.COLOR);
-        }
-        bind_and_draw(*checkpoint_mesh);    
-    }
-
-
-    draw_entities :: (entities: [] $T/Entity, mesh: *Mesh) #expand {
-        set_uniform("color", T.COLOR);
-        for * entities {
-            model_to_world := make_translation_matrix4(to_vector3(it.position));
-            set_uniform("model_to_world", model_to_world);
-            bind_and_draw(mesh);
-        }
-    }
-
-    draw_entities(_Exit, *exit_mesh);
-    draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
-
-         
-    set_shader(item_and_bitmap_shader);
-    set_item_shader_uniforms();
-
-    for * _Enemy {
-        matrix, bitmap := get_enemy_draw_info(level, it);
-        set_uniform("model_to_world", matrix);
-        set_uniform_bitmap("bitmap", 1, bitmap);
-        bind_and_draw(*enemy_mesh);
-    }
-
-
-    //
-    // Draw the mesh to conceal the invisible level parts
-    //
-
-
-    // Because this changes so frequently, it makes the most sense for me to draw this in immediate mode.
-
-    set_shader(imm_color_shader);
-    set_uniform("projection", world_to_camera);
-    
-    // @Speed this is taking 1ms... Look into optimizing this.
-    for :iterate_vector3i level_size {
-        hidden := viewed[it_index] & (.SEEN | .VISIBLE) == 0;
-    
-        is_a_gridlike_at :: (using level: *Level, index: int) -> bool {
-            block_eid := collision[index];
-            if block_eid {
-                if get_entity(level, block_eid).type == .Block return true;
-            } 
-
-            door_eid := doors[index];
-            if door_eid {
-                return true;
-            }
-            
-            return false;
-        }
-
-        a_gridlike_is_here := is_a_gridlike_at(level, it_index);
-
-        origin := to_vector3(level_position + it);
-
-        check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
-            in_bounds, index := get_3d_index(position, level_size);
-            
-            COLOR :: Vector4.{43.0/255.0, 42.0/255.0, 76.0/255.0, 1};
-            if !in_bounds {
-                if hidden || a_gridlike_is_here {
-                    for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
-                }
-            } else {
-                if hidden && !a_gridlike_is_here && viewed[index] & .SEEN != 0 {
-                    if !is_a_gridlike_at(level, index) {
-                        for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
-                    }
-                }
-            }
-        }
-
-        check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
-        check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
-        check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
-        check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
-        check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
-        check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
-    }
-    imm_flush();
-
-    
-    //
-    // Draw the occlusion effects
-    //
-
-    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE, depth_func = .GREATER});
-    set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
-    for * _Player {
-        matrix := world_to_camera * get_player_draw_info(it);
-        set_uniform("projection", matrix);
-        bind_and_draw(*player_mesh);
-    }
-
-    
-    set_uniform("color", Vector4.{Exit.COLOR.x, Exit.COLOR.y, Exit.COLOR.z, 0.5});
-    for * _Exit {
-        set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-        bind_and_draw(*exit_mesh);
-    }
-    
-    //
-    // Draw the player
-    //
-
-    // We draw the player after so the player always draws on top
-    // of the exit.
-
-    set_shader(bitmap_shader);
-    set_uniform_bitmap("bitmap", 0, player_bitmap);
-    for * _Player {
-        matrix := world_to_camera * get_player_draw_info(it);
-        set_uniform("projection", matrix);
-        bind_and_draw(*player_mesh);
     }
 }
 
