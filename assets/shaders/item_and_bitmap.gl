@@ -1,4 +1,4 @@
-// This entire shader is mostly a @Copypasta from item.gl
+// This entire shader is mostly a @Copypasta from item_and_color.gl
 
 #ifdef VERTEX_SHADER
 layout(location=LOC_POSITION) in vec3 vertex_position;
@@ -15,8 +15,19 @@ uniform mat4 world_to_camera;
 uniform mat4 model_to_world;
 uniform sampler2D bitmap;
 
+uniform vec4 substitute_color;
+
+
 OUTIN vec3 fragment_position;
 OUTIN vec2 fragment_uv;
+
+
+vec4 get_color(sampler2D sampler, vec2 uv) {
+    vec4 color = texture(sampler, uv);
+    if (all(color == vec4(0.0, 1.0, 0.0, 1.0))) color = substitute_color;
+    return color;
+}
+
 
 void main() {
 #ifdef VERTEX_SHADER
@@ -27,15 +38,19 @@ void main() {
 #else
     int index;
     bool success = get_3d_index(ivec3(floor(fragment_position)) - viewed_position, viewed_size, index);
-    if (!success) discard;
+
+    if (!success) {
+        fragment_color = get_color(bitmap, fragment_uv);
+        return;
+    }
     
     
     uint filled = texelFetch(viewed, index).r;
 
     if ((filled & VIEW_STATE_VISIBLE) != 0u) {
-        fragment_color = texture(bitmap, fragment_uv);
+        fragment_color = get_color(bitmap, fragment_uv);
     } else if ((filled & VIEW_STATE_SEEN) != 0u) {
-        fragment_color = texture(bitmap, fragment_uv);
+        fragment_color = get_color(bitmap, fragment_uv);
         fragment_color.rgb *= SEEN_BRIGHTNESS;
     } else {
         discard;

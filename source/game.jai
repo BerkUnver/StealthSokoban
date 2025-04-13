@@ -216,8 +216,9 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        overworld_entrance_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        overworld_exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        overworld_entrance_mesh = load_mesh("overworld_entrance.my_mesh", *permanent_arena);
+        overworld_entrance_bitmap = load_bitmap("overworld_entrance.tga");
+        overworld_exit_mesh = load_mesh("overworld_exit.my_mesh", *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         checkpoint_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
@@ -668,11 +669,17 @@ draw :: (using level: *Level, mode: Game_Mode) {
     using context.game_context;
 
     world_to_camera: Matrix4;
+    
+    position, size: Vector3i;
+
     if #complete mode == {
         case .GAMEPLAY;
             world_to_camera = get_gameplay_camera_matrix(level);
+            position = level_position;
+            size = level_size;
         case .EDITOR;
             world_to_camera = get_editor_camera_matrix(level);
+            position, size = get_block_extents(_Block); // :LevelSizeInEditor
     }
 
 
@@ -722,8 +729,8 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
 
     set_item_shader_uniforms :: () #expand {
-        set_uniform("viewed_position", level_position);
-        set_uniform("viewed_size", level_size);
+        set_uniform("viewed_position", position);
+        set_uniform("viewed_size", size);
         set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
         set_uniform("world_to_camera", world_to_camera);
     }
@@ -760,7 +767,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
     */
 
-
+    
     draw_entities :: (entities: [] $T/Entity, mesh: *Mesh) #expand {
         set_uniform("color", T.COLOR);
         for * entities {
@@ -783,6 +790,36 @@ draw :: (using level: *Level, mode: Game_Mode) {
         set_uniform_bitmap("bitmap", 1, bitmap);
         bind_and_draw(*enemy_mesh);
     }
+
+    
+    set_uniform_bitmap("bitmap", 1, overworld_entrance_bitmap);
+    for * _Overworld_Entrance {
+        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+        set_uniform("substitute_color", it.color);
+        bind_and_draw(*overworld_entrance_mesh);
+    }
+
+
+    set_uniform_bitmap("bitmap", 1, overworld_entrance_bitmap);
+    for * _Overworld_Exit {
+        substitute_color := Vector4.{0, 0, 0, 1};
+        if it.entrance {
+            e := get_entity(level, it.entrance);
+            entrance := as(e, Overworld_Entrance);
+            if entrance {
+                substitute_color = entrance.color;
+            }
+        }
+
+        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+        set_uniform("substitute_color", substitute_color);
+
+
+        bind_and_draw(*overworld_exit_mesh);
+    }
+
+
+
 
 
     if mode == .GAMEPLAY {
@@ -1025,8 +1062,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 imm_vertex(p2, color);
                 imm_vertex(p3, color);
 
-                imm_flush();
             }
+
+            imm_flush();
         }
     }
 }

@@ -185,7 +185,7 @@ Exit :: struct {
 
 Overworld_Entrance :: struct {
     using #as e: Entity;
-    color: Vector4;
+    color: Vector4; @Color
 }
 
 

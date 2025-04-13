@@ -22,7 +22,11 @@ void main() {
 #else
     int index;
     bool success = get_3d_index(ivec3(floor(fragment_position)) - viewed_position, viewed_size, index);
-    if (!success) discard;
+
+    if (!success) {
+        fragment_color = color;
+        return;
+    }
     
     
     uint filled = texelFetch(viewed, index).r;

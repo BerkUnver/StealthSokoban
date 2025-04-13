@@ -186,7 +186,8 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
 
             if event.key == .MOUSE_LEFT_BUTTON && event.state == .DOWN {
                 drag_clicked := false;
-
+                
+                /*
                 if editor.selected {
                     e := get_entity(level, editor.selected);
 
@@ -227,6 +228,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                         editor.drag = .{index = xx smallest_index};
                     }
                 }
+                */
 
                 if !drag_clicked {
                     success, selected, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
@@ -684,16 +686,14 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
 
     {
         _, size := get_block_extents(_Block); // :LevelSizeInEditor
-        if size != view_texture.size {
 
-            scope_mark(*frame_arena);
+        scope_mark(*frame_arena);
 
-            size_1d := size.x * size.y * size.z;
-            data := alloc_view(*frame_arena, size_1d, View_State, zero_init = false);
-            memset(data.data, xx (View_State.SEEN | .VISIBLE), size_1d);
+        size_1d := size.x * size.y * size.z;
+        data := alloc_view(*frame_arena, size_1d, View_State, zero_init = false);
+        memset(data.data, xx (View_State.SEEN | .VISIBLE), size_1d);
 
-            update_view_texture(*view_texture, size, data);
-        }
+        update_view_texture(*view_texture, size, data);
     }
 }
 

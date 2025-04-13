@@ -196,7 +196,7 @@ main :: () {
     window := CreateWindowExA(
         0,
         "Window Class",
-        "Sokoban",
+        "Stealth Sokoban",
         WINDOW_FLAGS,
         xx window_x,
         xx window_y,
