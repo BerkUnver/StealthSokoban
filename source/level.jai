@@ -72,6 +72,8 @@ Level :: struct {
     editor: struct {
         mode: Editor_Mode;
 
+        entity_type: Entity_Type;
+
         union {
             camera: struct {
                 rotating_previous_mouse_position: Vector2;
@@ -109,10 +111,10 @@ Level :: struct {
 
 CAMERA_PITCH_VALUES :: float.[
     -PI / 2,
-    -PI / 2 + 0.15 * PI,
+    -PI / 2 + 0.12 * PI,
     -PI / 2 + 0.35 * PI,
     -PI / 2 + 0.65 * PI,
-    -PI / 2 + 0.85 * PI,
+    -PI / 2 + 0.88 * PI,
     PI / 2,
 ];
 

@@ -1,5 +1,4 @@
 Entity_Type :: enum {
-    // I cannot figure out how to get #insert to generate these...
     Block;
     Door;
     Enemy;

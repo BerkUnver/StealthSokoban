@@ -309,8 +309,18 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 return;
             }
 
+            
+            if event.key == Key.F_BASE + 2 && event.state == .DOWN {
+                editor.entity_type = (editor.entity_type - 1 + ENTITIES.count) % ENTITIES.count;
+                return;
+            }
 
-            if (.F_BASE < event.key && event.key < Key.F_BASE + 1 + ENTITIES.count) && event.state == .DOWN {
+            if event.key == Key.F_BASE + 3 && event.state == .DOWN {
+                editor.entity_type = (editor.entity_type + 1) % ENTITIES.count;
+                return;
+            }
+
+            if event.key == Key.F_BASE + 1 && event.state == .DOWN {
                 success, _, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
                 position: Vector3i;
                 if success {
@@ -331,8 +341,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 }
 
 
-                index := cast(int, event.key - 1 - .F_BASE);
-                e := make_entity(level, index, arena);
+                e := make_entity(level, xx editor.entity_type, arena);
                 e.position = position;
 
 

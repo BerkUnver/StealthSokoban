@@ -224,6 +224,25 @@ imgui_draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4)
 }
 
 
+label :: (text: string, position: Vector2, size: Vector2) -> used_length: float {
+    using context.game_context;
+    using context.game_context.imgui_state;
+
+    font := *consolas;
+
+    margin := font.ascender * 0.2;
+    text_position := round(Vector2.{
+        position.x + margin,
+        position.y + size.y / 2 + font.ascender / 2
+    });
+
+    
+    imgui_draw_text(text, text_position, font, HIGHLIGHT_COLOR);
+
+    return text_length(text, font) + margin * 2;
+}
+
+
 toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc := #caller_location, id: u64 = 0) {
     using context.game_context;
     using context.game_context.imgui_state;
@@ -755,6 +774,8 @@ string_entry :: (
                 deactivate();
                 event_count = 0;
             } else {
+                // @TODO: Add a selection mode like the standard computer text entry field has
+
                 mouse_outside := !inside(outer_position, outer_size, mouse);
                 for [] Input_Event.{event_count, events.data} {
 
@@ -782,6 +803,8 @@ string_entry :: (
                                 case #char ","; key = #char "<";
                                 case #char "'"; key = #char "\"";
                                 case #char"\\"; key = #char "|";
+                                case #char "-"; key = #char "_";
+                                case #char "="; key = #char "+";
                             }
                         } else {
                             // The capital letter being the keycode is a windows convention.
@@ -802,6 +825,14 @@ string_entry :: (
                     }
 
                     if (it.key == .DELETE || it.key == .BACKSPACE) && it.state != .UP {
+                        delete_all := keys_down[Key.SHIFT];
+
+                        if delete_all {
+                            string_entry.str_count = 0;
+                            string_entry.cursor = 0;
+                            continue;
+                        }
+
                         if string_entry.str_count > 0 {
                             start := ifx string_entry.cursor > 0 then string_entry.cursor else 1;
                             for start..string_entry.str_count-1 {

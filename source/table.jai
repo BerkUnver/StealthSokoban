@@ -43,8 +43,9 @@ table_hash :: (table: *Table, val: $T) -> u32 {
 
 make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_function := djb2_hash) -> result: Table(K, V, hash_function) {
     // @TODO: Test what happens when max_count close to zero.
-    assert(max_count > 0);
+    assert(max_count >= 0);
     entries_count := cast(int, ceil(cast(float, max_count) / LOAD_FACTOR));
+    if entries_count < 8 entries_count = 8;
 
     // The triangular numbers scheme we are using will visit every slot of the table only when the table
     // has a power of two size.

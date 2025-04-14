@@ -594,6 +594,7 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
     item_size := Vector2.{IMGUI_SIZE.x, item_height};
     head := IMGUI_POSITION;
 
+
     level_name: [STRING_ENTRY_MAX_COUNT] u8;
     level_name_count: int;
 
@@ -602,36 +603,48 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
     level_name_count = name.count;
 
     new_level_name: string;
-    {
-        margin := font.ascender * 0.2;
-        length := head.x + text_length("Level", font) + margin * 2;
-        text_position := round(Vector2.{
-            head.x + margin,
-            head.y + item_size.y / 2 + font.ascender / 2
-        });
 
-        imgui_draw_text("Level", text_position, font, HIGHLIGHT_COLOR);
+    label_length := label("Level", head, item_size);
+    if string_entry(.{head.x + label_length, head.y}, .{item_size.x - label_length, item_size.y}, *level_name, *level_name_count) {
+        data := alloc(*frame_arena, level_name_count, zero_init=false);
+        memcpy(data, level_name.data, level_name_count);
+        new_level_name = .{level_name_count, data};
+        // Maybe the correct thing to do is to load the new level, then rerender
+        // the entire frame.
 
-        position := Vector2.{head.x + length, head.y};
-        size := Vector2.{item_size.x - length, item_size.y};
+        // Things we need to do to make this work:
+        
+        // 1.
+        // Separate imgui rendering from the rest of the drawing code.
+        // It's okay if the imgui has stuff that is off by a frame, because
+        // you did something in the imgui that affected a level element
+        // that had its respective imgui already rendered.
+        // HOWEVER, that should not contaminate the rest of the drawing.
+    }
 
-        if string_entry(position, size, *level_name, *level_name_count) {
-            data := alloc(*frame_arena, level_name_count, zero_init=false);
-            memcpy(data, level_name.data, level_name_count);
-            new_level_name = .{level_name_count, data};
-            // Maybe the correct thing to do is to load the new level, then rerender
-            // the entire frame.
+    head.y += item_height;
 
-            // Things we need to do to make this work:
-            
-            // 1.
-            // Separate imgui rendering from the rest of the drawing code.
-            // It's okay if the imgui has stuff that is off by a frame, because
-            // you did something in the imgui that affected a level element
-            // that had its respective imgui already rendered.
-            // HOWEVER, that should not contaminate the rest of the drawing.
+
+    entity_type: [STRING_ENTRY_MAX_COUNT] u8;
+    entity_type_count: int; 
+
+    entity_name := ENTITIES[editor.entity_type].name;
+    assert(entity_name.count <= entity_type.count);
+    memcpy(entity_type.data, entity_name.data, entity_name.count);
+    entity_type_count = entity_name.count;
+
+    label_length_2 := label("Entity Type", head, item_size);
+    if string_entry(.{head.x + label_length_2, head.y}, .{item_size.x - label_length_2, item_size.y}, *entity_type, *entity_type_count) {
+        str := string.{entity_type_count, entity_type.data};
+        for ENTITIES {
+            if it.name == str {
+                editor.entity_type = xx it_index;
+                break;
+            }
         }
     }
+    
+
 
     head.y += item_height;
     head.y += item_height; // A little spacing

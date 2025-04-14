@@ -12,6 +12,7 @@
 - Nice effect for mutual annihilations
 - Level entrance and exit effects
 - Fix mutual annihilation effect working when an enemy walks into a cell the player is already on
+- Input hinting for when we need to communicate an input to the player
 
 
 # Editor
@@ -25,7 +26,6 @@
 # Refactors
 - Put sound on a separate thread
 - Switch to using the Jai standard allocator
-- Move the Editor struct into the level struct
 - Make a generic texture format that we can just rip into memory efficiently
 
 
