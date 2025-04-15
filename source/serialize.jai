@@ -100,6 +100,10 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
 
             print_string(sb, "]");
 
+        case .STRING;
+            print(sb, "\"%\"", cast(*string, val).*);
+            // @TODO: Handle serializing a double quoute
+
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);
 
@@ -400,6 +404,7 @@ Token_Type :: enum {
     INT;
     FLOAT;
     IDENTIFIER;
+    STRING_LITERAL;
 }
 
 
@@ -411,6 +416,7 @@ Token :: struct {
         float_value: float64;
         error: string;
         identifier: string;
+        string_literal: string;
     }
 }
 
@@ -439,6 +445,29 @@ get_token :: (using lexer: *Lexer) -> Token {
         token := Token.{type=xx str[index], loc=.{index, 1}};
         index += 1;
         return token;
+    }
+
+    if str[index] == #char "\"" {
+        start_index := index;
+        while true {
+            index += 1;
+            if index == str.count {
+                return err("Unterminated string literal.", .{start_index, index - start_index});
+            }
+
+            if str[index] != #char "\"" {
+                index += 1;
+            }
+            
+            token := Token.{
+                type = .STRING_LITERAL,
+                string_literal = .{index - start_index - 1, str.data + start_index + 1},
+                loc = .{start_index, index - start_index}
+            };
+
+            index += 1;
+            return token;
+        }
     }
 
     if (#char "a" <= str[index] && str[index] <= #char "z")
@@ -470,7 +499,7 @@ get_token :: (using lexer: *Lexer) -> Token {
             };
         }
     }
-    
+
     if str[index] == #char "-" || (#char "0" <= str[index] && str[index] <= #char "9") {
         start_index := index;
         success, end_index, is_float, int_value, float_value := parse_number(str, start_index);

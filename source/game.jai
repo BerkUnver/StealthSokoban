@@ -527,7 +527,7 @@ game_update : Game_Update : (
                 scope_mark(*frame_arena);
 
                 if !editor_imgui_disabled {
-                    new_level_name := editor_draw_imgui(editor_level);
+                    new_level_name := editor_draw_imgui(editor_level, *editor_arena);
                     if new_level_name {
                         free_level(editor_level, *editor_arena);
                         success, data := read_file(new_level_name, *frame_arena);
@@ -579,7 +579,7 @@ game_update : Game_Update : (
 }
 
 
-editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
+editor_draw_imgui :: (using level: *Level, arena: *Memory_Arena) -> new_level_name: string {
     using context.game_context;
 
     
@@ -660,7 +660,7 @@ editor_draw_imgui :: (using level: *Level) -> new_level_name: string {
         // );
         e := get_entity(level, editor.selected);
         type := ENTITIES[e.type];
-        imgui_for_value(e, type, head, item_size);
+        imgui_for_value(e, type, head, item_size, arena);
     }
 
     return new_level_name;

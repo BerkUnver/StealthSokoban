@@ -188,6 +188,7 @@ Exit :: struct {
 Overworld_Entrance :: struct {
     using #as e: Entity;
     color: Vector4; @Color
+    level_name: string;
 }
 
 
@@ -1236,6 +1237,45 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         }
         return;
     }
+
+    if event.key == #char "O" && event.state == .DOWN {
+        player := *_Player[0];
+        
+        // @Speed Once ladders and stuff are a thing maybe we should store this in the
+        // collision data structure
+
+        entrance: *Overworld_Entrance;
+        for * _Overworld_Entrance {
+            if it.position == player.position {
+                entrance = it;
+                break;
+            }
+        }
+        
+        if !entrance {
+            for * _Overworld_Exit {
+                if it.position != player.position continue;
+                if !it.entrance continue;
+
+                e := get_entity(level, it.entrance);
+                maybe_entrance := as(e, Overworld_Entrance);
+                if !maybe_entrance {
+                    log(.ERROR, "The level exit you are standing on has an entrance assigned, but it is a % rather than an Overworld_Entrance.\n", e.type);
+                    continue;
+                }
+
+                entrance = maybe_entrance;
+                break;
+            }
+        }
+
+        if entrance {
+            log(.OK, "You are standing on a level entrance.\n");
+        }
+
+        return;
+    }
+
 
     if event.state != .DOWN return;
 

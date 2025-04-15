@@ -758,10 +758,10 @@ string_entry :: (
         outer_position.y + margin
     };
 
-    text_position := Vector2.{
+    text_position := round(Vector2.{
         position.x + margin,
         position.y + size.y / 2 + font.ascender / 2
-    };
+    });
 
     entered: bool;
 
@@ -985,12 +985,12 @@ number_entry :: (
 
 
 
-imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, loc := #caller_location, id: u64 = 0) {
-    imgui_for_value(val, type_info(T), position, field_size, loc=loc, id=id);
+imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, arena: *Memory_Arena, loc := #caller_location, id: u64 = 0) {
+    imgui_for_value(val, type_info(T), position, field_size, arena, loc=loc, id=id);
 }
 
 
-imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, read_only := false, loc := #caller_location, id: u64 = 0) -> end_y: float {
+imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, arena: *Memory_Arena, read_only := false, loc := #caller_location, id: u64 = 0) -> end_y: float {
     using context.game_context;
     using context.game_context.imgui_state;
     scope_widget(loc, id);
@@ -1009,12 +1009,10 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                 // serialize... for now.
                 if !can_serialize_member(it, greatest_offset) continue;
                 greatest_offset = it.offset_in_bytes;
-
-                if it.type.type == {
-                    case .STRING; #through;
-                    case .ARRAY;
-                        // @TODO: Implement editors for these
-                        continue;
+                
+                if it.type.type == .ARRAY { 
+                    // @TODO: Implement an actual editor for these
+                    continue;
                 }
 
                 member_read_only := read_only || contains(it.notes, "ReadOnly");
@@ -1051,7 +1049,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                     y = color_selector(val + it.offset_in_bytes, value_position, value_size, loc, xx it_index);
                     // @TODO: Implement a ReadOnly color selector
                 } else {
-                    new_y := imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, read_only=member_read_only, loc=loc, id=xx it_index);
+                    new_y := imgui_for_value(val + it.offset_in_bytes, it.type, value_position, value_size, arena, read_only=member_read_only, loc=loc, id=xx it_index);
                     if new_y < y + field_size.y y = field_size.y;
                     else y = new_y;
                 }
@@ -1070,8 +1068,18 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
             return position.y + field_size.y;
         case .VARIANT;
             variant_info := cast(*Type_Info_Variant, info);
-            return imgui_for_value(val, variant_info.variant_of, position, field_size, read_only=read_only, loc=loc);
-        case .STRING; #through;
+            return imgui_for_value(val, variant_info.variant_of, position, field_size, arena, read_only=read_only, loc=loc);
+        case .STRING;
+            str := cast(*string, val);
+            input_field: [STRING_ENTRY_MAX_COUNT] u8;
+            input_field_count := str.count;
+            memcpy(input_field.data, str.data, min(str.count, input_field.count));
+            entered := string_entry(position, field_size, *input_field, *input_field_count, read_only=read_only, loc=loc);
+
+            if entered {
+                str.* = copy_string(arena, .{input_field_count, input_field.data});
+            }
+            return position.y + field_size.y;
         case .ARRAY;
             // @TODO: Implement editors for these
             assert(false);
