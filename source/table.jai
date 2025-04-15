@@ -62,7 +62,6 @@ make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_f
 }
 
 
-// @TODO: Add growing the table
 add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type, arena: *Memory_Arena = null) {
     if count >= max_count {
         assert(arena != null);

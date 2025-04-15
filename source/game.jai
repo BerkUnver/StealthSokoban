@@ -400,7 +400,12 @@ game_update : Game_Update : (
                     free_level(level.*, arena);
                     level.* = load_level_part_1_deserialize(data.closest_name, arena);
                     assert(level.* != null);
-                    assert(load_level_part_2_init_unserialized_fields(data.closest_name, level.*, mode, arena));
+                    if #complete mode == {
+                        case .GAMEPLAY;
+                            assert(load_level_part_2_gameplay(data.closest_name, level.*, arena));
+                        case .EDITOR;
+                            load_level_part_2_editor(data.closest_name, level.*, arena);
+                    }
                 }
 
                 restore_mark(*frame_arena, data.mark);
@@ -438,7 +443,7 @@ game_update : Game_Update : (
 
                         gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
                         if gameplay_level {
-                            assert(load_level_part_2_init_unserialized_fields(level_name, gameplay_level, .GAMEPLAY, *gameplay_arena));
+                            assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
                         } else {
                             gameplay_level = load_overworld(*gameplay_arena, .GAMEPLAY);
                         }
@@ -498,7 +503,7 @@ game_update : Game_Update : (
                             level_ptr.* = load_level_part_1_deserialize(level_name, arena);
                             level := level_ptr.*;
                             assert(level != null);
-                            assert(load_level_part_2_init_unserialized_fields(level_name, level, .EDITOR, arena));
+                            load_level_part_2_editor(level_name, level, arena);
 
                             serialize_level(level);
                         }
@@ -537,9 +542,9 @@ game_update : Game_Update : (
                 editor_update(editor_level, mouse, dt);
                 draw(editor_level, .EDITOR);
 
-                scope_mark(*frame_arena);
 
                 if !editor_imgui_disabled {
+                    scope_mark(*frame_arena);
                     new_level_name := editor_draw_imgui(editor_level, *editor_arena);
                     if new_level_name {
                         free_level(editor_level, *editor_arena);
@@ -551,7 +556,7 @@ game_update : Game_Update : (
                             editor_level = alloc(*editor_arena, Level, zero_init = false);
                             editor_level.* = .{};
                         }
-                        assert(load_level_part_2_init_unserialized_fields(new_level_name, editor_level, .EDITOR, *editor_arena));
+                        load_level_part_2_editor(new_level_name, editor_level, *editor_arena);
                     }
                 }
             case .GAMEPLAY;
@@ -572,7 +577,7 @@ game_update : Game_Update : (
 
                         gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
                         assert(gameplay_level != null);
-                        assert(load_level_part_2_init_unserialized_fields(level_name, gameplay_level, .GAMEPLAY, *gameplay_arena));
+                        assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
                     }
                 }
                 draw(gameplay_level, .GAMEPLAY);
@@ -957,12 +962,25 @@ draw :: (using level: *Level, mode: Game_Mode) {
     
     if mode == {
         case .GAMEPLAY;
-            if state == .USING_OVERWORLD_ENTRANCE {
-                using using_overworld_entrance;
-                set_shader(imm_color_shader, .{flags = .BLEND});
-                set_uniform("projection", Matrix4_Identity);
-                imm_quad(.{-1, -1}, .{2, 2}, .{0, 0, 0, interp});
-                imm_flush();
+            FADE_COLOR :: Vector4.{0, 0, 0, 1};
+            if #complete state == {
+                case .ENTERING_LEVEL;
+                    using entering_level;
+                    set_shader(imm_color_shader, .{flags = .BLEND});
+                    set_uniform("projection", Matrix4_Identity);
+                    color := FADE_COLOR;
+                    color.w = 1 - interp;
+                    imm_quad(.{-1, -1}, .{2, 2}, color);
+                    imm_flush();
+                case .GAMEPLAY;
+                case .USING_OVERWORLD_ENTRANCE;
+                    using using_overworld_entrance;
+                    set_shader(imm_color_shader, .{flags = .BLEND});
+                    set_uniform("projection", Matrix4_Identity);
+                    color := FADE_COLOR;
+                    color.w = interp;
+                    imm_quad(.{-1, -1}, .{2, 2}, color);
+                    imm_flush();
             }
         case .EDITOR;
             {

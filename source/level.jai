@@ -22,11 +22,15 @@ Level :: struct {
         flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; // Should these be on the Player struct?
         
         state: enum {
+            ENTERING_LEVEL;
             GAMEPLAY;
             USING_OVERWORLD_ENTRANCE;
         }
         
         union {
+            entering_level: struct {
+                interp: float;
+            }
             using_overworld_entrance: struct {
                 interp: float;
                 eid: Entity_Id;
@@ -150,7 +154,6 @@ Camera_Mode :: enum {
 // I pulled this stuff out because I plan to eventually share it with the enemies.
 Player_State :: enum {
     GROUND;
-    // MOVING;
     SPAWNING;
     FALLING;
     DEAD;
@@ -684,20 +687,16 @@ serialize_level :: (using level: *Level) {
 }
 
 
-load_level_part_2_init_unserialized_fields :: (level_name: string, using level: *Level, for_mode: Game_Mode, arena: *Memory_Arena) -> gameplay_mode_load_succeeded: bool {
+load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
     name = copy_string(arena, level_name);
     
     // Restore the type of each entity
-    entity_count := 0;
-    highest_eid: Entity_Id = 0;
     #insert -> string {
         buf: [4096] u8 = ---;
         sb := make_string_builder(buf);
         for ENTITIES {
             print(*sb, "for * _% {\n", it.name);
             print(*sb, "    it.type = .%;\n", it.name);
-            print(*sb, "    entity_count += 1;\n");
-            print(*sb, "    if it.eid > highest_eid highest_eid = it.eid;\n");
             print(*sb, "}\n");
         }
         return get_string(*sb);
@@ -711,140 +710,150 @@ load_level_part_2_init_unserialized_fields :: (level_name: string, using level: 
         it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
     }
 
-    if #complete for_mode == {
-        case .EDITOR;   
-            entities = make_table(arena, entity_count, Entity_Id, *Entity);
-            
-            for :iterate_entities types {
-                add(*entities, it.eid, it);
-            }
+}
 
-            for 1..highest_eid {
-                if !get(*entities, it) append(*unused_eids, it, arena);
-            }
 
-            editor.camera_yaw = 0;
-            editor.camera_pitch = -PI / 3;
+load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool #must {
+    load_level_part_2_shared(level_name, level, arena);
 
-            // :LevelSizeInEditor
-            // It makes me slightly uncomfortable at how this code overlaps with the 
-            // gameplay code but we don't have access to the level size in the editor.
+    level_position, level_size = get_block_extents(_Block);
+    size_1d := level_size.x * level_size.y * level_size.z;
+    // @Hack @Speed @Memory
+    // This is a dumb workaround.
+    // Right now, the serialization system will allocate as many elements as was serialized for an array.
+    // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
+    // dynamically allocate memory while the a level is running, and we can easily know how much memory the
+    // game will ever use (when we're in the GAMEPLAY mode. When we're in the EDITOR mode, do whatever you want.)
+    alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
 
-            position, size := get_block_extents(_Block);
-            level_center := to_vector3(position) + to_vector3(size) / 2;
-            level_radius := cast(float, max(size.x, max(size.y, size.z)));
+    // Count up all the entities so we can allocate an array big enough
+    // to hold pointers to all of them for the Entity_Id system
+    // The first slot is null, so we start at 1.
 
-            camera_distance := level_radius * 2;
-            camera_y := sin(PI / 3) * camera_distance;
-            camera_z := cos(PI / 3) * camera_distance;
+    reserved := 1;
+    count := 1;
+    #insert -> string {
+        buf: [1024] u8;
+        sb := make_string_builder(buf);
+        for ENTITIES {
+            print(*sb, "reserved += _%.allocated;\n", it.name);
+            print(*sb, "count += _%.count;\n", it.name);
+        }
+        return get_string(*sb);
+    }
+    count += 1; // For the player we are about to add
 
-            editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+    entities = make_table(arena, reserved, Entity_Id, *Entity);
 
-            view_texture = make_view_texture(size);
-            return true;
+    unused_eids = reserve_array(arena, reserved, Entity_Id, zero_init=false);
+    
+    highest_eid: Entity_Id = 0;
+    for :iterate_entities types {
+        add(*entities, it.eid, it);
+        if it.eid > highest_eid highest_eid = it.eid; 
+    }
 
-        case .GAMEPLAY;
-            level_position, level_size = get_block_extents(_Block);
-            size_1d := level_size.x * level_size.y * level_size.z;
-            // @Hack @Speed @Memory
-            // This is a dumb workaround.
-            // Right now, the serialization system will allocate as many elements as was serialized for an array.
-            // We want to allocate custom sizes, which are as many as you will ever need, so we can not ever
-            // dynamically allocate memory while the a level is running, and we can easily know how much memory the
-            // game will ever use (when we're in the GAMEPLAY mode. When we're in the EDITOR mode, do whatever you want.)
-            alloc_extra_array_capacity(arena, *_Enemy, size_1d, zero_init=false);
+    for 1..highest_eid {
+        if !get(*entities, it) append_no_resize(*unused_eids, it);
+    }
 
-            // Count up all the entities so we can allocate an array big enough
-            // to hold pointers to all of them for the Entity_Id system
-            // The first slot is null, so we start at 1.
+    // @TODO: Make sure none of the other entities are outside of the level
 
-            reserved := 1;
-            count := 1;
-            #insert -> string {
-                buf: [1024] u8;
-                sb := make_string_builder(buf);
-                for ENTITIES {
-                    print(*sb, "reserved += _%.allocated;\n", it.name);
-                    print(*sb, "count += _%.count;\n", it.name);
-                }
-                return get_string(*sb);
-            }
-            count += 1; // For the player we are about to add
+    view_texture = make_view_texture(level_size);
 
-            entities = make_table(arena, reserved, Entity_Id, *Entity);
+    viewed = alloc_view(arena, size_1d, View_State);
+    doors = alloc_view(arena, size_1d, Entity_Id);
+    collision = alloc_view(arena, size_1d, Entity_Id);
+    desired_collision = alloc_view(arena, size_1d, Entity_Id);
+    mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
 
-            unused_eids = reserve_array(arena, reserved, Entity_Id, zero_init=false);
-            
-            for :iterate_entities types {
-                add(*entities, it.eid, it);
-            }
+    for * _Block {  
+        assert(add_block_to_collision(level, it) == .OK);
+    }
 
-            for 1..highest_eid {
-                if !get(*entities, it) append_no_resize(*unused_eids, it);
-            }
-
-            // @TODO: Make sure none of the other entities are outside of the level
-
-            view_texture = make_view_texture(level_size);
-
-            viewed = alloc_view(arena, size_1d, View_State);
-            doors = alloc_view(arena, size_1d, Entity_Id);
-            collision = alloc_view(arena, size_1d, Entity_Id);
-            desired_collision = alloc_view(arena, size_1d, Entity_Id);
-            mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
-
-            for * _Block {  
-                assert(add_block_to_collision(level, it) == .OK);
-            }
-
-            for * door: _Door {
-                offset := door.position - level_position;
-                for :iterate_vector3i door.size {
-                    success, index := get_3d_index(it + offset, level_size);
-                    if !success {
-                        log(.ERROR, "There was a Door entity outside of the level's bounding box.\n");
-                        return false;
-                    }
-                    
-                    // We don't care about overlapping door entities right now.
-                    // Maybe we will care about them in the future.
-                    doors[index] = door.eid;
-                }
-            }
-            
-            for * _Enemy {
-                in_bounds, index := get_3d_index(it.position, level_position, level_size);
-
-                if !in_bounds {
-                    log(.ERROR, "There was a Enemy entity outside of the level's bounding box.\n");
-                    return false;
-                }
-                
-                if collision[index] != 0 {
-                    log(.ERROR, "There is an overlap between an Enemy entity and something else at (%, %, %)\n", it.position.x, it.position.y, it.position.z);
-                    return false;
-                }
-
-                collision[index] = it.eid;
-            }
-
-            if _Player.count != 1 {
-                log(.ERROR, "There was no player entity in the serialized level \"%\".\n", level.name);
+    for * door: _Door {
+        offset := door.position - level_position;
+        for :iterate_vector3i door.size {
+            success, index := get_3d_index(it + offset, level_size);
+            if !success {
+                log(.ERROR, "There was a Door entity outside of the level's bounding box.\n");
                 return false;
             }
-
-            player := *_Player[0];
-            set_state(player, .SPAWNING);
-            camera_focus_x = player.position.x;
-            camera_focus_z = player.position.z;
             
-            // :Checkpoint
-            current_data = .{arena.current, xx level};
-            checkpoint_data = alloc_view(arena, current_data.count, u8, zero_init = false);
-            memcpy(checkpoint_data.data, current_data.data, current_data.count);
-
-            return true;
+            // We don't care about overlapping door entities right now.
+            // Maybe we will care about them in the future.
+            doors[index] = door.eid;
+        }
     }
+    
+    for * _Enemy {
+        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+
+        if !in_bounds {
+            log(.ERROR, "There was a Enemy entity outside of the level's bounding box.\n");
+            return false;
+        }
+        
+        if collision[index] != 0 {
+            log(.ERROR, "There is an overlap between an Enemy entity and something else at (%, %, %)\n", it.position.x, it.position.y, it.position.z);
+            return false;
+        }
+
+        collision[index] = it.eid;
+    }
+
+    if _Player.count != 1 {
+        log(.ERROR, "There was no player entity in the serialized level \"%\".\n", level.name);
+        return false;
+    }
+
+    player := *_Player[0];
+    set_state(player, .SPAWNING);
+    camera_focus_x = player.position.x;
+    camera_focus_z = player.position.z;
+    
+    // :Checkpoint
+    current_data = .{arena.current, xx level};
+    checkpoint_data = alloc_view(arena, current_data.count, u8, zero_init = false);
+    memcpy(checkpoint_data.data, current_data.data, current_data.count);
+    
+    return true;
+}
+
+
+load_level_part_2_editor :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
+    load_level_part_2_shared(level_name, level, arena);
+    
+    entities = make_table(arena, 0, Entity_Id, *Entity);
+    
+    highest_eid: Entity_Id = 0;
+    for :iterate_entities types {
+        add(*entities, it.eid, it, arena);
+        if it.eid > highest_eid highest_eid = it.eid; 
+    }
+    
+    for 1..highest_eid {
+        if !get(*entities, it) append(*unused_eids, it, arena);
+    }
+
+    editor.camera_yaw = 0;
+    editor.camera_pitch = -PI / 3;
+
+    // :LevelSizeInEditor
+    // It makes me slightly uncomfortable at how this code overlaps with the 
+    // gameplay code but we don't have access to the level size in the editor.
+
+    position, size := get_block_extents(_Block);
+    level_center := to_vector3(position) + to_vector3(size) / 2;
+    level_radius := cast(float, max(size.x, max(size.y, size.z)));
+
+    camera_distance := level_radius * 2;
+    camera_y := sin(PI / 3) * camera_distance;
+    camera_z := cos(PI / 3) * camera_distance;
+
+    editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+
+    view_texture = make_view_texture(size);
 }
 
 
@@ -1138,7 +1147,12 @@ load_overworld :: (arena: *Memory_Arena, mode: Game_Mode) -> *Level {
     LEVEL :: "levels/overworld.level";
     level := load_level_part_1_deserialize(LEVEL, arena);
     assert(level != null);
-    assert(load_level_part_2_init_unserialized_fields(LEVEL, level, mode, arena));
+    if mode == {
+        case .GAMEPLAY;
+            assert(load_level_part_2_gameplay(LEVEL, level, arena));
+        case .EDITOR;
+            load_level_part_2_editor(LEVEL, level, arena);
+    }
     return level;
 }
 
@@ -1606,8 +1620,15 @@ gameplay_update :: (using level: *Level, dt: float) {
 
 
 
+    FADE_TIME :: 1;
 
     if #complete state == {
+        case .ENTERING_LEVEL;
+            using entering_level;
+            interp += dt * FADE_TIME;
+            if interp >= 1 {
+                state = .GAMEPLAY;
+            }
         case .GAMEPLAY; 
             // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
             // I will see if this turns out to be a bad idea.
@@ -1949,9 +1970,8 @@ gameplay_update :: (using level: *Level, dt: float) {
                     }
             }
         case .USING_OVERWORLD_ENTRANCE;
-            TIME :: 1;
             using using_overworld_entrance;
-            interp += dt / TIME;
+            interp += dt / FADE_TIME;
     }
 
     
