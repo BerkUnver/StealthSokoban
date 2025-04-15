@@ -116,6 +116,8 @@ Level :: struct {
             }
 
             drag: struct {
+                offset_axis_1: float;
+                offset_axis_2: float;
                 index: u8;
             }
         }

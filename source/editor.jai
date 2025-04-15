@@ -187,37 +187,40 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
             if event.key == .MOUSE_LEFT_BUTTON && event.state == .DOWN {
                 drag_clicked := false;
                 
-                /*
                 if editor.selected {
                     e := get_entity(level, editor.selected);
+                    e_position := to_vector3(e.position);
 
                     
                     smallest_exists := false;
                     smallest_t: float;
                     smallest_index: int;
+                    smallest_intersection: Vector3;
 
                     for 0..2 {
                         normal: Vector3;
                         normal.component[it] = 1;
+
                         
-                        parallel, point, t := get_intersection_between_line_and_plane(mouse_start, mouse_direction, to_vector3(e.position), normal);
+                        parallel, point, t := get_intersection_between_line_and_plane(mouse_start, mouse_direction, e_position, normal);
 
                         if !parallel && !smallest_exists || (smallest_exists && t < smallest_t) {
-                            a_index := (it + 1) % 3;
-                            a := point.component[a_index] - cast(float, e.position.component[a_index]);
-                            a_positive := editor.camera_position.component[a_index] < xx e.position.component[a_index];
+                            index_1 := (it + 1) % 3;
+                            p1 := point.component[index_1] - cast(float, e.position.component[index_1]);
+                            p1_positive := editor.camera_position.component[index_1] > xx e.position.component[index_1];
 
-                            b_index := (it + 2) % 3;
-                            b := point.component[b_index] - cast(float, e.position.component[b_index]);
-                            b_positive := editor.camera_position.component[b_index] < xx e.position.component[b_index];
+                            index_2 := (it + 2) % 3;
+                            p2 := point.component[index_2] - cast(float, e.position.component[index_2]);
+                            p2_positive := editor.camera_position.component[index_2] > xx e.position.component[index_2];
 
-                            if (a_positive && DRAG_START < a && a < DRAG_END)
-                            || (!a_positive && -DRAG_END < a && a < -DRAG_START)
-                            || (b_positive && DRAG_START < b && b < DRAG_END)
-                            || (!b_positive && -DRAG_END < b && b < -DRAG_START) {
+                            if ((p1_positive && DRAG_START < p1 && p1 < DRAG_END)
+                            || (!p1_positive && -DRAG_END < p1 && p1 < -DRAG_START))
+                            && ((p2_positive && DRAG_START < p2 && p2 < DRAG_END)
+                            || (!p2_positive && -DRAG_END < p2 && p2 < -DRAG_START)) {
                                 smallest_exists = true;
                                 smallest_t = t;
                                 smallest_index = it;
+                                smallest_intersection = point;
                             }
                         }
                     }
@@ -225,10 +228,18 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                     if smallest_exists {
                         drag_clicked = true;
                         editor.mode = .DRAG;
-                        editor.drag = .{index = xx smallest_index};
+
+                        offset := smallest_intersection - e_position;
+                        offset_axis_1 := floor(smallest_intersection.component[(smallest_index + 1) % 3]) - e_position.component[(smallest_index + 1) % 3];
+                        offset_axis_2 := floor(smallest_intersection.component[(smallest_index + 2) % 3]) - e_position.component[(smallest_index + 2) % 3];
+
+                        editor.drag = .{
+                            offset_axis_1 = offset_axis_1,
+                            offset_axis_2 = offset_axis_2,
+                            index = xx smallest_index
+                        };
                     }
                 }
-                */
 
                 if !drag_clicked {
                     success, selected, intersection := get_intersection_with_selectable_meshes(level, mouse_start, mouse_end);
@@ -252,7 +263,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 return;
             }
             
-            enable_drag :: (index: u8) #expand {
+            enable_drag_old :: (index: u8) #expand {
                 if editor.selected {
                     e := get_entity(level, editor.selected);
                     editor.mode = .DRAG_OLD;
@@ -265,17 +276,17 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
             }
 
             if event.key == xx #char "1" && event.state == .DOWN {
-                enable_drag(0);
+                enable_drag_old(0);
                 return;
             }
 
             if event.key == xx #char "2" && event.state == .DOWN {
-                enable_drag(1);
+                enable_drag_old(1);
                 return;
             }
 
             if event.key == xx #char "3" && event.state == .DOWN {
-                enable_drag(2);
+                enable_drag_old(2);
                 return;
             }
 
@@ -683,8 +694,8 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
 
             parallel, point, t := get_intersection_between_line_and_plane(mouse_start, mouse_direction, to_vector3(e.position), normal);
             if !parallel {
-                e.position.component[(index + 1) % 3] = xx floor(point.component[(index + 1) % 3]);
-                e.position.component[(index + 2) % 3] = xx floor(point.component[(index + 2) % 3]);
+                e.position.component[(index + 1) % 3] = xx(floor(point.component[(index + 1) % 3] - offset_axis_1));
+                e.position.component[(index + 2) % 3] = xx(floor(point.component[(index + 2) % 3] - offset_axis_2));
             }
     }
     

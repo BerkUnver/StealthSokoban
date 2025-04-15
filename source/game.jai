@@ -1074,57 +1074,47 @@ draw :: (using level: *Level, mode: Game_Mode) {
             //
             // Draw the dragging widget
             //
-                
-            if editor.selected && (editor.mode == .IDLE || editor.mode == .DRAG || editor.mode == .CAMERA) {
+
+            if editor.selected {
                 e := get_entity(level, editor.selected);
 
                 set_shader(imm_color_shader, .{flags = .BLEND});
                 set_uniform("projection", world_to_camera);
-                
+
                 COLORS :: Vector4.[
                     .{1, 0.5, 0.5, 1},
                     .{0.5, 1, 0.5, 1},
                     .{0.5, 0.5, 1, 1},
                 ];
 
-                for 0..2 {
-                    a_index := (it + 1) % 3;
-                    b_index := (it + 2) % 3;
+                draw_plane :: (position: Vector3, index: int, color: Vector4) #expand {
+                    index_1 := (index + 1) % 3;
+                    index_2 := (index + 2) % 3;
 
-                    a_sign := ifx editor.camera_position.component[a_index] > xx e.position.component[a_index] then 1 else -1;
-                    b_sign := ifx editor.camera_position.component[b_index] > xx e.position.component[b_index] then 1 else -1;
+                    a0 := position.component[index_1] + DRAG_START;
+                    b0 := position.component[index_2] + DRAG_START;
+                    a1 := position.component[index_1] + DRAG_END;
+                    b1 := position.component[index_2] + DRAG_END;
 
-                    a0 := e.position.component[a_index] + DRAG_START * a_sign;
-                    b0 := e.position.component[b_index] + DRAG_START * b_sign;
-                    a1 := e.position.component[a_index] + DRAG_END * a_sign;
-                    b1 := e.position.component[b_index] + DRAG_END * b_sign;
-
-                    c := cast(float, e.position.component[it]);
+                    c := cast(float, position.component[index]);
 
                     p0, p1, p2, p3: Vector3;
 
-                    p0.component[it] = c;
-                    p0.component[a_index] = a0;
-                    p0.component[b_index] = b0;
+                    p0.component[index] = c;
+                    p0.component[index_1] = a0;
+                    p0.component[index_2] = b0;
 
-                    p1.component[it] = c;
-                    p1.component[a_index] = a1;
-                    p1.component[b_index] = b0;
+                    p1.component[index] = c;
+                    p1.component[index_1] = a1;
+                    p1.component[index_2] = b0;
 
-                    p2.component[it] = c;
-                    p2.component[a_index] = a1;
-                    p2.component[b_index] = b1;
+                    p2.component[index] = c;
+                    p2.component[index_1] = a1;
+                    p2.component[index_2] = b1;
 
-                    p3.component[it] = c;
-                    p3.component[a_index] = a0;
-                    p3.component[b_index] = b1;
-
-                    color := COLORS[it];
-                    if editor.mode == .DRAG && editor.drag.index == it {
-                        color.w = 0.8;
-                    } else {
-                        color.w = 0.5;
-                    }
+                    p3.component[index] = c;
+                    p3.component[index_1] = a0;
+                    p3.component[index_2] = b1;
 
                     imm_vertex(p0, color);
                     imm_vertex(p1, color);
@@ -1132,7 +1122,39 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     imm_vertex(p0, color);
                     imm_vertex(p2, color);
                     imm_vertex(p3, color);
+                }
 
+                if editor.mode == {
+                    case .IDLE; #through;
+                    case .CAMERA;
+                        e_position := to_vector3(e.position);
+                        for 0..2 {
+                            position := e_position;
+                            index_1 := (it + 1) % 3;
+                            index_2 := (it + 2) % 3;
+
+                            if editor.camera_position.component[index_1] < xx e.position.component[index_1] {
+                                position.component[index_1] -= 1;
+                            }
+
+                            if editor.camera_position.component[index_2] < xx e.position.component[index_2] {
+                                position.component[index_2] -= 1;
+                            }
+
+                            color := COLORS[it];
+                            color.w = 0.5;
+                            draw_plane(position, it, color);
+                        }
+                    case .DRAG;
+                        using editor.drag;
+                        color := COLORS[index];
+                        color.w = 0.8;
+                        
+                        position := to_vector3(e.position);
+                        position.component[(index + 1) % 3] += offset_axis_1;
+                        position.component[(index + 2) % 3] += offset_axis_2;
+
+                        draw_plane(position, index, color);
                 }
 
                 imm_flush();
