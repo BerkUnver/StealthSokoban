@@ -109,7 +109,7 @@ Level :: struct {
                 deletion: bool;
             }
 
-            drag_old: struct {
+            drag_axis: struct {
                 mouse_start: Vector2;
                 selectable_start: Vector3i;
                 index: u8;

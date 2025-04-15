@@ -8,7 +8,7 @@ Editor_Mode :: enum {
     // Do not allow changing the camera angle or selection in any of the below modes,
     // or else it could mess up what the user is working on.
     EXTRUDE; // We're extruding a gridlike we clicked on
-    DRAG_OLD; // @TODO delete this!
+    DRAG_AXIS; // @TODO delete this!
     DRAG;
 }
 
@@ -266,8 +266,8 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
             enable_drag_old :: (index: u8) #expand {
                 if editor.selected {
                     e := get_entity(level, editor.selected);
-                    editor.mode = .DRAG_OLD;
-                    editor.drag_old = .{
+                    editor.mode = .DRAG_AXIS;
+                    editor.drag_axis = .{
                         mouse_start = mouse,
                         selectable_start = e.position,
                         index = index
@@ -495,8 +495,8 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 editor.mode = .IDLE;
             }
 
-        case .DRAG_OLD;
-            using editor.drag_old;
+        case .DRAG_AXIS;
+            using editor.drag_axis;
             if event.state == .UP && ((index == 0 && event.key == xx #char "1")
                                    || (index == 1 && event.key == xx #char "2")
                                    || (index == 2 && event.key == xx #char "3")) {
@@ -628,8 +628,8 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
                 end_intersection = intersection;
             }
 
-        case .DRAG_OLD;
-            using editor.drag_old;
+        case .DRAG_AXIS;
+            using editor.drag_axis;
             camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(level);
             camera_to_world := inverse(get_editor_camera_matrix(level));
             initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
