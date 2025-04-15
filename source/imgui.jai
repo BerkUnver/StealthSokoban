@@ -801,7 +801,8 @@ string_entry :: (
                                 case #char "/"; key = #char "?";
                                 case #char "."; key = #char ">";
                                 case #char ","; key = #char "<";
-                                case #char "'"; key = #char "\"";
+                                // case #char "'"; key = #char "\"";
+                                // :SerializeStrings I'm turning this off for now until we can serialize it.
                                 case #char"\\"; key = #char "|";
                                 case #char "-"; key = #char "_";
                                 case #char "="; key = #char "+";
@@ -811,6 +812,9 @@ string_entry :: (
                             // Should we just change them to being lowercase?
                             if #char "A" <= key && key <= #char "Z" {
                                 key = #char "a" + key - #char "A";
+                            } else if key == #char "\\" {
+                                key = #char "|";
+                                // :SerializeStrings
                             }
                         }
 

@@ -542,7 +542,21 @@ game_update : Game_Update : (
                     }
                 }
             case .GAMEPLAY;
-                gameplay_level_update(gameplay_level, dt);
+                gameplay_update(gameplay_level, dt);
+                if gameplay_level.used_overworld_entrance_eid {
+                    e := get_entity(gameplay_level, gameplay_level.used_overworld_entrance_eid);
+                    entrance := as(e, Overworld_Entrance);
+                    assert(entrance != null);
+
+                    scope_mark(*frame_arena);
+                    // We need to copy the string because it is going to be freed when we free the old level.
+                    level_name := copy_string(*frame_arena, entrance.level_name);
+                    free_level(gameplay_level, *gameplay_arena);
+
+                    gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
+                    assert(gameplay_level != null);
+                    assert(load_level_part_2_init_unserialized_fields(level_name, gameplay_level, .GAMEPLAY, *gameplay_arena));
+                }
                 draw(gameplay_level, .GAMEPLAY);
         }
 

@@ -18,8 +18,15 @@ Level :: struct {
         level_size: Vector3i;
 
         mutual_annihilations: [..] Mutual_Annihilation;
-
+        
         flags: enum_flags {PULLING; DEBUG_MOVEMENT;};
+
+        used_overworld_entrance_eid: Entity_Id;
+        // Usually, I don't want to have these weird variables that say,
+        // "do this thing, but not now for xyz reason" because they invite
+        // bugs and complexity. However, there will eventually be an enter
+        // level interp effect, which by definition means we want to stash
+        // this and use it later.
         
         camera_mode: Camera_Mode;
 
@@ -131,7 +138,7 @@ Camera_Mode :: enum {
 
 
 // I pulled this stuff out because I plan to eventually share it with the enemies.
-Playerlike_State :: enum {
+Player_State :: enum {
     GROUND;
     // MOVING;
     SPAWNING;
@@ -140,9 +147,10 @@ Playerlike_State :: enum {
 }
 
 
-Playerlike :: struct {
-    state: Playerlike_State;
-    union { 
+Player :: struct {
+    using #as e: Entity;
+    state: Player_State; @NoSerialize
+    using vars: union { 
         spawning: struct {
             interp: float;
         }
@@ -160,13 +168,7 @@ Playerlike :: struct {
         dead: struct {
             interp: float;
         }
-    }
-}
-
-
-Player :: struct {
-    using #as e: Entity;
-    using playerlike: Playerlike; @NoSerialize
+    } @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -951,7 +953,7 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
-set_state :: (player: *Player, state: Playerlike_State) {
+set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
         case .GROUND;
             if player.state == .FALLING {
@@ -1270,7 +1272,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         }
 
         if entrance {
-            log(.OK, "You are standing on a level entrance.\n");
+            used_overworld_entrance_eid = entrance.eid;
         }
 
         return;
@@ -1544,7 +1546,7 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
 }
 
 
-gameplay_level_update :: (using level: *Level, dt: float) {
+gameplay_update :: (using level: *Level, dt: float) {
     using context.game_context;
 
     player := *_Player[0];

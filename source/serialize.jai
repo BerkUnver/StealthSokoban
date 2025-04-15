@@ -100,9 +100,14 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
 
             print_string(sb, "]");
 
-        case .STRING;
+        case .STRING;   
+            str := cast(*string, val).*;
+            for str assert(it != #char "\"");
+            // :SerializeStrings
+            // For simplicity's sake, I'm going to ignore characters that would require special handling.
+            
             print(sb, "\"%\"", cast(*string, val).*);
-            // @TODO: Handle serializing a double quoute
+
 
         case .STRUCT;
             struct_info := cast(*Type_Info_Struct, info);
@@ -385,6 +390,14 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
             return_if_invalid(token);
             if token.type != #char "]" return .{false, "Expected a ']' at the end of an array.", token.loc};
             return OK;
+
+        case .STRING;
+            token := get_token(lexer);
+            return_if_invalid(token);
+            if token.type != .STRING_LITERAL return .{false, "Expected a string literal token.", token.loc};
+            cast(*string, ptr).* = copy_string(arena, token.string_literal);
+            return OK;
+            
         case; assert(false);
     }
 
@@ -449,16 +462,20 @@ get_token :: (using lexer: *Lexer) -> Token {
 
     if str[index] == #char "\"" {
         start_index := index;
+        index += 1;
         while true {
-            index += 1;
             if index == str.count {
                 return err("Unterminated string literal.", .{start_index, index - start_index});
             }
 
             if str[index] != #char "\"" {
                 index += 1;
+                continue;
             }
             
+            // :SerializeStrings
+            // We would handle special characters here.
+
             token := Token.{
                 type = .STRING_LITERAL,
                 string_literal = .{index - start_index - 1, str.data + start_index + 1},
