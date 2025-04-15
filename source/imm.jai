@@ -238,3 +238,44 @@ draw_arrow :: (start: Vector3, end: Vector3, color: Vector4, projection: Matrix4
 
     imm_flush();
 }
+
+
+draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> end_x: float {
+    using context.game_context;
+    
+    set_shader(imm_text_shader, .{flags = .BLEND});
+    set_uniform_bitmap("bitmap", 0, font.bitmap);
+    set_uniform("projection", ui_to_camera);
+    
+    x := position.x;
+    y := position.y;
+
+    for str {
+        if it == #char " " {
+            x += font.space_advance;
+        } else {
+            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
+            using glyph := *font.glyphs[it - VALID_ASCII_START];
+
+            x0 := x + bearing.x;
+            y0 := y - bearing.y;
+            x1 := x0 + size.x;
+            y1 := y0 + size.y;
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, color);
+            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, color);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, color);
+
+            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, color);
+            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, color);
+            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, color);
+
+            x += advance;
+        }
+    }
+
+    imm_flush();
+
+    return x;
+}
+

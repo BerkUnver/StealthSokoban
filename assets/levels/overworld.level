@@ -78,12 +78,52 @@ types
 			;
 		filled 3[ 1 1 1 ]
 		color
-			x 0.0277318507432937619
+			x 0.0277318488806486126
 			y 0.3135318756103515625
 			z 0.3953233957290649413
 			w 1
 			;
 		moveable 1
+		;
+	]
+	_Enemy_Spawner 2[
+		e
+			eid 5
+			position
+				y 1
+				z 3
+				;
+			;
+		enemy_spawner_type 2
+		facing 3
+		;
+		e
+			eid 20
+			position
+				x 2
+				y 1
+				z 3
+				;
+			;
+		enemy_spawner_type 2
+		facing 3
+		;
+	]
+	_Enemy_Despawner 2[
+		e
+			eid 19
+			position
+				y 1
+				;
+			;
+		;
+		e
+			eid 21
+			position
+				x 2
+				y 1
+				;
+			;
 		;
 	]
 	_Overworld_Entrance 6[

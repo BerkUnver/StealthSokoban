@@ -46,6 +46,9 @@ Game_Context :: struct {
 
     imm_state: Imm_State;
     imgui_state: Imgui_State;
+
+    ui_to_camera: Matrix4;
+    camera_to_ui: Matrix4;
     
     editor_imgui_disabled: bool;
     
@@ -183,12 +186,22 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         glStencilMask(0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
+
+        zoom_in_matrix := Matrix4_Identity;
+        zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
+        zoom_in_matrix._22 /= -INNER_WINDOW_H / 2;
+        ui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
+
+        zoom_out_matrix := Matrix4_Identity;
+        zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
+        zoom_out_matrix._22 *= -INNER_WINDOW_H / 2;
+        camera_to_ui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
+
         assert(FT_Init_FreeType(*freetype) == 0);
         success:, shader_include = read_file("shaders/include.gl", *permanent_arena);
         assert(success);
         
         imm_state = imm_init();
-        imgui_state = imgui_init();
 
         imm_color_shader = load_shader("shaders/imm_color.gl");
         imm_text_shader = load_shader("shaders/imm_text.gl");
@@ -306,7 +319,7 @@ game_update : Game_Update : (
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
         imgui_state.event_count = 0;
-        imgui_state.mouse = (imgui_state.camera_to_imgui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
+        imgui_state.mouse = (camera_to_ui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
         
         // Instead of using different focusing systems for the editor and imgui,
         // we could have a #caller_location-based focusing system for everything,
@@ -543,19 +556,24 @@ game_update : Game_Update : (
                 }
             case .GAMEPLAY;
                 gameplay_update(gameplay_level, dt);
-                if gameplay_level.used_overworld_entrance_eid {
-                    e := get_entity(gameplay_level, gameplay_level.used_overworld_entrance_eid);
-                    entrance := as(e, Overworld_Entrance);
-                    assert(entrance != null);
+                if gameplay_level.state == .USING_OVERWORLD_ENTRANCE {
+                    using gameplay_level.using_overworld_entrance;
+                    if interp >= 1 {
+                        assert(eid != 0);
 
-                    scope_mark(*frame_arena);
-                    // We need to copy the string because it is going to be freed when we free the old level.
-                    level_name := copy_string(*frame_arena, entrance.level_name);
-                    free_level(gameplay_level, *gameplay_arena);
+                        e := get_entity(gameplay_level, eid);
+                        entrance := as(e, Overworld_Entrance);
+                        assert(entrance != null);
 
-                    gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
-                    assert(gameplay_level != null);
-                    assert(load_level_part_2_init_unserialized_fields(level_name, gameplay_level, .GAMEPLAY, *gameplay_arena));
+                        scope_mark(*frame_arena);
+                        // We need to copy the string because it is going to be freed when we free the old level.
+                        level_name := copy_string(*frame_arena, entrance.level_name);
+                        free_level(gameplay_level, *gameplay_arena);
+
+                        gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
+                        assert(gameplay_level != null);
+                        assert(load_level_part_2_init_unserialized_fields(level_name, gameplay_level, .GAMEPLAY, *gameplay_arena));
+                    }
                 }
                 draw(gameplay_level, .GAMEPLAY);
         }
@@ -596,9 +614,8 @@ game_update : Game_Update : (
 editor_draw_imgui :: (using level: *Level, arena: *Memory_Arena) -> new_level_name: string {
     using context.game_context;
 
-    
     set_shader(imm_color_shader, .{flags = .BLEND});
-    set_uniform("projection", imgui_state.imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     imm_quad(IMGUI_POSITION, IMGUI_SIZE, .{0, 0, 0, 1});
     imm_flush();
 
@@ -937,162 +954,171 @@ draw :: (using level: *Level, mode: Game_Mode) {
         bind_and_draw(*player_mesh);
     }
 
+    
+    if mode == {
+        case .GAMEPLAY;
+            if state == .USING_OVERWORLD_ENTRANCE {
+                using using_overworld_entrance;
+                set_shader(imm_color_shader, .{flags = .BLEND});
+                set_uniform("projection", Matrix4_Identity);
+                imm_quad(.{-1, -1}, .{2, 2}, .{0, 0, 0, interp});
+                imm_flush();
+            }
+        case .EDITOR;
+            {
+                mark := get_mark(*frame_arena);
+                defer restore_mark(*frame_arena, mark);
 
-    if mode == .EDITOR {
-        {
-            mark := get_mark(*frame_arena);
-            defer restore_mark(*frame_arena, mark);
+                position, size := get_block_extents(_Block);
+                
+                overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
 
-            position, size := get_block_extents(_Block);
-            
-            overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
+                for * block: _Block {
+                    offset := block.position - position;
+                    for :iterate_vector3i block.size {
+                        filled := block.filled[it_index];
+                        if !filled continue;
 
-            for * block: _Block {
-                offset := block.position - position;
-                for :iterate_vector3i block.size {
-                    filled := block.filled[it_index];
-                    if !filled continue;
-
-                    success, index := get_3d_index(it + offset, size);
-                    assert(success);
-                    
-                    overlapping[index] += 1;
+                        success, index := get_3d_index(it + offset, size);
+                        assert(success);
+                        
+                        overlapping[index] += 1;
+                    }
                 }
+
+               
+                set_shader(imm_color_shader, .{flags = .BLEND | .CULL_FACE});
+                set_uniform("projection", world_to_camera);
+
+                OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+
+                for :iterate_vector3i size {
+                    count := overlapping[it_index];
+                    if count > 1 {
+                        start := position + it;
+                        end := start + Vector3i.{1,1,1};
+                        imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                    }
+                }
+
+                imm_flush();
             }
 
-           
-            set_shader(imm_color_shader, .{flags = .BLEND | .CULL_FACE});
-            set_uniform("projection", world_to_camera);
+            if editor.selected {
+                //
+                // Draw the wireframe
+                //
 
-            OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+                t := (cos(editor.selected_timer * TAU) + 1) / 2;
+                color := Vector4.{t, t, t, 1};
+                
+                e := get_entity(level, editor.selected);
+                mesh := entity_mesh(e);
+                mesh_to_world := entity_mesh_to_world_matrix(level, e);
+                
+                set_shader(wireframe_shader, .{polygon_mode = .LINE});
+                set_uniform("projection", world_to_camera * mesh_to_world);
+                set_uniform("color", color);
 
-            for :iterate_vector3i size {
-                count := overlapping[it_index];
-                if count > 1 {
-                    start := position + it;
-                    end := start + Vector3i.{1,1,1};
-                    imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
-                }
+                bind_and_draw(mesh);
+
             }
 
-            imm_flush();
-        }
+            if editor.mode == .EXTRUDE {
+                using editor.extrude;
 
-        if editor.selected {
+                start := start_position;
+                end := to_vector3i(floor(end_intersection));
+
+                position, size := get_editor_extrude_size(level);
+
+                set_shader(imm_color_shader);
+                set_uniform("projection", world_to_camera);
+
+                R :: Vector3.{0.1, 0.1, 0.1};
+
+                imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
+                imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
+                WIDTH :: 0.03;
+
+                color: Vector4;
+                if deletion color = .{1, 0, 0, 1};
+                else        color = .{1, 1, 1, 1};
+
+                for :iterate_vector3i size {
+                    cuboid_position := to_vector3(position + it);
+                    imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
+                }
+
+                imm_flush();
+            }
+                
             //
-            // Draw the wireframe
+            // Draw the dragging widget
             //
+                
+            if editor.selected && (editor.mode == .IDLE || editor.mode == .DRAG || editor.mode == .CAMERA) {
+                e := get_entity(level, editor.selected);
 
-            t := (cos(editor.selected_timer * TAU) + 1) / 2;
-            color := Vector4.{t, t, t, 1};
-            
-            e := get_entity(level, editor.selected);
-            mesh := entity_mesh(e);
-            mesh_to_world := entity_mesh_to_world_matrix(level, e);
-            
-            set_shader(wireframe_shader, .{polygon_mode = .LINE});
-            set_uniform("projection", world_to_camera * mesh_to_world);
-            set_uniform("color", color);
+                set_shader(imm_color_shader, .{flags = .BLEND});
+                set_uniform("projection", world_to_camera);
+                
+                COLORS :: Vector4.[
+                    .{1, 0.5, 0.5, 1},
+                    .{0.5, 1, 0.5, 1},
+                    .{0.5, 0.5, 1, 1},
+                ];
 
-            bind_and_draw(mesh);
+                for 0..2 {
+                    a_index := (it + 1) % 3;
+                    b_index := (it + 2) % 3;
 
-        }
+                    a_sign := ifx editor.camera_position.component[a_index] > xx e.position.component[a_index] then 1 else -1;
+                    b_sign := ifx editor.camera_position.component[b_index] > xx e.position.component[b_index] then 1 else -1;
 
-        if editor.mode == .EXTRUDE {
-            using editor.extrude;
+                    a0 := e.position.component[a_index] + DRAG_START * a_sign;
+                    b0 := e.position.component[b_index] + DRAG_START * b_sign;
+                    a1 := e.position.component[a_index] + DRAG_END * a_sign;
+                    b1 := e.position.component[b_index] + DRAG_END * b_sign;
 
-            start := start_position;
-            end := to_vector3i(floor(end_intersection));
+                    c := cast(float, e.position.component[it]);
 
-            position, size := get_editor_extrude_size(level);
+                    p0, p1, p2, p3: Vector3;
 
-            set_shader(imm_color_shader);
-            set_uniform("projection", world_to_camera);
+                    p0.component[it] = c;
+                    p0.component[a_index] = a0;
+                    p0.component[b_index] = b0;
 
-            R :: Vector3.{0.1, 0.1, 0.1};
+                    p1.component[it] = c;
+                    p1.component[a_index] = a1;
+                    p1.component[b_index] = b0;
 
-            imm_cuboid(start_intersection - R, start_intersection + R, .{0, 1, 0, 1});
-            imm_cuboid(end_intersection - R, end_intersection + R, .{1, 0, 0, 1});
-            WIDTH :: 0.03;
+                    p2.component[it] = c;
+                    p2.component[a_index] = a1;
+                    p2.component[b_index] = b1;
 
-            color: Vector4;
-            if deletion color = .{1, 0, 0, 1};
-            else        color = .{1, 1, 1, 1};
+                    p3.component[it] = c;
+                    p3.component[a_index] = a0;
+                    p3.component[b_index] = b1;
 
-            for :iterate_vector3i size {
-                cuboid_position := to_vector3(position + it);
-                imm_cuboid_outline(cuboid_position, cuboid_position + Vector3.{1,1,1}, WIDTH, color);
-            }
+                    color := COLORS[it];
+                    if editor.mode == .DRAG && editor.drag.index == it {
+                        color.w = 0.8;
+                    } else {
+                        color.w = 0.5;
+                    }
 
-            imm_flush();
-        }
-            
-        //
-        // Draw the dragging widget
-        //
-            
-        if editor.selected && (editor.mode == .IDLE || editor.mode == .DRAG || editor.mode == .CAMERA) {
-            e := get_entity(level, editor.selected);
+                    imm_vertex(p0, color);
+                    imm_vertex(p1, color);
+                    imm_vertex(p2, color);
+                    imm_vertex(p0, color);
+                    imm_vertex(p2, color);
+                    imm_vertex(p3, color);
 
-            set_shader(imm_color_shader, .{flags = .BLEND});
-            set_uniform("projection", world_to_camera);
-            
-            COLORS :: Vector4.[
-                .{1, 0.5, 0.5, 1},
-                .{0.5, 1, 0.5, 1},
-                .{0.5, 0.5, 1, 1},
-            ];
-
-            for 0..2 {
-                a_index := (it + 1) % 3;
-                b_index := (it + 2) % 3;
-
-                a_sign := ifx editor.camera_position.component[a_index] > xx e.position.component[a_index] then 1 else -1;
-                b_sign := ifx editor.camera_position.component[b_index] > xx e.position.component[b_index] then 1 else -1;
-
-                a0 := e.position.component[a_index] + DRAG_START * a_sign;
-                b0 := e.position.component[b_index] + DRAG_START * b_sign;
-                a1 := e.position.component[a_index] + DRAG_END * a_sign;
-                b1 := e.position.component[b_index] + DRAG_END * b_sign;
-
-                c := cast(float, e.position.component[it]);
-
-                p0, p1, p2, p3: Vector3;
-
-                p0.component[it] = c;
-                p0.component[a_index] = a0;
-                p0.component[b_index] = b0;
-
-                p1.component[it] = c;
-                p1.component[a_index] = a1;
-                p1.component[b_index] = b0;
-
-                p2.component[it] = c;
-                p2.component[a_index] = a1;
-                p2.component[b_index] = b1;
-
-                p3.component[it] = c;
-                p3.component[a_index] = a0;
-                p3.component[b_index] = b1;
-
-                color := COLORS[it];
-                if editor.mode == .DRAG && editor.drag.index == it {
-                    color.w = 0.8;
-                } else {
-                    color.w = 0.5;
                 }
 
-                imm_vertex(p0, color);
-                imm_vertex(p1, color);
-                imm_vertex(p2, color);
-                imm_vertex(p0, color);
-                imm_vertex(p2, color);
-                imm_vertex(p3, color);
-
+                imm_flush();
             }
-
-            imm_flush();
-        }
     }
 }
 

@@ -19,14 +19,24 @@ Level :: struct {
 
         mutual_annihilations: [..] Mutual_Annihilation;
         
-        flags: enum_flags {PULLING; DEBUG_MOVEMENT;};
-
-        used_overworld_entrance_eid: Entity_Id;
-        // Usually, I don't want to have these weird variables that say,
-        // "do this thing, but not now for xyz reason" because they invite
-        // bugs and complexity. However, there will eventually be an enter
-        // level interp effect, which by definition means we want to stash
-        // this and use it later.
+        flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; // Should these be on the Player struct?
+        
+        state: enum {
+            GAMEPLAY;
+            USING_OVERWORLD_ENTRANCE;
+        }
+        
+        union {
+            using_overworld_entrance: struct {
+                interp: float;
+                eid: Entity_Id;
+                // Usually, I don't want to have these weird variables that say,
+                // "do this thing, but not now for xyz reason" because they invite
+                // bugs and complexity. However, there will eventually be an enter
+                // level interp effect, which by definition means we want to stash
+                // this and use it later.
+            }
+        }
         
         camera_mode: Camera_Mode;
 
@@ -1135,37 +1145,14 @@ load_overworld :: (arena: *Memory_Arena, mode: Game_Mode) -> *Level {
 
 gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
-
-    if event.key == #char "C" && event.state == .DOWN {
-        // :Checkpoint
-        // This is how checkpoints work right now. It is very simple, but I'm not
-        // sure how "scalable" it is. Because we store the entire level in a 
-        // single arena, and the level takes up a fixed amount of memory when we
-        // load it and never any more, it means that we can allocate another segment
-        // of equal length in the same arena, and memcpy the level segment into
-        // this segment whenever we want to make a checkpoint.
-
-        // When we want to revert back to a checkpoint, we just memcpy the checkpoint
-        // segment back into the level segment (We can't just swap the one we're
-        // using because all the pointers in the checkpoint segment refer to
-        // addresses in the level segment.
-
-        // This is very simple, but it has a couple caveats. I don't think the
-        // memory usage is _that_ bad (@Investigate), but there are some things
-        // that we _know_ are immutable (such as the Block filled member) that don't
-        // need to be copied. The main offender here are the vertices of the Block
-        // meshes, :CpuVertices which we probably shouldn't be storing on the CPU
-        // anyway.
-
-        //          -berk, 2025 - 4 - 5.
-
-        memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count); 
+    
+    if event.key == #char "-" && event.state == .DOWN {
+        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
         return;
     }
 
-    if event.key == #char " " {
-        if event.state == .DOWN flags |= .PULLING;
-        else                    flags &= ~.PULLING;
+    if event.key == #char "=" && event.state == .DOWN {
+        if dt_modifier < 16 dt_modifier *= 2;
         return;
     }
 
@@ -1197,13 +1184,39 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         return;
     } 
 
-    if event.key == #char "-" && event.state == .DOWN {
-        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
+
+    if state != .GAMEPLAY return;
+
+    if event.key == #char "C" && event.state == .DOWN {
+        // :Checkpoint
+        // This is how checkpoints work right now. It is very simple, but I'm not
+        // sure how "scalable" it is. Because we store the entire level in a 
+        // single arena, and the level takes up a fixed amount of memory when we
+        // load it and never any more, it means that we can allocate another segment
+        // of equal length in the same arena, and memcpy the level segment into
+        // this segment whenever we want to make a checkpoint.
+
+        // When we want to revert back to a checkpoint, we just memcpy the checkpoint
+        // segment back into the level segment (We can't just swap the one we're
+        // using because all the pointers in the checkpoint segment refer to
+        // addresses in the level segment.
+
+        // This is very simple, but it has a couple caveats. I don't think the
+        // memory usage is _that_ bad (@Investigate), but there are some things
+        // that we _know_ are immutable (such as the Block filled member) that don't
+        // need to be copied. The main offender here are the vertices of the Block
+        // meshes, :CpuVertices which we probably shouldn't be storing on the CPU
+        // anyway.
+
+        //          -berk, 2025 - 4 - 5.
+
+        memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count); 
         return;
     }
 
-    if event.key == #char "=" && event.state == .DOWN {
-        if dt_modifier < 16 dt_modifier *= 2;
+    if event.key == #char " " {
+        if event.state == .DOWN flags |= .PULLING;
+        else                    flags &= ~.PULLING;
         return;
     }
 
@@ -1242,6 +1255,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if event.key == #char "O" && event.state == .DOWN {
         player := *_Player[0];
+
+        if player.state != .GROUND return;
         
         // @Speed Once ladders and stuff are a thing maybe we should store this in the
         // collision data structure
@@ -1272,7 +1287,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         }
 
         if entrance {
-            used_overworld_entrance_eid = entrance.eid;
+            state = .USING_OVERWORLD_ENTRANCE;
+            using_overworld_entrance = .{eid = entrance.eid, interp = 0};
         }
 
         return;
@@ -1564,134 +1580,18 @@ gameplay_update :: (using level: *Level, dt: float) {
         camera_focus_x_interp = min(camera_focus_x_interp + dt / CAMERA_FOCUS_TIME, 1);
         camera_focus_z_interp = min(camera_focus_z_interp + dt / CAMERA_FOCUS_TIME, 1);
     }
-    
-    // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
-    // I will see if this turns out to be a bad idea.
-
-    /*
-
-    // The following code is nontrivial so I will write an explanation.
-    // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
-    // Here's why:
-    // A cell will only be visible if it has at least one neighboring cell that is visible.
-    // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
-    // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
-    // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
-    // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
-   
-    // :SlowRaycast
-    // @Speed So, this is our first real reality check of this game.
-    // Running this with ~4000 raycasts/frame is already lagging out the game.
-    // For this initial development period this is fine, but we will soon have levels bigger than that.
-    // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
-
-    //      -berk, 2025 - 2 - 3
-
-
-    for :iterate_vector3i level_size {
-        viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
-    }
-    
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
-    position_count := 1;
-    
-    player := *_Player[0];
-
-    player_success, player_index := get_3d_index(player.position, level_position, level_size);
-    assert(player_success);
-    positions[0] = .{player_index, player.position};
-    viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
-    
-    end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
-    while position_count != 0 {
-        position_count -= 1;
-        using index_and_position := positions[position_count];
-
-        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
-        
-        visitor :: (position: Vector3i, using level: *Level) -> terminate_raycast: bool {
-            in_bounds, index := get_3d_index(position, level_position, level_size);
-            if !in_bounds return false;
-            eid := collision[index];
-            if is_null(eid) return false;
-            return as(eid, Block) != null;
-        }
-        
-        if raycast(start, end, visitor, level) continue;
-
-        viewed[index] |= (.SEEN | .VISIBLE);
-
-        check_position :: (p: Vector3i) #expand {
-            in_bounds, index := get_3d_index(p, level_position, level_size);
-            if !in_bounds || (viewed[index] & .QUEUED_FOR_FLOODFILL) return;
-            eid := collision[index];
-            if as(eid, Block) return;
-            viewed[index] |= .QUEUED_FOR_FLOODFILL;
-            positions[position_count] = .{index, p};
-            position_count += 1;
-        }
-        
-        // We only need to floodfill in the directions facing away from where the player is facing.
-        // This is important because we add a little epsilon fudge factor to allow the raycast to
-        // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
-        // in all directions, we could end up having a successful raycast above a wall, floodfilling
-        // downwards to a place behind a wall, then doing a raycast from there and having it
-        // succeed if the ray perfectly aligns with grid boundaries.
-
-        // [*] [ ] [ ]
-        // [W] [S] [W]
-        // [S] [S] [P]
-
-        // P: Player, W: Fall, S: Succeed raycast
-        // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
-        // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
-        // factor even though it shouldn't.
-
-        // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
-        // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
-        // cause the "fudge factor" to be stricter against the player instead of looser against them,
-        // which would prevent this ambiguity from happening.
-        
-        // :SlowRaycast
-        // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
-        // fudge factor is going to have to be stricter anyway because we can't do floodfilling
-        // in a compute shader.
-
-        //          - berk, 11 - 2 - 2025
-
-        check_axis :: (i: int) #expand #no_abc {
-            diff := end.component[i] - start.component[i];
-            if diff < 0 {
-                positive := position;
-                positive.component[i] += 1;
-                check_position(positive);
-            } else if diff > 0 {
-                negative := position;
-                negative.component[i] -= 1;
-                check_position(negative);
-            } else {
-                positive := position;
-                positive.component[i] += 1;
-                check_position(positive);
-                negative := position;
-                negative.component[i] -= 1;
-                check_position(negative);
-            }
-        }
-
-        check_axis(0);
-        check_axis(1);
-        check_axis(2);
-    }
-    */
 
     old_enemy_timer := enemy_timer;
     enemy_timer += dt / ENEMY_TICK_TIME;
     new_enemy_timer := enemy_timer;
+   
 
-    enemy_update_to_do: enum {
+
+
+    // I wanted to do fmod_cycling on the enemy timer no matter what state we are in so I 
+    // pulled this stuff out of the .GAMEPLAY state update.
+
+    enemy_update_in_gameplay_state: enum {
         NONE;
         FALLING;
         ALL;
@@ -1699,83 +1599,187 @@ gameplay_update :: (using level: *Level, dt: float) {
 
     if enemy_timer >= ENEMY_TICK_TIME {
         enemy_timer = fmod_cycling(enemy_timer, ENEMY_TICK_TIME);
-        enemy_update_to_do = .ALL;
+        enemy_update_in_gameplay_state = .ALL;
     } else if floor(old_enemy_timer / ENEMY_TICK_TIME * FALLS_PER_ENEMY_TICK) < floor(enemy_timer / ENEMY_TICK_TIME * FALLS_PER_ENEMY_TICK) {
-        enemy_update_to_do = .FALLING;
+        enemy_update_in_gameplay_state = .FALLING;
     }
 
-    if enemy_update_to_do != .NONE {
-        if enemy_update_to_do == .ALL {
-            // Run the Enemy_Despawner update BEFORE we do enemy movement.
-            // That way, only enemies that were already in a grid cell get despawned.
-            for * _Enemy_Despawner {
-                in_bounds, index := get_3d_index(it.position, level_position, level_size);
-                assert(in_bounds);
 
-                eid := collision[index];
-                if !eid continue;
-                
-                e := get_entity(level, eid);
-                enemy := as(e, Enemy);
-                if !enemy continue;
-                
-                collision[index] = 0;
-                delete_entity(level, eid);
+
+
+    if #complete state == {
+        case .GAMEPLAY; 
+            // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
+            // I will see if this turns out to be a bad idea.
+
+            /*
+
+            // The following code is nontrivial so I will write an explanation.
+            // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
+            // Here's why:
+            // A cell will only be visible if it has at least one neighboring cell that is visible.
+            // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
+            // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
+            // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
+            // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
+           
+            // :SlowRaycast
+            // @Speed So, this is our first real reality check of this game.
+            // Running this with ~4000 raycasts/frame is already lagging out the game.
+            // For this initial development period this is fine, but we will soon have levels bigger than that.
+            // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
+
+            //      -berk, 2025 - 2 - 3
+
+
+            for :iterate_vector3i level_size {
+                viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
             }
+            
+            mark := get_mark(*frame_arena);
+            defer restore_mark(*frame_arena, mark);
+            positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+            position_count := 1;
+            
+            player := *_Player[0];
 
-            for * _Enemy {
-                if it.state == {
-                    case .IDLE;
-                        can_move_to :: (using level: *Level, position: Vector3i) -> bool {
-                            if !is_colliding_below(level, position) return false;
-                            in_bounds, index := get_3d_index(position, level_position, level_size);
-                            assert(in_bounds);
-                            eid := collision[index];
-                            if eid == 0 return true;
-                            if get_entity(level, eid).type == .Block return false;
-                            return true;
-                        }
+            player_success, player_index := get_3d_index(player.position, level_position, level_size);
+            assert(player_success);
+            positions[0] = .{player_index, player.position};
+            viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
+            
+            end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
+            while position_count != 0 {
+                position_count -= 1;
+                using index_and_position := positions[position_count];
 
-                        it.moving_from = to_vector3(it.position);
+                start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+                
+                visitor :: (position: Vector3i, using level: *Level) -> terminate_raycast: bool {
+                    in_bounds, index := get_3d_index(position, level_position, level_size);
+                    if !in_bounds return false;
+                    eid := collision[index];
+                    if is_null(eid) return false;
+                    return as(eid, Block) != null;
+                }
+                
+                if raycast(start, end, visitor, level) continue;
 
-                        desired_direction := facing_to_vector3i(it.facing);
+                viewed[index] |= (.SEEN | .VISIBLE);
 
-                        if can_move_to(level, it.position + desired_direction) {
-                            it.desired_position = it.position + desired_direction;
-                            it.desired_vfx_modifiers = .MOVING;
-                        } else {
-                            new_facing: Facing;
+                check_position :: (p: Vector3i) #expand {
+                    in_bounds, index := get_3d_index(p, level_position, level_size);
+                    if !in_bounds || (viewed[index] & .QUEUED_FOR_FLOODFILL) return;
+                    eid := collision[index];
+                    if as(eid, Block) return;
+                    viewed[index] |= .QUEUED_FOR_FLOODFILL;
+                    positions[position_count] = .{index, p};
+                    position_count += 1;
+                }
+                
+                // We only need to floodfill in the directions facing away from where the player is facing.
+                // This is important because we add a little epsilon fudge factor to allow the raycast to
+                // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
+                // in all directions, we could end up having a successful raycast above a wall, floodfilling
+                // downwards to a place behind a wall, then doing a raycast from there and having it
+                // succeed if the ray perfectly aligns with grid boundaries.
 
-                            if #complete it.favored_direction == {
-                                case .LEFT;
-                                    new_facing = facing_left(it.facing);
-                                case .RIGHT;    
-                                    new_facing = facing_right(it.facing);
-                            }
+                // [*] [ ] [ ]
+                // [W] [S] [W]
+                // [S] [S] [P]
 
-                            desired_direction := facing_to_vector3i(new_facing);
+                // P: Player, W: Fall, S: Succeed raycast
+                // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
+                // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
+                // factor even though it shouldn't.
 
-                            if can_move_to(level, it.position + desired_direction) {
-                                it.desired_position = it.position + desired_direction;
-                                it.desired_vfx_modifiers = .MOVING;
-                                it.facing = new_facing;
-                            } else {
-                                new_facing: Facing;
-                                if #complete it.favored_direction == {
-                                    case .LEFT;
-                                        new_facing = facing_right(it.facing);
-                                    case .RIGHT;
-                                        new_facing = facing_left(it.facing);
+                // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
+                // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
+                // cause the "fudge factor" to be stricter against the player instead of looser against them,
+                // which would prevent this ambiguity from happening.
+                
+                // :SlowRaycast
+                // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
+                // fudge factor is going to have to be stricter anyway because we can't do floodfilling
+                // in a compute shader.
+
+                //          - berk, 11 - 2 - 2025
+
+                check_axis :: (i: int) #expand #no_abc {
+                    diff := end.component[i] - start.component[i];
+                    if diff < 0 {
+                        positive := position;
+                        positive.component[i] += 1;
+                        check_position(positive);
+                    } else if diff > 0 {
+                        negative := position;
+                        negative.component[i] -= 1;
+                        check_position(negative);
+                    } else {
+                        positive := position;
+                        positive.component[i] += 1;
+                        check_position(positive);
+                        negative := position;
+                        negative.component[i] -= 1;
+                        check_position(negative);
+                    }
+                }
+
+                check_axis(0);
+                check_axis(1);
+                check_axis(2);
+            }
+            */
+
+            if enemy_update_in_gameplay_state != .NONE {
+                if enemy_update_in_gameplay_state == .ALL {
+                    // Run the Enemy_Despawner update BEFORE we do enemy movement.
+                    // That way, only enemies that were already in a grid cell get despawned.
+                    for * _Enemy_Despawner {
+                        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                        assert(in_bounds);
+
+                        eid := collision[index];
+                        if !eid continue;
+                        
+                        e := get_entity(level, eid);
+                        enemy := as(e, Enemy);
+                        if !enemy continue;
+                        
+                        collision[index] = 0;
+                        delete_entity(level, eid);
+                    }
+
+                    for * _Enemy {
+                        if it.state == {
+                            case .IDLE;
+                                can_move_to :: (using level: *Level, position: Vector3i) -> bool {
+                                    if !is_colliding_below(level, position) return false;
+                                    in_bounds, index := get_3d_index(position, level_position, level_size);
+                                    assert(in_bounds);
+                                    eid := collision[index];
+                                    if eid == 0 return true;
+                                    if get_entity(level, eid).type == .Block return false;
+                                    return true;
                                 }
 
-                                desired_direction := facing_to_vector3i(new_facing);
+                                it.moving_from = to_vector3(it.position);
+
+                                desired_direction := facing_to_vector3i(it.facing);
 
                                 if can_move_to(level, it.position + desired_direction) {
                                     it.desired_position = it.position + desired_direction;
                                     it.desired_vfx_modifiers = .MOVING;
-                                    it.facing = new_facing;
                                 } else {
-                                    new_facing := facing_opposite(it.facing);
+                                    new_facing: Facing;
+
+                                    if #complete it.favored_direction == {
+                                        case .LEFT;
+                                            new_facing = facing_left(it.facing);
+                                        case .RIGHT;    
+                                            new_facing = facing_right(it.facing);
+                                    }
+
                                     desired_direction := facing_to_vector3i(new_facing);
 
                                     if can_move_to(level, it.position + desired_direction) {
@@ -1783,93 +1787,172 @@ gameplay_update :: (using level: *Level, dt: float) {
                                         it.desired_vfx_modifiers = .MOVING;
                                         it.facing = new_facing;
                                     } else {
-                                        it.desired_position = it.position;
-                                        it.desired_vfx_modifiers = 0;
+                                        new_facing: Facing;
+                                        if #complete it.favored_direction == {
+                                            case .LEFT;
+                                                new_facing = facing_right(it.facing);
+                                            case .RIGHT;
+                                                new_facing = facing_left(it.facing);
+                                        }
+
+                                        desired_direction := facing_to_vector3i(new_facing);
+
+                                        if can_move_to(level, it.position + desired_direction) {
+                                            it.desired_position = it.position + desired_direction;
+                                            it.desired_vfx_modifiers = .MOVING;
+                                            it.facing = new_facing;
+                                        } else {
+                                            new_facing := facing_opposite(it.facing);
+                                            desired_direction := facing_to_vector3i(new_facing);
+
+                                            if can_move_to(level, it.position + desired_direction) {
+                                                it.desired_position = it.position + desired_direction;
+                                                it.desired_vfx_modifiers = .MOVING;
+                                                it.facing = new_facing;
+                                            } else {
+                                                it.desired_position = it.position;
+                                                it.desired_vfx_modifiers = 0;
+                                            }
+                                        }
                                     }
                                 }
+
+                            case .FALLING;
+                                it.desired_position = it.position;
+                                it.desired_position.y -= 1;
+                                it.desired_vfx_modifiers = .FALLING;
+                        }
+                    }
+                } else {
+                    for * _Enemy {
+                        if #complete it.state == {
+                            case .IDLE;
+                                it.desired_position = it.position;
+                                it.desired_vfx_modifiers = 0;
+                            case .FALLING;
+                                it.desired_position = it.position;
+                                it.desired_position.y -= 1;
+                                it.desired_vfx_modifiers = .FALLING;
+                        }
+                    }
+                }
+
+                for * _Block it.desired_position = it.position;
+                
+                assert(use_desired_positions(level));
+
+                if enemy_update_in_gameplay_state == .ALL {
+                    // Now that Enemies have moved, we can run enemy spawner code.
+                    for * _Enemy_Spawner {
+                        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                        assert(in_bounds);
+                        
+                        should_spawn_enemy := false;
+
+                        if collision[index] == 0 {
+                            should_spawn_enemy = true;
+                        } else {
+                            e := get_entity(level, collision[index]);
+                            if e.type == .Enemy {
+                                enemy_in_bounds, enemy_index := get_3d_index(e.position, level_position, level_size);
+                                assert(enemy_in_bounds);
+                                collision[enemy_index] = 0;
+                                delete_entity(level, e.eid);
+                                append_no_resize(*mutual_annihilations, .{position = it.position});
+                            } else if e.type != .Block {
+                                should_spawn_enemy = true;
                             }
                         }
 
-                    case .FALLING;
-                        it.desired_position = it.position;
-                        it.desired_position.y -= 1;
-                        it.desired_vfx_modifiers = .FALLING;
-                }
-            }
-        } else {
-            for * _Enemy {
-                if #complete it.state == {
-                    case .IDLE;
-                        it.desired_position = it.position;
-                        it.desired_vfx_modifiers = 0;
-                    case .FALLING;
-                        it.desired_position = it.position;
-                        it.desired_position.y -= 1;
-                        it.desired_vfx_modifiers = .FALLING;
-                }
-            }
-        }
+                        if should_spawn_enemy {
+                            e := make_entity(level, Enemy);
+                            e.position = it.position;
+                            e.state = .IDLE;
+                            e.vfx_modifiers |= .SPAWNING;
 
-        for * _Block it.desired_position = it.position;
-        
-        assert(use_desired_positions(level));
+                            if it.enemy_spawner_type == {
+                                case .ALTERNATING;
+                                    e.favored_direction = it.alternating_direction;
+                                case .ALL_RIGHT;
+                                    e.favored_direction = .RIGHT;
+                                case .ALL_LEFT;
+                                    e.favored_direction = .LEFT;
+                            }
 
-        if enemy_update_to_do == .ALL {
-            // Now that Enemies have moved, we can run enemy spawner code.
-            for * _Enemy_Spawner {
-                in_bounds, index := get_3d_index(it.position, level_position, level_size);
-                assert(in_bounds);
-                
-                should_spawn_enemy := false;
+                            e.facing = it.facing;
+                            assert(collision[index] == 0);
+                            collision[index] = e.eid;
+                        }
 
-                if collision[index] == 0 {
-                    should_spawn_enemy = true;
-                } else {
-                    e := get_entity(level, collision[index]);
-                    if e.type == .Enemy {
-                        enemy_in_bounds, enemy_index := get_3d_index(e.position, level_position, level_size);
-                        assert(enemy_in_bounds);
-                        collision[enemy_index] = 0;
-                        delete_entity(level, e.eid);
-                        append_no_resize(*mutual_annihilations, .{position = it.position});
-                    } else if e.type != .Block {
-                        should_spawn_enemy = true;
+
+                        if it.enemy_spawner_type == .ALTERNATING {
+                            // Flip the direction every tick
+                            if it.alternating_direction == .LEFT {
+                                it.alternating_direction = .RIGHT;
+                            } else {
+                                it.alternating_direction = .LEFT;
+                            }
+                        }
                     }
                 }
-
-                if should_spawn_enemy {
-                    e := make_entity(level, Enemy);
-                    e.position = it.position;
-                    e.state = .IDLE;
-                    e.vfx_modifiers |= .SPAWNING;
-
-                    if it.enemy_spawner_type == {
-                        case .ALTERNATING;
-                            e.favored_direction = it.alternating_direction;
-                        case .ALL_RIGHT;
-                            e.favored_direction = .RIGHT;
-                        case .ALL_LEFT;
-                            e.favored_direction = .LEFT;
-                    }
-
-                    e.facing = it.facing;
-                    assert(collision[index] == 0);
-                    collision[index] = e.eid;
-                }
+            } 
 
 
-                if it.enemy_spawner_type == .ALTERNATING {
-                    // Flip the direction every tick
-                    if it.alternating_direction == .LEFT {
-                        it.alternating_direction = .RIGHT;
-                    } else {
-                        it.alternating_direction = .LEFT;
-                    }
-                }
+            for * mutual_annihilations {
+                TIME :: 0.15;
+                it.interp += dt / TIME;
+                if it.interp > 1 remove it;
             }
-        }
-    } 
+            
+            PLAYER_FALLING_TIME :: 0.2;
+            if #complete player.state == {
+                case .SPAWNING;
+                    player.spawning.interp += dt / PLAYERLIKE_SPAWNING_TIME;
+                    if player.spawning.interp >= 1 {
+                        if is_colliding_below(level, player.position) {
+                            set_state(player, .GROUND);
+                        } else {
+                            // This one should never happen
+                            set_state(player, .FALLING); 
+                        }
+                    }
 
+                case .GROUND;
+                    player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt / PLAYER_FALLING_TIME);
+
+                case .FALLING;
+                    assert(!(flags & .DEBUG_MOVEMENT));
+                    player.falling.interp += dt / PLAYER_FALLING_TIME;
+                    while player.falling.interp >= 1 {
+                        player.falling.interp -= 1;
+                        new_position := player.position;
+                        new_position.y -= 1;
+                       
+                        if new_position.y < level_position.y {
+                            set_state(player, .DEAD);
+                            break;
+                        }
+
+                        player.position = new_position;
+
+                        if is_colliding_below(level, player.position) {
+                            set_state(player, .GROUND);
+                            break;
+                        }
+                    }
+
+                case .DEAD;
+                    DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
+                    player.dead.interp += dt / DEAD_TIME;
+                    if player.dead.interp >= 1 {    
+                        memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count);
+                    }
+            }
+        case .USING_OVERWORLD_ENTRANCE;
+            TIME :: 1;
+            using using_overworld_entrance;
+            interp += dt / TIME;
+    }
 
     
     old_fall_timer := fmod_cycling(old_enemy_timer, ENEMY_TICK_TIME / FALLS_PER_ENEMY_TICK);
@@ -1900,58 +1983,7 @@ gameplay_update :: (using level: *Level, dt: float) {
     }
 
 
-    for * mutual_annihilations {
-        TIME :: 0.15;
-        it.interp += dt / TIME;
-        if it.interp > 1 remove it;
-    }
-    
-    PLAYER_FALLING_TIME :: 0.2;
-    if #complete player.state == {
-        case .SPAWNING;
-            player.spawning.interp += dt / PLAYERLIKE_SPAWNING_TIME;
-            if player.spawning.interp >= 1 {
-                if is_colliding_below(level, player.position) {
-                    set_state(player, .GROUND);
-                } else {
-                    // This one should never happen
-                    set_state(player, .FALLING); 
-                }
-            }
 
-        case .GROUND;
-            player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt / PLAYER_FALLING_TIME);
-
-        case .FALLING;
-            assert(!(flags & .DEBUG_MOVEMENT));
-            player.falling.interp += dt / PLAYER_FALLING_TIME;
-            while player.falling.interp >= 1 {
-                player.falling.interp -= 1;
-                new_position := player.position;
-                new_position.y -= 1;
-               
-                if new_position.y < level_position.y {
-                    set_state(player, .DEAD);
-                    break;
-                }
-
-                player.position = new_position;
-
-                if is_colliding_below(level, player.position) {
-                    set_state(player, .GROUND);
-                    break;
-                }
-            }
-
-        case .DEAD;
-            DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
-            player.dead.interp += dt / DEAD_TIME;
-            if player.dead.interp >= 1 {    
-                memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count);
-            }
-    }
-
-    
     //
     // Update floodfill view
     //

@@ -7,8 +7,6 @@ inside :: (position: Vector2, size: Vector2, point: Vector2) -> bool {
 
 
 Imgui_State :: struct {
-    imgui_to_camera: Matrix4;
-    camera_to_imgui: Matrix4;
     test_toggle: bool;
     test_color := Vector4.{0.8, 0.5, 0.2, 1};
     test_enum: enum { ZERO; ONE; TWO; }
@@ -68,6 +66,7 @@ operator == :: (a: Source_Code_Location, b: Source_Code_Location) -> bool {
 
 scope_widget :: (loc: Source_Code_Location, id: u64) #expand {
     using context.game_context.imgui_state;
+
     assert(current_widget_id_count < current_widget_id.count);
     
     if current_widget_id_count != 0 {
@@ -162,71 +161,8 @@ Active_Widget_Data :: struct {
 }
 
 
-imgui_init :: () -> Imgui_State {
-    using imgui_state: Imgui_State;
-
-    // We do the " / 2" because we actually need to zoom in twice as much to account
-    // for the starting matrix ranging from [1, -1] on the x and y axis. We need the 
-    // final matrix to range from [0, INNER_WINDOW_W] on the x and [0, INNER_WINDOW_H]
-    // on the y.
-
-    zoom_in_matrix := Matrix4_Identity;
-    zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
-    zoom_in_matrix._22 /= -INNER_WINDOW_H / 2;
-    imgui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
-
-    zoom_out_matrix := Matrix4_Identity;
-    zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
-    zoom_out_matrix._22 *= -INNER_WINDOW_H / 2;
-    camera_to_imgui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
-
-    return imgui_state;
-}
-
-
-imgui_draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> end_x: float {
-    using context.game_context;
-    
-    set_shader(imm_text_shader, .{flags = .BLEND});
-    set_uniform_bitmap("bitmap", 0, font.bitmap);
-    set_uniform("projection", imgui_state.imgui_to_camera);
-    
-    x := position.x;
-    y := position.y;
-
-    for str {
-        if it == #char " " {
-            x += font.space_advance;
-        } else {
-            assert(VALID_ASCII_START <= it && it <= VALID_ASCII_END);
-            using glyph := *font.glyphs[it - VALID_ASCII_START];
-
-            x0 := x + bearing.x;
-            y0 := y - bearing.y;
-            x1 := x0 + size.x;
-            y1 := y0 + size.y;
-
-            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, color);
-            imm_vertex(.{x1, y0, 0}, .{uv_x1, uv_y0}, color);
-            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, color);
-
-            imm_vertex(.{x0, y0, 0}, .{uv_x0, uv_y0}, color);
-            imm_vertex(.{x1, y1, 0}, .{uv_x1, uv_y1}, color);
-            imm_vertex(.{x0, y1, 0}, .{uv_x0, uv_y1}, color);
-
-            x += advance;
-        }
-    }
-
-    imm_flush();
-
-    return x;
-}
-
-
 label :: (text: string, position: Vector2, size: Vector2) -> used_length: float {
     using context.game_context;
-    using context.game_context.imgui_state;
 
     font := *consolas;
 
@@ -237,7 +173,7 @@ label :: (text: string, position: Vector2, size: Vector2) -> used_length: float 
     });
 
     
-    imgui_draw_text(text, text_position, font, HIGHLIGHT_COLOR);
+    draw_text(text, text_position, font, HIGHLIGHT_COLOR);
 
     return text_length(text, font) + margin * 2;
 }
@@ -283,7 +219,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc
     
     
     set_shader(imm_color_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
 
     imm_quad(round(outline_outer_position), round(outline_outer_size), color);
     imm_quad(round(outline_inner_position), round(outline_inner_size), BACKGROUND_COLOR);
@@ -372,7 +308,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
     };
     
     set_shader(imm_color_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     imm_quad(bar_position, bar_size, HIGHLIGHT_COLOR);
     imm_flush();
 }
@@ -432,7 +368,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     // @TODO: Draw a little alpha checkerboard texture underneath this.
     set_shader(imm_color_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     alpha_x0 := alpha_position.x;
     alpha_y0 := alpha_position.y;
     alpha_x1 := alpha_x0 + alpha_size.x;
@@ -448,7 +384,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     slider(*color.w, alpha_position, alpha_size, loc=loc, id=0);
     
     set_shader(imm_hue_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     imm_vertex(.{hue_x0, hue_y0, 0}, .{0, 0});
     imm_vertex(.{hue_x1, hue_y0, 0}, .{1, 0});
     imm_vertex(.{hue_x1, hue_y1, 0}, .{1, 1});
@@ -558,7 +494,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     
     set_shader(imm_saturation_value_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     set_uniform("hue", hue);
     imm_vertex(.{sv_x0, sv_y0, 0}, .{0, 1});
     imm_vertex(.{sv_x1, sv_y0, 0}, .{1, 1});
@@ -569,7 +505,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     imm_flush();
     
     set_shader(imm_color_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     imm_quad(sample_position, sample_size, color.*);
     imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, HIGHLIGHT_COLOR);
     imm_quad(sv_cursor_vbar_position, sv_cursor_vbar_size, HIGHLIGHT_COLOR);
@@ -601,7 +537,6 @@ enum_selector :: (
     id: u64
 ) {
     using context.game_context;
-    using context.game_context.imgui_state;
 
     scope_widget(loc, id);
 
@@ -650,7 +585,7 @@ enum_selector :: (
     text_x := left_button_position.x - margin - text_length(member_text, font);
     text_y := position.y + size.y / 2 + font.ascender / 2;
 
-    imgui_draw_text(member_text, round(Vector2.{text_x, text_y}), font, DULL_COLOR);
+    draw_text(member_text, round(Vector2.{text_x, text_y}), font, DULL_COLOR);
 }
 
 
@@ -701,7 +636,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     width := floor(font.ascender * 0.05);
     
     set_shader(imm_color_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     imm_quad(position, size, color);
     
     inner_position := Vector2.{position.x + width, position.y + width};
@@ -711,7 +646,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
 
     text_x := position.x + size.x / 2 - text_length(label, font) / 2;
     text_y := position.y + size.y / 2 + font.ascender / 2;
-    imgui_draw_text(label, round(Vector2.{text_x, text_y}), font, color);
+    draw_text(label, round(Vector2.{text_x, text_y}), font, color);
 
     return clicked;
 }
@@ -729,6 +664,7 @@ string_entry :: (
 ) -> entered: bool {
     using context.game_context;
     using context.game_context.imgui_state;
+
     assert(str_count.* <= str.count);
 
     scope_widget(loc, id);
@@ -903,7 +839,7 @@ string_entry :: (
 
     
     set_shader(imm_color_shader, .{flags = 0});
-    set_uniform("projection", imgui_to_camera);
+    set_uniform("projection", ui_to_camera);
     imm_quad(outer_position, outer_size, color);
     imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
 
@@ -926,7 +862,7 @@ string_entry :: (
     imm_flush();
     
     // @TODO: Push a new scissor, or find some way to cut off the text we draw.
-    imgui_draw_text(string_to_draw, text_position, font, color);
+    draw_text(string_to_draw, text_position, font, color);
 
     return entered;
 }
@@ -953,7 +889,6 @@ number_entry :: (
     id: u64 = 0
 ) -> entered: bool {
     using context.game_context;
-    using context.game_context.imgui_state;
     assert(info.type == .INTEGER || info.type == .FLOAT);
 
     str: [STRING_ENTRY_MAX_COUNT] u8;
@@ -996,7 +931,6 @@ imgui_for_value :: (val: *$T, position: Vector2, field_size: Vector2, arena: *Me
 
 imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size: Vector2, arena: *Memory_Arena, read_only := false, loc := #caller_location, id: u64 = 0) -> end_y: float {
     using context.game_context;
-    using context.game_context.imgui_state;
     scope_widget(loc, id);
 
     font := *consolas;
@@ -1028,7 +962,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                     y + field_size.y / 2 + font.ascender / 2
                 };
 
-                text_end := imgui_draw_text(it.name, round(label_position), font, text_color);
+                text_end := draw_text(it.name, round(label_position), font, text_color);
 
                 value_position: Vector2;
                 if it.type.type == .STRUCT {
@@ -1099,7 +1033,6 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
 /*
 vertical_scroll_begin :: (scroll: *float, position: Vector2, size: Vector2) -> start_y: float {
     using context.game_context;
-    using context.game_context.imgui_state;
     glEnable(GL_SCISSOR_TEST);
 }
 
