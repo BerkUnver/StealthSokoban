@@ -121,6 +121,8 @@ FAR_PLANE :: 1000.0;
 IMGUI_POSITION :: Vector2.{0, 0};
 IMGUI_SIZE :: Vector2.{700, INNER_WINDOW_H};
 
+OVERWORLD :: "levels/overworld.level";
+
 #program_export "game_init"
 game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data) #no_context {
     game_memory := cast(*Game_Memory, data.game_memory);
@@ -168,7 +170,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         // We want to support Mac, so we can't support OpenGL 4.3 which is when this
         // extension became part of the standard. As such, we have to use the extension.
-        // :GLDebugProcHotloadingHack
         stack_context := context;
         if GL_ARB_debug_output {
             glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
@@ -248,15 +249,14 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         editor_arena = make_arena(data.editor_arena_memory, EDITOR_ARENA_SIZE);
         gameplay_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
         
-        LEVEL :: "levels/overworld.level";
         
-        editor_level = load_level_part_1_deserialize(LEVEL, *editor_arena);
+        editor_level = load_level_part_1_deserialize(OVERWORLD, *editor_arena);
         assert(editor_level != null);
-        load_level_part_2_editor(LEVEL, editor_level, *editor_arena);
+        load_level_part_2_editor(OVERWORLD, editor_level, *editor_arena);
 
-        gameplay_level = load_level_part_1_deserialize(LEVEL, *gameplay_arena);
+        gameplay_level = load_level_part_1_deserialize(OVERWORLD, *gameplay_arena);
         assert(gameplay_level != null);
-        assert(load_level_part_2_gameplay(LEVEL, gameplay_level, *gameplay_arena));
+        assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, *gameplay_arena));
 
         mode = .EDITOR;    
     }
@@ -563,25 +563,51 @@ game_update : Game_Update : (
                     }
                 }
             case .GAMEPLAY;
+                using gameplay_level;
                 gameplay_update(gameplay_level, dt);
-                if gameplay_level.state == .FADE_OUT_ENTRANCE {
-                    using gameplay_level.fade_out_entrance;
-                    if interp >= 1 {
-                        assert(eid != 0);
+                if state == {
+                    case .FADE_OUT_ENTRANCE;
+                        using fade_out_entrance;
+                        if interp >= 1 {
+                            assert(eid != 0);
 
-                        e := get_entity(gameplay_level, eid);
-                        entrance := as(e, Overworld_Entrance);
-                        assert(entrance != null);
+                            e := get_entity(gameplay_level, eid);
+                            entrance := as(e, Overworld_Entrance);
+                            assert(entrance != null);
 
-                        scope_mark(*frame_arena);
-                        // We need to copy the string because it is going to be freed when we free the old level.
-                        level_name := copy_string(*frame_arena, entrance.level_name);
-                        free_level(gameplay_level, *gameplay_arena);
+                            scope_mark(*frame_arena);
+                            // We need to copy the string because it is going to be freed when we free the old level.
+                            level_name := copy_string(*frame_arena, entrance.level_name);
+                            free_level(gameplay_level, *gameplay_arena);
 
-                        gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
-                        assert(gameplay_level != null);
-                        assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
-                    }
+                            gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
+                            assert(gameplay_level != null);
+                            assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
+                        }
+                    case .FADE_OUT_EXIT;
+                        using fade_out_exit;
+                        if interp >= 1 {
+                            scope_mark(*frame_arena);
+                            level_name := copy_string(*frame_arena, name);
+                            free_level(gameplay_level, *gameplay_arena);
+
+                            gameplay_level = load_level_part_1_deserialize(OVERWORLD, *gameplay_arena);
+                            assert(gameplay_level != null);
+                            assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
+                            
+                            for * _Overworld_Exit {
+                                entrance := get_entrance_for_overworld_exit(gameplay_level, it);
+                                if entrance && entrance.level_name == level_name {
+                                    player := *_Player[0];
+                                    player.position = it.position;
+
+                                    // @Hack keep the camera focused on the player because otherwise it will fly
+                                    // from wherever the player entity was placed in the level to where we are loading it.
+                                    camera_focus_x = player.position.x;
+                                    camera_focus_z = player.position.z;
+                                }
+                            }
+                        }
                 }
                 draw(gameplay_level, .GAMEPLAY);
         }
@@ -993,6 +1019,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     draw_fade(interp);
                 case .FADE_OUT_CHECKPOINT;
                     using fade_out_checkpoint;
+                    draw_fade(interp);
+                case .FADE_OUT_EXIT;
+                    using fade_out_exit;
                     draw_fade(interp);
             }
         case .EDITOR;

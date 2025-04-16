@@ -48,6 +48,9 @@ Level :: struct {
             fade_out_checkpoint: struct {
                 interp: float;
             }
+            fade_out_exit: struct {
+                interp: float;
+            }
         }
         
         camera_mode: Camera_Mode;
@@ -94,9 +97,7 @@ Level :: struct {
             
         // :Checkpoint
         self_ptr: [] u8;
-        playing_checkpoint: [] u8;
-        // Only use this in the PLAYING state. This is not in the struct with the state-specific
-        // data because it needs to be allocated up-front when we load the level.
+        checkpoint: [] u8;
     } @NoSerialize
 
     editor: struct {
@@ -168,6 +169,7 @@ Gameplay_State :: enum {
     PLAYING;
     FADE_OUT_ENTRANCE;
     FADE_OUT_CHECKPOINT;
+    FADE_OUT_EXIT;
 }
 
 
@@ -835,7 +837,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
     // :Checkpoint
     self_ptr = .{arena.current, xx level};
-    playing_checkpoint = alloc_view(arena, self_ptr.count, u8, zero_init = false); 
+    checkpoint = alloc_view(arena, self_ptr.count, u8, zero_init = false); 
 
     if skip_intro {
         set_state(player, .GROUND);
@@ -903,6 +905,23 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
     }
 
     clear(level_arena);
+}
+
+
+get_entrance_for_overworld_exit :: (level: *Level, exit: *Overworld_Exit) -> *Overworld_Entrance {
+    if !exit.entrance {
+        log(.ERROR, "The Overworld_Exit with eid % has no entrance assigned.\n", exit.eid);
+        return null;
+    }
+
+    e := get_entity(level, exit.entrance);
+    entrance := as(e, Overworld_Entrance);
+    if !entrance {
+        log(.ERROR, "The Overworld_Exit with eid % has an entrance assigned, but it is a % rather than an Overworld_Entrance.\n", exit.eid, e.type);
+        return null;
+    }
+
+    return entrance;
 }
 
 
@@ -1039,15 +1058,18 @@ set_state :: (using level: *Level, new_state: Gameplay_State) {
             fade_out_checkpoint = .{interp = 0};
         case .FADE_OUT_ENTRANCE;
             fade_out_entrance = .{interp = 0};
+        case .FADE_OUT_EXIT;
+            fade_out_exit = .{interp = 0};
     }
     state = new_state;
 }
 
+
 set_checkpoint :: (using level: *Level) {
     assert(state == .PLAYING);
     flags |= .CHECKPOINT_EXISTS;
-    assert(playing_checkpoint.count == self_ptr.count);
-    memcpy(playing_checkpoint.data, self_ptr.data, self_ptr.count);
+    assert(checkpoint.count == self_ptr.count);
+    memcpy(checkpoint.data, self_ptr.data, self_ptr.count);
 }
 
 
@@ -1087,7 +1109,7 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
     old_camera_mode := camera_mode;
     old_dt_modifier := dt_modifier;
 
-    memcpy(self_ptr.data, playing_checkpoint.data, playing_checkpoint.count);
+    memcpy(self_ptr.data, checkpoint.data, checkpoint.count);
     assert(state == .PLAYING);
 
     player := *_Player[0];
@@ -1361,15 +1383,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 if it.position != player.position continue;
                 if !it.entrance continue;
 
-                e := get_entity(level, it.entrance);
-                maybe_entrance := as(e, Overworld_Entrance);
-                if !maybe_entrance {
-                    log(.ERROR, "The level exit you are standing on has an entrance assigned, but it is a % rather than an Overworld_Entrance.\n", e.type);
-                    continue;
-                }
-
-                entrance = maybe_entrance;
-                break;
+                entrance = get_entrance_for_overworld_exit(level, it);
+                if entrance break;
             }
         }
 
@@ -1387,6 +1402,14 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 }
                 it.state = .CURRENT;
                 set_checkpoint(level);
+                return;
+            }
+        }
+
+
+        for * _Exit {
+            if it.position == player.position {
+                set_state(level, .FADE_OUT_EXIT);
                 return;
             }
         }
@@ -2072,6 +2095,9 @@ gameplay_update :: (using level: *Level, dt: float) {
             if interp >= 1 {
                 restore_checkpoint(level);
             }
+        case .FADE_OUT_EXIT;
+            using fade_out_exit;
+            interp += dt / FADE_TIME;
     }
 
     

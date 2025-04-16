@@ -377,8 +377,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                         print(sb, "[ ");
                         for 0..count-1 {
                             element_ptr := data + type.runtime_size * it;
-                            member_args := Any.[ dynamic_any(type, element_ptr) ];
-                            print(sb, "% ", ..member_args);
+                            print(sb, "% ", dynamic_any(type, element_ptr));
                         }
                         print(sb, "]");
                     }
@@ -407,6 +406,9 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                         index += 1;
                         c_string += 1;
                     }
+                case .VARIANT;
+                    info := cast(*Type_Info_Variant, arg.type);
+                    print(sb, "%", dynamic_any(info.variant_of, arg.value_pointer));
                 case; assert(false);
             }
             arg_index += 1;
