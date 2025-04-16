@@ -1362,6 +1362,56 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         return;
     }
 
+    if event.key == #char "H" && event.state == .DOWN {
+        player := *_Player[0];
+
+        // So movement feels nice and snappy, I'm going to experiment with having NO
+        // player procedural animation when teleporting the player. This might feel
+        // TOO snappy / rewarding, however.
+        
+        // @TODO: Get this to work with "use_desired_positions",
+
+        found := false;
+        desired_position: Vector3i;
+
+        for * _Overworld_Exit {
+            entrance := get_entrance_for_overworld_exit(level, it);
+            if !entrance continue;
+
+            if it.position == player.position {
+                desired_position = entrance.position;
+                found = true;
+                break;
+            }
+
+            if entrance.position == player.position {
+                desired_position = it.position;
+                found = true;
+                break;
+            }
+        }
+
+        if found {
+            in_bounds, index := get_3d_index(desired_position, level_position, level_size);
+            assert(in_bounds);
+            eid := collision[index];
+
+            block_blocking := false;
+            if eid {
+                e := get_entity(level, eid);
+                if e.type == .Block {
+                    block_blocking = true;
+                }
+            }
+
+            if !block_blocking {
+                player.position = desired_position;
+            }
+        }
+        
+        return;
+    }
+
     if event.key == #char "O" && event.state == .DOWN {
         player := *_Player[0];
 
