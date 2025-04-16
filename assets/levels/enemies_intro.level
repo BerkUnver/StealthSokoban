@@ -516,7 +516,7 @@ types
 				;
 			;
 		enemy_spawner_type 1
-		facing 2
+		facing 1
 		;
 		e
 			eid 44
@@ -527,6 +527,7 @@ types
 				;
 			;
 		enemy_spawner_type 1
+		facing 1
 		;
 		e
 			eid 45

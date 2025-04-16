@@ -564,8 +564,8 @@ game_update : Game_Update : (
                 }
             case .GAMEPLAY;
                 gameplay_update(gameplay_level, dt);
-                if gameplay_level.state == .USING_OVERWORLD_ENTRANCE {
-                    using gameplay_level.using_overworld_entrance;
+                if gameplay_level.state == .FADE_OUT_ENTRANCE {
+                    using gameplay_level.fade_out_entrance;
                     if interp >= 1 {
                         assert(eid != 0);
 
@@ -968,25 +968,32 @@ draw :: (using level: *Level, mode: Game_Mode) {
     
     if mode == {
         case .GAMEPLAY;
-            FADE_COLOR :: Vector4.{0, 0, 0, 1};
+
+            draw_fade :: (alpha: float) {
+                using context.game_context;
+                color := Vector4.{0, 0, 0, alpha};
+                color.w = alpha;
+
+                set_shader(imm_color_shader, .{flags = .BLEND});
+                set_uniform("projection", Matrix4_Identity);
+                imm_quad(.{-1, -1}, .{2, 2}, color);
+                imm_flush();
+            }
+
             if #complete state == {
-                case .ENTERING_LEVEL;
-                    using entering_level;
-                    set_shader(imm_color_shader, .{flags = .BLEND});
-                    set_uniform("projection", Matrix4_Identity);
-                    color := FADE_COLOR;
-                    color.w = 1 - interp;
-                    imm_quad(.{-1, -1}, .{2, 2}, color);
-                    imm_flush();
+                case .FADE_IN_START;
+                    using fade_in_start;
+                    draw_fade(1 - interp);
+                case .FADE_IN_CHECKPOINT;
+                    using fade_in_checkpoint;
+                    draw_fade(1 - interp);
                 case .PLAYING;
-                case .USING_OVERWORLD_ENTRANCE;
-                    using using_overworld_entrance;
-                    set_shader(imm_color_shader, .{flags = .BLEND});
-                    set_uniform("projection", Matrix4_Identity);
-                    color := FADE_COLOR;
-                    color.w = interp;
-                    imm_quad(.{-1, -1}, .{2, 2}, color);
-                    imm_flush();
+                case .FADE_OUT_ENTRANCE;
+                    using fade_out_entrance;
+                    draw_fade(interp);
+                case .FADE_OUT_CHECKPOINT;
+                    using fade_out_checkpoint;
+                    draw_fade(interp);
             }
         case .EDITOR;
             {

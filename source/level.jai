@@ -19,19 +19,24 @@ Level :: struct {
 
         mutual_annihilations: [..] Mutual_Annihilation;
         
-        flags: enum_flags {PULLING; DEBUG_MOVEMENT;}; // Should these be on the Player struct?
-        
-        state: enum {
-            ENTERING_LEVEL;
-            PLAYING;
-            USING_OVERWORLD_ENTRANCE;
+        flags: enum_flags {
+            // Should these be on the player struct?
+            PULLING;
+            DEBUG_MOVEMENT;
+
+            CHECKPOINT_EXISTS;
         }
         
+        state: Gameplay_State;
+        
         union {
-            entering_level: struct {
+            fade_in_start: struct {
                 interp: float;
             }
-            using_overworld_entrance: struct {
+            fade_in_checkpoint: struct {
+                interp: float;
+            }
+            fade_out_entrance: struct {
                 interp: float;
                 eid: Entity_Id;
                 // Usually, I don't want to have these weird variables that say,
@@ -39,6 +44,9 @@ Level :: struct {
                 // bugs and complexity. However, there will eventually be an enter
                 // level interp effect, which by definition means we want to stash
                 // this and use it later.
+            }
+            fade_out_checkpoint: struct {
+                interp: float;
             }
         }
         
@@ -154,7 +162,15 @@ Camera_Mode :: enum {
 }
 
 
-// I pulled this stuff out because I plan to eventually share it with the enemies.
+Gameplay_State :: enum {
+    FADE_IN_START;
+    FADE_IN_CHECKPOINT;
+    PLAYING;
+    FADE_OUT_ENTRANCE;
+    FADE_OUT_CHECKPOINT;
+}
+
+
 Player_State :: enum {
     GROUND;
     SPAWNING;
@@ -823,11 +839,11 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
     if skip_intro {
         set_state(player, .GROUND);
-        state = .PLAYING;
+        set_state(level, .PLAYING);
         set_checkpoint(level);
     } else {
         set_state(player, .SPAWNING);
-        // State is default set to ENTERING_LEVEL.
+        // State is default set to FADE_IN_START.
     }
     
     return true;
@@ -1012,14 +1028,30 @@ set_state :: (player: *Player, state: Player_State) {
 }
 
 
+set_state :: (using level: *Level, new_state: Gameplay_State) {
+    if #complete new_state == {
+        case .FADE_IN_START;
+            fade_in_start = .{interp = 0};
+        case .FADE_IN_CHECKPOINT;
+            fade_in_checkpoint = .{interp = 0};
+        case .PLAYING;
+        case .FADE_OUT_CHECKPOINT;
+            fade_out_checkpoint = .{interp = 0};
+        case .FADE_OUT_ENTRANCE;
+            fade_out_entrance = .{interp = 0};
+    }
+    state = new_state;
+}
+
 set_checkpoint :: (using level: *Level) {
     assert(state == .PLAYING);
+    flags |= .CHECKPOINT_EXISTS;
     assert(playing_checkpoint.count == self_ptr.count);
     memcpy(playing_checkpoint.data, self_ptr.data, self_ptr.count);
 }
 
 
-restore_checkpoint :: (using level: *Level) {
+restore_checkpoint :: (using level: *Level, skip_intro := false) {
     // :Checkpoint
     // This is how checkpoints work right now. It is very simple, but I'm not
     // sure how "scalable" it is. Because we store the entire level in a 
@@ -1047,16 +1079,16 @@ restore_checkpoint :: (using level: *Level) {
     // a checkpoint being loaded. Saving members from before we restore a checkpoint
     // seems pretty dumb. If this gets worse, I should consider switching to a
     // general-purpose allocator and doing a Thekla Sokoban game-style entity
-    // diffing system.
+    // diffing system that lets us selectively ignore restoring certain members.
 
     //`         -berk, 2025 - 4 - 15.
-
-    assert(state == .PLAYING);
+    assert((flags & .CHECKPOINT_EXISTS) != 0);
 
     old_camera_mode := camera_mode;
     old_dt_modifier := dt_modifier;
 
     memcpy(self_ptr.data, playing_checkpoint.data, playing_checkpoint.count);
+    assert(state == .PLAYING);
 
     player := *_Player[0];
     set_state(player, .SPAWNING);
@@ -1069,6 +1101,10 @@ restore_checkpoint :: (using level: *Level) {
 
     camera_pitch_index = 1;
     camera_pitch_interp = 1;
+    
+    if !skip_intro {
+        set_state(level, .FADE_IN_START);
+    }
 }
 
 
@@ -1261,7 +1297,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     if state != .PLAYING return;
 
     if event.key == #char "C" && event.state == .DOWN {
-        restore_checkpoint(level);
+        restore_checkpoint(level, skip_intro=true);
         return;
     }
 
@@ -1338,8 +1374,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         }
 
         if entrance {
-            state = .USING_OVERWORLD_ENTRANCE;
-            using_overworld_entrance = .{eid = entrance.eid, interp = 0};
+            set_state(level, .FADE_OUT_ENTRANCE);
+            fade_out_entrance.eid = entrance.eid;
             return;
         }
 
@@ -1671,12 +1707,18 @@ gameplay_update :: (using level: *Level, dt: float) {
     FADE_TIME :: 0.5;
 
     if #complete state == {
-        case .ENTERING_LEVEL;
-            using entering_level;
+        case .FADE_IN_START;
+            using fade_in_start;
             interp += dt / FADE_TIME;
             if interp >= 1 {
-                state = .PLAYING;
+                set_state(level, .PLAYING);
                 set_checkpoint(level);
+            }
+        case .FADE_IN_CHECKPOINT;
+            using fade_in_checkpoint;
+            interp += dt / FADE_TIME;
+            if interp >= 1 {
+                set_state(level, .PLAYING);
             }
         case .PLAYING; 
             // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
@@ -2013,14 +2055,23 @@ gameplay_update :: (using level: *Level, dt: float) {
 
                 case .DEAD;
                     DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
-                    player.dead.interp += dt / DEAD_TIME;
-                    if player.dead.interp >= 1 {
-                        restore_checkpoint(level);
+                    player.dead.interp = min(1.0, player.dead.interp + dt / DEAD_TIME);
+                    // The "min" is to prevent a tiny player from drawing
+                    // in the FADE_OUT_CHECKPOINT state, because we base
+                    // the player scale off of the interp.
+                    if player.dead.interp == 1 {
+                        set_state(level, .FADE_OUT_CHECKPOINT);
                     }
             }
-        case .USING_OVERWORLD_ENTRANCE;
-            using using_overworld_entrance;
+        case .FADE_OUT_ENTRANCE;
+            using fade_out_entrance;
             interp += dt / FADE_TIME;
+        case .FADE_OUT_CHECKPOINT;
+            using fade_out_checkpoint;
+            interp += dt / FADE_TIME;
+            if interp >= 1 {
+                restore_checkpoint(level);
+            }
     }
 
     

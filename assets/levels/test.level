@@ -82,6 +82,15 @@ types
 			;
 		;
 	]
+	_Checkpoint 1[
+		e
+			eid 8
+			position
+				x -1
+				;
+			;
+		;
+	]
 	_Player 1[
 		e
 			eid 6
