@@ -640,6 +640,52 @@ types
 			;
 		;
 	]
+	_Checkpoint 5[
+		e
+			eid 58
+			position
+				y 1
+				z -5
+				;
+			;
+		;
+		e
+			eid 59
+			position
+				x -2
+				y 1
+				z 4
+				;
+			;
+		;
+		e
+			eid 60
+			position
+				x 11
+				y 1
+				z 8
+				;
+			;
+		;
+		e
+			eid 61
+			position
+				x 15
+				y 1
+				z -5
+				;
+			;
+		;
+		e
+			eid 62
+			position
+				x 15
+				y 1
+				z -13
+				;
+			;
+		;
+	]
 	_Player 1[
 		e
 			eid 56

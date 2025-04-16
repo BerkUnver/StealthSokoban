@@ -23,7 +23,7 @@ Level :: struct {
         
         state: enum {
             ENTERING_LEVEL;
-            GAMEPLAY;
+            PLAYING;
             USING_OVERWORLD_ENTRANCE;
         }
         
@@ -85,9 +85,10 @@ Level :: struct {
         playing_sounds: [1024] Playing_Sound;
             
         // :Checkpoint
-        current_data: [] u8;
-        checkpoint: Entity_Id;
-        checkpoint_data: [] u8;
+        self_ptr: [] u8;
+        playing_checkpoint: [] u8;
+        // Only use this in the PLAYING state. This is not in the struct with the state-specific
+        // data because it needs to be allocated up-front when we load the level.
     } @NoSerialize
 
     editor: struct {
@@ -190,9 +191,11 @@ Player :: struct {
 
 Checkpoint :: struct {
     using #as e: Entity;
-    
-    ACTIVE_COLOR :: Vector4.{1, 1, 1, 1};
-    COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
+    state: enum u8 {
+        UNUSED;
+        USED;
+        CURRENT;
+    } @NoSerialize
 }
 
 
@@ -715,7 +718,7 @@ load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Me
 }
 
 
-load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *Memory_Arena) -> bool #must {
+load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *Memory_Arena, skip_intro := false) -> bool #must {
     load_level_part_2_shared(level_name, level, arena);
 
     level_position, level_size = get_block_extents(_Block);
@@ -808,16 +811,24 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
         log(.ERROR, "There was no player entity in the serialized level \"%\".\n", level.name);
         return false;
     }
+    
 
     player := *_Player[0];
-    set_state(player, .SPAWNING);
     camera_focus_x = player.position.x;
     camera_focus_z = player.position.z;
-    
+
     // :Checkpoint
-    current_data = .{arena.current, xx level};
-    checkpoint_data = alloc_view(arena, current_data.count, u8, zero_init = false);
-    memcpy(checkpoint_data.data, current_data.data, current_data.count);
+    self_ptr = .{arena.current, xx level};
+    playing_checkpoint = alloc_view(arena, self_ptr.count, u8, zero_init = false); 
+
+    if skip_intro {
+        set_state(player, .GROUND);
+        state = .PLAYING;
+        set_checkpoint(level);
+    } else {
+        set_state(player, .SPAWNING);
+        // State is default set to ENTERING_LEVEL.
+    }
     
     return true;
 }
@@ -1001,6 +1012,66 @@ set_state :: (player: *Player, state: Player_State) {
 }
 
 
+set_checkpoint :: (using level: *Level) {
+    assert(state == .PLAYING);
+    assert(playing_checkpoint.count == self_ptr.count);
+    memcpy(playing_checkpoint.data, self_ptr.data, self_ptr.count);
+}
+
+
+restore_checkpoint :: (using level: *Level) {
+    // :Checkpoint
+    // This is how checkpoints work right now. It is very simple, but I'm not
+    // sure how "scalable" it is. Because we store the entire level in a 
+    // single arena, and the level takes up a fixed amount of memory when we
+    // load it and never any more, it means that we can allocate another segment
+    // of equal length in the same arena, and memcpy the level segment into
+    // this segment whenever we want to make a checkpoint.
+
+    // When we want to revert back to a checkpoint, we just memcpy the checkpoint
+    // segment back into the level segment (We can't just swap the one we're
+    // using because all the pointers in the checkpoint segment refer to
+    // addresses in the level segment.
+
+    // This is very simple, but it has a couple caveats. I don't think the
+    // memory usage is _that_ bad (@Investigate), but there are some things
+    // that we _know_ are immutable (such as the Block filled member) that don't
+    // need to be copied. The main offender here are the vertices of the Block
+    // meshes, :CpuVertices which we probably shouldn't be storing on the CPU
+    // anyway.
+
+    //          -berk, 2025 - 4 - 5.
+
+    // Addendum: Now that I've started actually using checkpoints, I'm starting to
+    // need to add fixup code here on parts of the level that need to survive
+    // a checkpoint being loaded. Saving members from before we restore a checkpoint
+    // seems pretty dumb. If this gets worse, I should consider switching to a
+    // general-purpose allocator and doing a Thekla Sokoban game-style entity
+    // diffing system.
+
+    //`         -berk, 2025 - 4 - 15.
+
+    assert(state == .PLAYING);
+
+    old_camera_mode := camera_mode;
+    old_dt_modifier := dt_modifier;
+
+    memcpy(self_ptr.data, playing_checkpoint.data, playing_checkpoint.count);
+
+    player := *_Player[0];
+    set_state(player, .SPAWNING);
+    
+    dt_modifier = old_dt_modifier;
+
+    camera_mode = old_camera_mode;
+    camera_yaw_target = 0;
+    camera_yaw_interp = 1;
+
+    camera_pitch_index = 1;
+    camera_pitch_interp = 1;
+}
+
+
 // This takes in all the entities that have a "desired_position", and tries to apply them.
 use_desired_positions :: (using level: *Level) -> bool {
     using context.game_context;
@@ -1145,20 +1216,6 @@ use_desired_positions :: (using level: *Level) -> bool {
 }
 
 
-load_overworld :: (arena: *Memory_Arena, mode: Game_Mode) -> *Level {
-    LEVEL :: "levels/overworld.level";
-    level := load_level_part_1_deserialize(LEVEL, arena);
-    assert(level != null);
-    if mode == {
-        case .GAMEPLAY;
-            assert(load_level_part_2_gameplay(LEVEL, level, arena));
-        case .EDITOR;
-            load_level_part_2_editor(LEVEL, level, arena);
-    }
-    return level;
-}
-
-
 gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
     
@@ -1201,32 +1258,10 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     } 
 
 
-    if state != .GAMEPLAY return;
+    if state != .PLAYING return;
 
     if event.key == #char "C" && event.state == .DOWN {
-        // :Checkpoint
-        // This is how checkpoints work right now. It is very simple, but I'm not
-        // sure how "scalable" it is. Because we store the entire level in a 
-        // single arena, and the level takes up a fixed amount of memory when we
-        // load it and never any more, it means that we can allocate another segment
-        // of equal length in the same arena, and memcpy the level segment into
-        // this segment whenever we want to make a checkpoint.
-
-        // When we want to revert back to a checkpoint, we just memcpy the checkpoint
-        // segment back into the level segment (We can't just swap the one we're
-        // using because all the pointers in the checkpoint segment refer to
-        // addresses in the level segment.
-
-        // This is very simple, but it has a couple caveats. I don't think the
-        // memory usage is _that_ bad (@Investigate), but there are some things
-        // that we _know_ are immutable (such as the Block filled member) that don't
-        // need to be copied. The main offender here are the vertices of the Block
-        // meshes, :CpuVertices which we probably shouldn't be storing on the CPU
-        // anyway.
-
-        //          -berk, 2025 - 4 - 5.
-
-        memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count); 
+        restore_checkpoint(level);
         return;
     }
 
@@ -1305,9 +1340,20 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         if entrance {
             state = .USING_OVERWORLD_ENTRANCE;
             using_overworld_entrance = .{eid = entrance.eid, interp = 0};
+            return;
         }
 
-        return;
+        
+        for * _Checkpoint {
+            if it.position == player.position {
+                for * _Checkpoint {
+                    if it.state == .CURRENT it.state = .USED;
+                }
+                it.state = .CURRENT;
+                set_checkpoint(level);
+                return;
+            }
+        }
     }
 
 
@@ -1622,16 +1668,17 @@ gameplay_update :: (using level: *Level, dt: float) {
 
 
 
-    FADE_TIME :: 1;
+    FADE_TIME :: 0.5;
 
     if #complete state == {
         case .ENTERING_LEVEL;
             using entering_level;
-            interp += dt * FADE_TIME;
+            interp += dt / FADE_TIME;
             if interp >= 1 {
-                state = .GAMEPLAY;
+                state = .PLAYING;
+                set_checkpoint(level);
             }
-        case .GAMEPLAY; 
+        case .PLAYING; 
             // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
             // I will see if this turns out to be a bad idea.
 
@@ -1967,8 +2014,8 @@ gameplay_update :: (using level: *Level, dt: float) {
                 case .DEAD;
                     DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
                     player.dead.interp += dt / DEAD_TIME;
-                    if player.dead.interp >= 1 {    
-                        memcpy(current_data.data, checkpoint_data.data, checkpoint_data.count);
+                    if player.dead.interp >= 1 {
+                        restore_checkpoint(level);
                     }
             }
         case .USING_OVERWORLD_ENTRANCE;

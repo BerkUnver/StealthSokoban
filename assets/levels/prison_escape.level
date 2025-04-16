@@ -251,6 +251,35 @@ types
 		filled 21[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
 		;
 	]
+	_Checkpoint 3[
+		e
+			eid 16
+			position
+				x 2
+				y 1
+				z 9
+				;
+			;
+		;
+		e
+			eid 17
+			position
+				x 2
+				y 1
+				z -7
+				;
+			;
+		;
+		e
+			eid 18
+			position
+				x 14
+				y 1
+				z 7
+				;
+			;
+		;
+	]
 	_Player 1[
 		e
 			eid 14

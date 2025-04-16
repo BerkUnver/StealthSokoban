@@ -79,13 +79,13 @@ Game_Context :: struct {
         enemy_annihilation_mesh: Mesh;
         enemy_spawner_mesh: Mesh;
         enemy_despawner_mesh: Mesh;
-        checkpoint_mesh: Mesh;
         player_mesh: Mesh;
         player_bitmap: GLuint;
         exit_mesh: Mesh;
         overworld_entrance_mesh: Mesh;
-        overworld_entrance_bitmap: GLuint;
+        chroma_key_bitmap: GLuint;
         overworld_exit_mesh: Mesh;
+        checkpoint_mesh: Mesh;
     };
 }
 
@@ -230,10 +230,10 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         overworld_entrance_mesh = load_mesh("overworld_entrance.my_mesh", *permanent_arena);
-        overworld_entrance_bitmap = load_bitmap("overworld_entrance.tga");
+        chroma_key_bitmap = load_bitmap("chroma_key.tga");
         overworld_exit_mesh = load_mesh("overworld_exit.my_mesh", *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        checkpoint_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
+        checkpoint_mesh = load_mesh("checkpoint.my_mesh", *permanent_arena);
         player_mesh = load_mesh("player.my_mesh", *permanent_arena);
         player_bitmap = load_bitmap("player.tga");
 
@@ -249,9 +249,14 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         gameplay_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
         
         LEVEL :: "levels/overworld.level";
+        
+        editor_level = load_level_part_1_deserialize(LEVEL, *editor_arena);
+        assert(editor_level != null);
+        load_level_part_2_editor(LEVEL, editor_level, *editor_arena);
 
-        editor_level = load_overworld(*editor_arena, .EDITOR);
-        gameplay_level = load_overworld(*gameplay_arena, .GAMEPLAY);
+        gameplay_level = load_level_part_1_deserialize(LEVEL, *gameplay_arena);
+        assert(gameplay_level != null);
+        assert(load_level_part_2_gameplay(LEVEL, gameplay_level, *gameplay_arena));
 
         mode = .EDITOR;    
     }
@@ -402,7 +407,7 @@ game_update : Game_Update : (
                     assert(level.* != null);
                     if #complete mode == {
                         case .GAMEPLAY;
-                            assert(load_level_part_2_gameplay(data.closest_name, level.*, arena));
+                            assert(load_level_part_2_gameplay(data.closest_name, level.*, arena, skip_intro=true));
                         case .EDITOR;
                             load_level_part_2_editor(data.closest_name, level.*, arena);
                     }
@@ -442,13 +447,11 @@ game_update : Game_Update : (
                         free_level(gameplay_level, *gameplay_arena);
 
                         gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
-                        if gameplay_level {
-                            assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
-                        } else {
-                            gameplay_level = load_overworld(*gameplay_arena, .GAMEPLAY);
-                        }
+                        assert(gameplay_level != null);
+                        assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena, skip_intro=true));
                         continue;
                     }
+
                     gameplay_handle_input(gameplay_level, it);
 
                 case .EDITOR;
@@ -803,20 +806,6 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
 
-    // @TODO: Get checkpoints to actually work
-    /*
-    for * _Checkpoint {
-        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-        if checkpoint != 0 && checkpoint == it.eid {
-            set_uniform("color", Checkpoint.ACTIVE_COLOR);
-        } else {
-            set_uniform("color", Checkpoint.COLOR);
-        }
-        bind_and_draw(*checkpoint_mesh);    
-    }
-    */
-
-    
     draw_entities :: (entities: [] $T/Entity, mesh: *Mesh) #expand {
         set_uniform("color", T.COLOR);
         for * entities {
@@ -841,7 +830,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
     
-    set_uniform_bitmap("bitmap", 1, overworld_entrance_bitmap);
+    set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
     for * _Overworld_Entrance {
         set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
         set_uniform("substitute_color", it.color);
@@ -849,7 +838,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
 
-    set_uniform_bitmap("bitmap", 1, overworld_entrance_bitmap);
+    set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
     for * _Overworld_Exit {
         substitute_color := Vector4.{0, 0, 0, 1};
         if it.entrance {
@@ -868,7 +857,24 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
 
+    for * _Checkpoint {
+        color: Vector4;
 
+        if #complete it.state == {
+            case .UNUSED;
+                color = .{0, 0, 0, 1};
+            case .USED;
+                color = .{75.0/255.0, 228.0/255.0, 1, 1};
+            case .CURRENT;
+                color = .{146.0/255.0, 1, 118.0/255.0, 1};
+                // @TODO This is the exit color. Figure out what used checkpoints
+                // actually look like once exits look better.
+        }
+
+        set_uniform("substitute_color", color);
+        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+        bind_and_draw(*checkpoint_mesh);    
+    }
 
 
     if mode == .GAMEPLAY {
@@ -972,7 +978,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     color.w = 1 - interp;
                     imm_quad(.{-1, -1}, .{2, 2}, color);
                     imm_flush();
-                case .GAMEPLAY;
+                case .PLAYING;
                 case .USING_OVERWORLD_ENTRANCE;
                     using using_overworld_entrance;
                     set_shader(imm_color_shader, .{flags = .BLEND});

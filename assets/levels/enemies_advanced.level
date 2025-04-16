@@ -490,6 +490,26 @@ types
 			;
 		;
 	]
+	_Checkpoint 2[
+		e
+			eid 36
+			position
+				x 10
+				y 1
+				z -5
+				;
+			;
+		;
+		e
+			eid 37
+			position
+				x 2
+				y 1
+				z 1
+				;
+			;
+		;
+	]
 	_Player 1[
 		e
 			eid 34
