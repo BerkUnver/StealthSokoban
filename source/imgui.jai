@@ -100,7 +100,13 @@ scope_widget :: (loc: Source_Code_Location, id: u64) #expand {
     `defer {
         current_widget_id_count -= 1;
         assert(old_count == current_widget_id_count);
-        current_widget_state = old_current_widget_state;
+        
+        // A subwidget was activated. Steal focus from this widget.
+        if old_current_widget_state == .NO_ONE && active_widget_exists {
+            current_widget_state = .NOT_ME;
+        } else {
+            current_widget_state = old_current_widget_state;
+        }
     }
 }
 

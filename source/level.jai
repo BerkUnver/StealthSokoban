@@ -870,20 +870,21 @@ load_level_part_2_editor :: (level_name: string, using level: *Level, arena: *Me
     editor.camera_yaw = 0;
     editor.camera_pitch = -PI / 3;
 
-    // :LevelSizeInEditor
-    // It makes me slightly uncomfortable at how this code overlaps with the 
-    // gameplay code but we don't have access to the level size in the editor.
-
     position, size := get_block_extents(_Block);
-    level_center := to_vector3(position) + to_vector3(size) / 2;
-    level_radius := cast(float, max(size.x, max(size.y, size.z)));
+    if _Block.count != 0 {
+        // :LevelSizeInEditor
+        // It makes me slightly uncomfortable at how this code overlaps with the 
+        // gameplay code but we don't have access to the level size in the editor.
 
-    camera_distance := level_radius * 2;
-    camera_y := sin(PI / 3) * camera_distance;
-    camera_z := cos(PI / 3) * camera_distance;
+        level_center := to_vector3(position) + to_vector3(size) / 2;
+        level_radius := cast(float, max(size.x, max(size.y, size.z)));
 
-    editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+        camera_distance := level_radius * 2;
+        camera_y := sin(PI / 3) * camera_distance;
+        camera_z := cos(PI / 3) * camera_distance;
 
+        editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+    }
     view_texture = make_view_texture(size);
 }
 
@@ -1439,8 +1440,12 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         }
 
         if entrance {
-            set_state(level, .FADE_OUT_ENTRANCE);
-            fade_out_entrance.eid = entrance.eid;
+            if entrance.level_name {
+                set_state(level, .FADE_OUT_ENTRANCE);
+                fade_out_entrance.eid = entrance.eid;
+            } else {
+                log(.ERROR, "The Overworld_Entrance with eid % does not have a level name assigned to it.\n", entrance.eid);
+            }
             return;
         }
 

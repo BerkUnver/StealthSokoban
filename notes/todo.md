@@ -67,17 +67,20 @@ Now, let's sort these by priority.
 
 # NEED
 - ~~Saving level state with checkpoints. When you die you go back to the last checkpoint. <--- DYNAMIC MEMORY ALLOCATION?~~
-- Level entrance and exit
+- ~~Level entrance and exit~~
 - Pause menu with options to exit the current level, reset the demo.
+- Overworld exits only activate once you have completed the corresponding level
 - More introductory levels
 
 # WE SHOULD HAVE
 - Better meshes for level items
+- SFX. Walking, pushing, etc.
 - Playtesting!
 - Interpolation for player movement
 - Pulling vfx
 - Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
-- SFX. Walking, pushing, etc.
+- Multipush
+- Pulling from all directions of a block.
 - MUSIC. A tastefully-chosen selection of not-well-known classical music is likely the best we can do for now.
 - Some explanation of basic movement. Input hinting in the game?
 

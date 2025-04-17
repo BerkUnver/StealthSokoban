@@ -574,7 +574,8 @@ game_update : Game_Update : (
                             e := get_entity(gameplay_level, eid);
                             entrance := as(e, Overworld_Entrance);
                             assert(entrance != null);
-
+                            
+                            assert(entrance.level_name != "");
                             scope_mark(*frame_arena);
                             // We need to copy the string because it is going to be freed when we free the old level.
                             level_name := copy_string(*frame_arena, entrance.level_name);

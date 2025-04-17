@@ -36,7 +36,8 @@ types
 		filled 1[ 1 ]
 		color
 			x 1
-			y 0.5
+			y 1
+			z 1
 			w 1
 			;
 		moveable 1
@@ -79,6 +80,8 @@ types
 		filled 1[ 1 ]
 		color
 			x 1
+			y 1
+			z 1
 			w 1
 			;
 		moveable 1
@@ -120,8 +123,9 @@ types
 			;
 		filled 1[ 1 ]
 		color
-			y 0.0463217645883560178
-			z 0.8566471338272094725
+			x 1
+			y 1
+			z 1
 			w 1
 			;
 		moveable 1
