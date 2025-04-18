@@ -23,7 +23,6 @@ Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
     
-    using os_procs: OS_Procedures;
     keys_down: [] bool;
 
     frame_arena: Memory_Arena;
@@ -128,7 +127,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
         permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
         
-        os_procs = data.os_procs;
         keys_down = data.keys_down;
 
         for * type_info(GL_Procedures).members {

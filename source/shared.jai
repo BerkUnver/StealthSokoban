@@ -29,16 +29,9 @@ AUDIO_SAMPLES_PER_SECOND :: 48000;
 AUDIO_BYTES_PER_SAMPLE :: 2;
 
 
-OS_Procedures :: struct {
-    os_print: (string);
-    set_console_text_color: (Console_Text_Color);
-}
-
-
 Game_Init_Data :: struct {
     game_memory: *void;
     gl_extension_loader: (*u8) -> *void #c_call;
-    os_procs: OS_Procedures;
     keys_down: [] bool;
     gameplay_arena_memory: *void;
     editor_arena_memory: *void;
@@ -166,6 +159,7 @@ make_string_builder :: (backing_store: [] u8) -> String_Builder {
 }
 
 
+// @TODO: Make this use memory arenas
 String_Builder :: struct {
     buf: [] u8;
     index: int;
@@ -477,7 +471,36 @@ alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
 }
 
 
+print :: (s: string, args: ..Any) {
+    buf: [4096] u8;
+    sb := make_string_builder(buf);
+    print(*sb, s, ..args);
+    os_print(get_string(*sb));
+}
+
+
+// This is os-specific stuff that doesn't require an init.
 #if OS == .WINDOWS {
+    os_print :: (s: string) {
+        stdout := GetStdHandle(STD_OUTPUT_HANDLE);
+        assert(stdout != INVALID_HANDLE_VALUE);
+        WriteConsoleA(stdout, s.data, cast(u32, s.count), null, null);
+        FlushFileBuffers(stdout); 
+        // This function is for debug output. We don't care about performance, so we flush every time we call this.
+    }
+
+
+    set_console_text_color :: (color: Console_Text_Color) {
+        stdout := GetStdHandle(STD_OUTPUT_HANDLE);
+        assert(stdout != INVALID_HANDLE_VALUE);
+        if #complete color == {
+            case .WHITE; SetConsoleTextAttribute(stdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+            case .RED;   SetConsoleTextAttribute(stdout, FOREGROUND_RED);
+            case .GREEN; SetConsoleTextAttribute(stdout, FOREGROUND_GREEN);
+        }
+    }
+
+
     read_file :: (name: string, arena: *Memory_Arena) -> bool, string {
         path := jai_string_to_path(name);
 
@@ -589,5 +612,7 @@ alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
         path[str.count] = 0;
         return path;
     }
+} else {
+    #assert false;
 }
 

@@ -420,10 +420,6 @@ main :: () {
     data := Game_Init_Data.{
         game_memory            = game_memory,
         gl_extension_loader    = wglGetProcAddress,
-        os_procs = .{
-            os_print               = os_print,
-            set_console_text_color = set_console_text_color,
-        },
         keys_down = keys_down,
         gameplay_arena_memory  = VirtualAlloc(null, GAMEPLAY_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
         editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
@@ -637,28 +633,5 @@ main :: () {
         input_event_count=0;
 
         SwapBuffers(dc);
-    }
-}
-
-
-print :: (s: string, args: ..Any) {
-    buf: [4096] u8;
-    sb := make_string_builder(buf);
-    print(*sb, s, ..args);
-    os_print(get_string(*sb));
-}
-
-
-os_print :: (s: string) {
-    WriteConsoleA(stdout, s.data, cast(u32, s.count), null, null);
-    FlushFileBuffers(stdout); 
-    // This function is for debug output. We don't care about performance, so we flush every time we call this.
-}
-
-set_console_text_color :: (color: Console_Text_Color) {
-    if #complete color == {
-        case .WHITE; SetConsoleTextAttribute(stdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-        case .RED;   SetConsoleTextAttribute(stdout, FOREGROUND_RED);
-        case .GREEN; SetConsoleTextAttribute(stdout, FOREGROUND_GREEN);
     }
 }

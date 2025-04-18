@@ -75,15 +75,6 @@ restore_mark :: (arena: *Memory_Arena, marker: s64) {
 }
 
 
-print :: (s: string, args: ..Any) {
-    using context.game_context;
-    buf: [4096] u8;
-    sb := make_string_builder(buf);
-    print(*sb, s, ..args);
-    os_print(get_string(*sb));
-}
-
-
 Log_Level :: enum {
     OK;
     ERROR;

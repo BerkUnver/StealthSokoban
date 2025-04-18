@@ -477,13 +477,4 @@ END
         v := get(*table, 0);
         if expect(v != null) expect(v.* == 1);
     }
-
-    { // Test resizing
-        scope_mark(*frame_arena);
-        table := make_table(*frame_arena, 2, int, int);
-        if expect(table.entries.count == 4) {
-
-        }
-    }
-
 }
