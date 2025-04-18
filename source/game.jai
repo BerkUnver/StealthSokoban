@@ -1278,28 +1278,61 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         context.game_context = *game_memory.game_context;
         using context.game_context;
         using game_memory.game;
+        
+        if mode != .GAMEPLAY return;
 
-        if mode == .GAMEPLAY {
-            using gameplay_level;
-            for 0..playing_sound_count-1 {
-                sound := *playing_sounds[it];
-                sound.current_sample += samples_played;
+        using gameplay_level;
 
-                end: int;
-                if sound.current_sample + buffer.count > sound.wav.data.count {
-                    end = sound.wav.data.count;
-                } else {
-                    end = sound.current_sample + buffer.count;
-                }
+        player := *_Player[0];
+        
+        i := 0;
+        while true {
+            if i == playing_sound_count break;
 
-                for sound.current_sample..end-1 {
-                    sample := sound.wav.data[it];
-                    output := *buffer[it - sound.current_sample];
-                    result := cast(s32, sample) + cast(s32, output.*);
-                    if      result < S16_MIN output.* = S16_MIN;
-                    else if result > S16_MAX output.* = S16_MAX;
-                    else                     output.* = xx result;
-                }
+            sound := *playing_sounds[i];
+            sound.current_sample += samples_played;
+
+            if sound.current_sample >= sound.wav.data.count {
+                sound.* = playing_sounds[playing_sound_count-1];
+                playing_sound_count -= 1;
+                continue;
+            }
+
+            i += 1;
+
+            end := min(sound.wav.data.count, sound.current_sample + buffer.count);
+
+            if sound.type == {
+                case .SIMPLE;
+                    for sound.current_sample..end-1 {
+                        sample := sound.wav.data[it];
+                        output := *buffer[it - sound.current_sample];
+                        result := cast(s32, sample) + cast(s32, output.*);
+                        if      result < S16_MIN output.* = S16_MIN;
+                        else if result > S16_MAX output.* = S16_MAX;
+                        else                     output.* = xx result;
+                    }
+                case .POSITIONAL;
+                    distance := length(sound.positional.position - to_vector3(player.position));
+                    
+                    MIN_RADIUS :: 2.0;
+                    MAX_RADIUS :: 4.0;
+
+                    volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
+
+                    if volume != 0 {
+                        for sound.current_sample..end-1 {
+                            in := sound.wav.data[it];
+                            sample := cast(float, in) * volume;
+
+                            output := *buffer[it - sound.current_sample];
+                            result := cast(s32, output.*) + cast(s32, sample);
+                            
+                            if      result < S16_MIN output.* = S16_MIN;
+                            else if result > S16_MAX output.* = S16_MAX;
+                            else                     output.* = xx result;
+                        }
+                    }
             }
         }
     }

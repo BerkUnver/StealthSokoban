@@ -327,7 +327,6 @@ Enemy :: struct {
 
     vfx_modifiers: Enemy_Vfx_Modifiers; @NoSerialize
     moving_from: Vector3; @NoSerialize
-    state: Enemy_State; @NoSerialize
 
     result_state: enum u8 {
         ALIVE;
@@ -1021,6 +1020,17 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
+play_positional_sound :: (using level: *Level, position: Vector3, wav: *Wav) {
+    if playing_sound_count == playing_sounds.count return;
+    playing_sounds[playing_sound_count] = .{
+        wav = wav,
+        type = .POSITIONAL,
+        positional = .{position = position}
+    };
+    playing_sound_count += 1;
+}
+
+
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
         case .GROUND;
@@ -1233,19 +1243,12 @@ use_desired_positions :: (using level: *Level) -> bool {
     for * _Enemy {
         if #complete it.result_state == {
             case .ALIVE;
+                if it.desired_vfx_modifiers & .MOVING {
+                    play_positional_sound(level, to_vector3(it.desired_position), *footstep);
+                }
+
                 it.vfx_modifiers |= it.desired_vfx_modifiers;
                 it.position = it.desired_position;
-
-                if #complete it.state == {
-                    case .IDLE;
-                        if !is_colliding_below(level, it.position) {
-                            it.state = .FALLING;
-                        }
-                    case .FALLING;
-                        if is_colliding_below(level, it.position) {
-                            it.state = .IDLE;
-                        }
-                }
 
             case .OUT_OF_BOUNDS;
                 // We currently use the shader that doesn't draw things if they are outside the level.
@@ -1499,7 +1502,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         assert(player.state == .GROUND);
         if inside_bounding_box(new_player_position, level_position, level_size) {
             player.position = new_player_position;
-            play_sound(level, *footstep);
+            play_positional_sound(level, to_vector3(player.position), *footstep);
         }
     } else if player.state == .GROUND { 
         player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
@@ -1618,7 +1621,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         // of you.
         
         player.position = new_player_position;
-        play_sound(level, *footstep);
+        play_positional_sound(level, to_vector3(player.position), *footstep);
 
         colliding_eid := collision[pushed_index];
         if colliding_eid {
@@ -1941,33 +1944,47 @@ gameplay_update :: (using level: *Level, dt: float) {
                     }
 
                     for * _Enemy {
-                        if it.state == {
-                            case .IDLE;
-                                can_move_to :: (using level: *Level, position: Vector3i) -> bool {
-                                    if !is_colliding_below(level, position) return false;
-                                    in_bounds, index := get_3d_index(position, level_position, level_size);
-                                    assert(in_bounds);
-                                    eid := collision[index];
-                                    if eid == 0 return true;
-                                    if get_entity(level, eid).type == .Block return false;
-                                    return true;
+                        if is_colliding_below(level, it.position) {
+                            can_move_to :: (using level: *Level, position: Vector3i) -> bool {
+                                if !is_colliding_below(level, position) return false;
+                                in_bounds, index := get_3d_index(position, level_position, level_size);
+                                assert(in_bounds);
+                                eid := collision[index];
+                                if eid == 0 return true;
+                                if get_entity(level, eid).type == .Block return false;
+                                return true;
+                            }
+
+                            it.moving_from = to_vector3(it.position);
+
+                            desired_direction := facing_to_vector3i(it.facing);
+
+                            if can_move_to(level, it.position + desired_direction) {
+                                it.desired_position = it.position + desired_direction;
+                                it.desired_vfx_modifiers = .MOVING;
+                            } else {
+                                new_facing: Facing;
+
+                                if #complete it.favored_direction == {
+                                    case .LEFT;
+                                        new_facing = facing_left(it.facing);
+                                    case .RIGHT;    
+                                        new_facing = facing_right(it.facing);
                                 }
 
-                                it.moving_from = to_vector3(it.position);
-
-                                desired_direction := facing_to_vector3i(it.facing);
+                                desired_direction := facing_to_vector3i(new_facing);
 
                                 if can_move_to(level, it.position + desired_direction) {
                                     it.desired_position = it.position + desired_direction;
                                     it.desired_vfx_modifiers = .MOVING;
+                                    it.facing = new_facing;
                                 } else {
                                     new_facing: Facing;
-
                                     if #complete it.favored_direction == {
                                         case .LEFT;
-                                            new_facing = facing_left(it.facing);
-                                        case .RIGHT;    
                                             new_facing = facing_right(it.facing);
+                                        case .RIGHT;
+                                            new_facing = facing_left(it.facing);
                                     }
 
                                     desired_direction := facing_to_vector3i(new_facing);
@@ -1977,14 +1994,7 @@ gameplay_update :: (using level: *Level, dt: float) {
                                         it.desired_vfx_modifiers = .MOVING;
                                         it.facing = new_facing;
                                     } else {
-                                        new_facing: Facing;
-                                        if #complete it.favored_direction == {
-                                            case .LEFT;
-                                                new_facing = facing_right(it.facing);
-                                            case .RIGHT;
-                                                new_facing = facing_left(it.facing);
-                                        }
-
+                                        new_facing := facing_opposite(it.facing);
                                         desired_direction := facing_to_vector3i(new_facing);
 
                                         if can_move_to(level, it.position + desired_direction) {
@@ -1992,40 +2002,33 @@ gameplay_update :: (using level: *Level, dt: float) {
                                             it.desired_vfx_modifiers = .MOVING;
                                             it.facing = new_facing;
                                         } else {
-                                            new_facing := facing_opposite(it.facing);
-                                            desired_direction := facing_to_vector3i(new_facing);
-
-                                            if can_move_to(level, it.position + desired_direction) {
-                                                it.desired_position = it.position + desired_direction;
-                                                it.desired_vfx_modifiers = .MOVING;
-                                                it.facing = new_facing;
-                                            } else {
-                                                it.desired_position = it.position;
-                                                it.desired_vfx_modifiers = 0;
-                                            }
+                                            it.desired_position = it.position;
+                                            it.desired_vfx_modifiers = 0;
                                         }
                                     }
                                 }
-
-                            case .FALLING;
-                                it.desired_position = it.position;
-                                it.desired_position.y -= 1;
-                                it.desired_vfx_modifiers = .FALLING;
+                            }
+                        } else {
+                            it.desired_position = it.position;
+                            it.desired_position.y -= 1;
+                            it.desired_vfx_modifiers = .FALLING;
                         }
                     }
                 } else {
                     for * _Enemy {
-                        if #complete it.state == {
-                            case .IDLE;
-                                it.desired_position = it.position;
-                                it.desired_vfx_modifiers = 0;
-                            case .FALLING;
-                                it.desired_position = it.position;
-                                it.desired_position.y -= 1;
-                                it.desired_vfx_modifiers = .FALLING;
+                        if is_colliding_below(level, it.position) {
+                            it.desired_position = it.position;
+                            it.desired_vfx_modifiers = 0;
+                        } else {
+                            it.desired_position = it.position;
+                            it.desired_position.y -= 1;
+                            it.desired_vfx_modifiers = .FALLING;
                         }
                     }
                 }
+
+                
+                 
 
                 for * _Block it.desired_position = it.position;
                 
@@ -2057,7 +2060,6 @@ gameplay_update :: (using level: *Level, dt: float) {
                         if should_spawn_enemy {
                             e := make_entity(level, Enemy);
                             e.position = it.position;
-                            e.state = .IDLE;
                             e.vfx_modifiers |= .SPAWNING;
 
                             if it.enemy_spawner_type == {

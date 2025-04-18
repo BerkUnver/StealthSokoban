@@ -10,6 +10,17 @@ Wav :: struct {
 Playing_Sound :: struct {
     wav: *Wav;
     current_sample: int;
+
+    type: enum u8 {
+        SIMPLE;
+        POSITIONAL;
+    }
+
+    union {
+        positional: struct {
+            position: Vector3;
+        }
+    }
 }
 
 
@@ -85,6 +96,11 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
                 if padded_data_size % 2 == 1 padded_data_size += 1;
                 assert(str.count >= padded_data_size);
                 str = advance(str, padded_data_size);
+            case "junk";
+                // Used for byte alignment
+                size:, str = get(str, u32);
+                if size % 2 == 1 size += 1;
+                str = advance(str, size);
             case;
                 assert(false);
         }
