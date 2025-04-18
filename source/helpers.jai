@@ -1,14 +1,3 @@
-jai_string_equals_c_string :: (jai_string: string, c_string: *u8) -> bool {
-    for 0..jai_string.count-1 {
-        if c_string[it] == #char "\0" return false;
-        if c_string[it] != jai_string[it] return false;
-    }
-    
-    if c_string[jai_string.count] != #char "\0" return false;
-    return true;
-}
-
-
 iterate_vector3i :: (v: Vector3i, body: Code, for_flags: For_Flags) #expand {
     #assert for_flags == 0;
 
@@ -128,36 +117,6 @@ slice :: (a: [] $T, start: int) -> [] T {
     return .{data=a.data + start, count = a.count - start};
 }
 
-
-Memory_Arena :: struct {
-    data: *u8;
-    count: s64;
-    current: s64;
-}
-
-make_arena :: (memory: *u8, count: s64) -> Memory_Arena {
-    return .{
-        data = memory,
-        count = count,
-        current = 0
-    };
-}
-
-
-clear :: inline (arena: *Memory_Arena) {
-    arena.current = 0;
-}
-
-
-alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
-    assert(count >= 0);
-    new_current := arena.current + count;
-    assert(new_current <= arena.count);
-    ret := arena.data + arena.current;
-    arena.current = new_current;
-    if zero_init memset(ret, 0, count);
-    return ret;
-}
 
 
 alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {

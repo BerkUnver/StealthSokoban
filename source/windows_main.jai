@@ -2,8 +2,6 @@
 // @TODO: Switch to the wide character version of everything.
 
 #load "shared.jai";
-#load "windows_winapi.jai";
-
 
 #program_export NvOptimusEnablement: u32 = 1;
 #program_export AmdPowerXpressRequestHighPerformance: s32 = 1;

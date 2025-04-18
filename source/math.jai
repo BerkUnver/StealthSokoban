@@ -54,6 +54,14 @@ ceil :: (using v: Vector2) -> Vector2 {
     return .{ceil(x), ceil(y)};
 }
 
+min :: (a: $T, b: T) -> T {
+    return ifx a < b then a else b;
+}
+
+max :: (a: $T, b: T) -> T {
+    return ifx a > b then a else b;
+}
+
 make_y_rotation_matrix :: ($T: Type, r: float) -> T {
     // Rotate about the y-axis
     sin_r := sin(r);

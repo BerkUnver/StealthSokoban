@@ -19,13 +19,6 @@
 #load "table.jai";
 #load "test.jai";
 
-#if OS == .WINDOWS {
-    #load "windows_game.jai";
-} else {
-    #assert false;
-}
-
-
 Game_Context :: struct {
     using gl_procs: GL_Procedures;
     using gl_extensions: GL_Extensions;
