@@ -440,4 +440,3 @@ min :: (a: $T, b: T) -> T {
 max :: (a: $T, b: T) -> T {
     return ifx a > b then a else b;
 }
-

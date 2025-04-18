@@ -105,8 +105,7 @@ get_date :: () -> Date {
 
 
 #scope_file
-// @CompileSpeed both the windows exe and the game dll have to load windows_winapi.jai
-// This is why headers kill compile time in C++, and we're replicating the problem here.
+
 #load "windows_winapi.jai";
 
 jai_string_to_path :: (str: string) -> [MAX_PATH] u8 {
@@ -118,4 +117,3 @@ jai_string_to_path :: (str: string) -> [MAX_PATH] u8 {
     path[str.count] = 0;
     return path;
 }
-

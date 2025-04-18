@@ -1,8 +1,8 @@
-// @TODO: Find out how to disable Runtime_Support
+    // @TODO: Find out how to disable Runtime_Support
 // @TODO: Switch to the wide character version of everything.
 
-#load "windows_winapi.jai";
 #load "shared.jai";
+#load "windows_winapi.jai";
 
 
 #program_export NvOptimusEnablement: u32 = 1;
@@ -10,16 +10,14 @@
 
 
 
-windows: struct {
-    stdout: HANDLE;
-    input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event; // :DynamicArray
-    input_event_count: s64;
-    keys_down: [Key.COUNT] bool; // :BitArray
-}
+audio_thread: HANDLE;
+stdout: HANDLE;
+input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event; // :DynamicArray
+input_event_count: s64;
+keys_down: [Key.COUNT] bool; // :BitArray
+window: HWND;
 
 append_input_event :: (e: Input_Event) #no_context {
-    using windows;
-    
     if e.state == .DOWN {
         keys_down[e.key] = true;
     } else if e.state == .UP {
@@ -34,8 +32,10 @@ append_input_event :: (e: Input_Event) #no_context {
 
 
 main :: () {
-    windows.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    assert(windows.stdout != INVALID_HANDLE_VALUE);
+    timeBeginPeriod(1); // Set the windows timer resolution to 1ms so we can switch threads effectively.
+
+    stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    assert(stdout != INVALID_HANDLE_VALUE);
     print("\n\n"); // Some blank lines to separate us from the compile messages
 
     assert(SetProcessDPIAware() != 0);
@@ -48,8 +48,6 @@ main :: () {
             push_context .{} {
         
                 translate_keycode_to_game_input :: (state: Input_Event_State, keycode: WPARAM) #no_context {
-                    using windows;
-
                     key: Key;
 
                     if #char "A" <= keycode && keycode <= #char "Z"
@@ -91,7 +89,6 @@ main :: () {
                 }
 
 
-                using windows;
                 if message == {
                     // @Investigate: When is the lpfnWndProc called directly?
                     // Can it be called while it is executing? Is this a thread-safety problem,
@@ -193,7 +190,7 @@ main :: () {
     // If you try to create a window that's too big to
     // fit on the screen, CreateWindowExA will truncate
     // it to fit!
-    window := CreateWindowExA(
+    window = CreateWindowExA(
         0,
         "Window Class",
         "Stealth Sokoban",
@@ -358,88 +355,6 @@ main :: () {
     assert(wglSwapIntervalEXT(1) != 0);
 
 
-
-    //
-    // Init sound
-    //
-    
-    // This is the XAudio2 init code. I don't feel like I can implement sound on my own, and I 
-    // instead want to work off the modules/Sound_Player code to make a minimal, working
-    // version of it.
-
-    /*
-
-    xaudio: *IXAudio2;
-    assert(XAudio2Create(*xaudio, 0, XAUDIO2_DEFAULT_PROCESSOR) == 0);
-  
-    mastering_voice: *IXAudio2MasteringVoice;
-    assert(xaudio.CreateMasteringVoice(xaudio, *mastering_voice) == 0);
-
-    CHANNEL_COUNT :: 1;
-    SAMPLES_PER_SECOND :: 44100;
-    BYTES_PER_SAMPLE :: 2;
-
-    format := WAVEFORMATEX.{
-        wFormatTag = WAVE_FORMAT_PCM,
-        nChannels = CHANNEL_COUNT,
-        nSamplesPerSec = SAMPLES_PER_SECOND,
-        nBlockAlign = CHANNEL_COUNT * BYTES_PER_SAMPLE, // 2 bytes per sample
-        nAvgBytesPerSec = SAMPLES_PER_SECOND * CHANNEL_COUNT * BYTES_PER_SAMPLE,
-        wBitsPerSample = 16,
-        cbSize = 0
-    };
-    
-    source_voice: *IXAudio2SourceVoice;
-    assert(xaudio.CreateSourceVoice(xaudio, *source_voice, *format) == 0);
-    */
-
-    dsound: *IDirectSound8;
-    assert(DirectSoundCreate8(null, *dsound, null) == 0);
-    
-    dsound.SetCooperativeLevel(dsound, window, DSSCL_PRIORITY);
-
-    primary_buffer_descriptor := DSBUFFERDESC.{
-        dwSize        = size_of(DSBUFFERDESC),
-        dwFlags       = DSBCAPS_PRIMARYBUFFER,
-        dwBufferBytes = 0,
-    };
-    
-    primary_buffer: *IDirectSoundBuffer8;
-    assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
-
-    CHANNEL_COUNT :: 1;
-
-    wave_format := WAVEFORMATEX.{
-        wFormatTag = WAVE_FORMAT_PCM,
-        nChannels = CHANNEL_COUNT,
-        nSamplesPerSec = AUDIO_SAMPLES_PER_SECOND,
-        nBlockAlign = CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
-        nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
-        wBitsPerSample = AUDIO_BYTES_PER_SAMPLE * 8,
-        cbSize = 0
-    };
-
-    assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
-
-    AUDIO_BUFFER_SIZE_IN_BYTES :: AUDIO_SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE; // 0.5 sec of audio data
-
-    secondary_buffer_descriptor := DSBUFFERDESC.{
-        dwSize = size_of(DSBUFFERDESC),
-        dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
-        dwBufferBytes = AUDIO_BUFFER_SIZE_IN_BYTES,
-        lpwfxFormat = *wave_format
-    };
-
-    secondary_buffer: *IDirectSoundBuffer8;
-    dsound.CreateSoundBuffer(dsound, *secondary_buffer_descriptor, *secondary_buffer, null);
-    
-    // We can only start the audio after we have at least one frame of audio data
-    // to use.
-    audio_started := false;
-    previous_write_byte: int; // Don't access this until the audio has been started.
-
-
-
     
     //
     // Init QueryPerformanceCounter stuff
@@ -511,7 +426,7 @@ main :: () {
             os_print               = os_print,
             set_console_text_color = set_console_text_color,
         },
-        keys_down = windows.keys_down,
+        keys_down = keys_down,
         gameplay_arena_memory  = VirtualAlloc(null, GAMEPLAY_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
         editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
         frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE,     MEM_COMMIT, PAGE_READWRITE),
@@ -519,6 +434,7 @@ main :: () {
     };
 
     game_init(*context.base, *data);
+
 
     get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_DLL_Hotloaded_Init, Game_Get_Audio_Samples {
         game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
@@ -531,7 +447,125 @@ main :: () {
     }
 
     game_update, game_dll_hotloaded_init, game_get_audio_samples := get_game_calls(game_dll);
+
+
+
+    // Now that the game is initted, it is safe to start the audio thread which might ask the game for samples.
+    audio_thread_proc :: (param: *void) -> u32 #c_call {
+        push_context {
+            dsound: *IDirectSound8;
+            assert(DirectSoundCreate8(null, *dsound, null) == 0);
+            
+            dsound.SetCooperativeLevel(dsound, window, DSSCL_PRIORITY);
+
+            primary_buffer_descriptor := DSBUFFERDESC.{
+                dwSize        = size_of(DSBUFFERDESC),
+                dwFlags       = DSBCAPS_PRIMARYBUFFER,
+                dwBufferBytes = 0,
+            };
+            
+            primary_buffer: *IDirectSoundBuffer8;
+            assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
+
+            CHANNEL_COUNT :: 1;
+
+            wave_format := WAVEFORMATEX.{
+                wFormatTag = WAVE_FORMAT_PCM,
+                nChannels = CHANNEL_COUNT,
+                nSamplesPerSec = AUDIO_SAMPLES_PER_SECOND,
+                nBlockAlign = CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
+                nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
+                wBitsPerSample = AUDIO_BYTES_PER_SAMPLE * 8,
+                cbSize = 0
+            };
+
+            assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
+
+            AUDIO_BUFFER_SIZE_IN_BYTES :: AUDIO_SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE;
+            // 0.5 sec of audio data. This is what the Thekla Sound_Player uses. I don't know if this is a good value.
+
+            secondary_buffer_descriptor := DSBUFFERDESC.{
+                dwSize = size_of(DSBUFFERDESC),
+                dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
+                dwBufferBytes = AUDIO_BUFFER_SIZE_IN_BYTES,
+                lpwfxFormat = *wave_format
+            };
+
+            secondary_buffer: *IDirectSoundBuffer8;
+            dsound.CreateSoundBuffer(dsound, *secondary_buffer_descriptor, *secondary_buffer, null);
+
+            
+            audio_started: bool; // We only can start the audio if we've got samples once.
+            previous_write_byte: int;
+
+            while true {
+                AUDIO_BYTES_TO_WRITE :: AUDIO_SAMPLES_PER_SECOND * AUDIO_BYTES_PER_SAMPLE / 80;
+
+                write_byte: s32;
+                assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_byte) == 0);
+
+                region_1_data: *void;
+                region_1_size: s32;
+                region_2_data: *void;
+                region_2_size: s32;
+
+
+                secondary_buffer.Lock(
+                    secondary_buffer, write_byte, AUDIO_BYTES_TO_WRITE,
+                    *region_1_data, *region_1_size,
+                    *region_2_data, *region_2_size,
+                    0
+                );
+
+
+                samples_played: int;
+                if audio_started {
+                    if write_byte < previous_write_byte { // We looped around
+                        new_write_byte := write_byte + AUDIO_BUFFER_SIZE_IN_BYTES;
+                        samples_played = new_write_byte - previous_write_byte;
+                    } else {
+                        samples_played = write_byte - previous_write_byte;
+                    }
+                    samples_played /= AUDIO_BYTES_PER_SAMPLE;
+                }
+
+
+                buffer: [AUDIO_BYTES_TO_WRITE / AUDIO_BYTES_PER_SAMPLE] s16;
+
+                for * buffer {
+                    if it_index % 240 > 120 {
+                        it.* = 1 << 14;
+                    } else {
+                        it.* = -(1 << 14);
+                    }
+                }
+                
+                // game_get_audio_samples(game_memory, samples_played, buffer);
+
+                buffer_bytes := cast(*u8, buffer.data);
+                memcpy(region_1_data, buffer_bytes, region_1_size);
+                memcpy(region_2_data, buffer_bytes + region_1_size, region_2_size);
+
+                secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size, region_2_data, region_2_size);
+
+                if !audio_started {
+                    audio_started = true;
+                    assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
+                }
+
+                previous_write_byte = write_byte;
+            
+                Sleep(1);
+            }
+
+            return 0;
+        }
+    }
     
+    audio_thread := CreateThread(null, 0, xx audio_thread_proc, null, 0, null);
+
+    
+
     while main_loop := true {
         message: MSG;
 
@@ -592,7 +626,7 @@ main :: () {
         mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
 
         input := Input.{
-            events = .{windows.input_event_count, windows.input_events.data},
+            events = .{input_event_count, input_events.data},
             mouse_x = mouse_x,
             mouse_y = mouse_y
         };
@@ -601,60 +635,9 @@ main :: () {
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
-
-        
-        AUDIO_BYTES_TO_WRITE :: AUDIO_BUFFER_SIZE_IN_BYTES / 20; // 1.5 frames of audio data
-
         game_update(*context.base, game_memory, input, time_elapsed);
-        windows.input_event_count = 0;
+        input_event_count=0;
 
-        // @TODO: All this audio stuff should be done on a separate thread.
-        // That prevents audio stuttering if you run over the end of the buffer
-        // due to weird OS lag or missing a frame or something like that.
-
-        write_byte: s32;
-        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_byte) == 0);
-
-        region_1_data: *void;
-        region_1_size: s32;
-        region_2_data: *void;
-        region_2_size: s32;
-            
-        secondary_buffer.Lock(
-            secondary_buffer, write_byte, AUDIO_BYTES_TO_WRITE,
-            *region_1_data, *region_1_size,
-            *region_2_data, *region_2_size,
-            0
-        );
-
-        
-        samples_played: int;
-        if audio_started {
-            if write_byte < previous_write_byte { // We looped around
-                new_write_byte := write_byte + AUDIO_BUFFER_SIZE_IN_BYTES;
-                samples_played = new_write_byte - previous_write_byte;
-            } else {
-                samples_played = write_byte - previous_write_byte;
-            }
-            samples_played /= AUDIO_BYTES_PER_SAMPLE;
-        }
-
-
-        buffer: [AUDIO_BYTES_TO_WRITE / AUDIO_BYTES_PER_SAMPLE] s16;
-        game_get_audio_samples(game_memory, samples_played, buffer);
-
-        buffer_bytes := cast(*u8, buffer.data);
-        memcpy(region_1_data, buffer_bytes, region_1_size);
-        memcpy(region_2_data, buffer_bytes + region_1_size, region_2_size);
-
-        secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size, region_2_data, region_2_size);
-
-        if !audio_started {
-            audio_started = true;
-            assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
-        }
-
-        previous_write_byte = write_byte;
         SwapBuffers(dc);
     }
 }
@@ -669,15 +652,15 @@ print :: (s: string, args: ..Any) {
 
 
 os_print :: (s: string) {
-    WriteConsoleA(windows.stdout, s.data, cast(u32, s.count), null, null);
-    FlushFileBuffers(windows.stdout); 
+    WriteConsoleA(stdout, s.data, cast(u32, s.count), null, null);
+    FlushFileBuffers(stdout); 
     // This function is for debug output. We don't care about performance, so we flush every time we call this.
 }
 
 set_console_text_color :: (color: Console_Text_Color) {
     if #complete color == {
-        case .WHITE; SetConsoleTextAttribute(windows.stdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-        case .RED;   SetConsoleTextAttribute(windows.stdout, FOREGROUND_RED);
-        case .GREEN; SetConsoleTextAttribute(windows.stdout, FOREGROUND_GREEN);
+        case .WHITE; SetConsoleTextAttribute(stdout, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+        case .RED;   SetConsoleTextAttribute(stdout, FOREGROUND_RED);
+        case .GREEN; SetConsoleTextAttribute(stdout, FOREGROUND_GREEN);
     }
 }
