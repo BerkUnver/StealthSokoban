@@ -169,7 +169,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
             print("glDebugMessageCallbackARB was not found\n.");
         }
 
-        game_dll_hotloaded_init();
+        hotloaded_dll_init();
         
         // We only ever set this stuff once.
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
@@ -253,26 +253,13 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
     }
 }
 
-#program_export "game_dll_hotloaded_init"
-game_dll_hotloaded_init : Game_DLL_Hotloaded_Init : (
-    context_base: *Context_Base,
-    game_memory_: *void
-) #no_context {
-    push_context {
-        context.base = context_base.*;
-        context.game_context = game_memory_;
-
-        game_dll_hotloaded_init();
-    }
-}
-
 
 // I wish we didn't need to have a procedure like this.
 // However, some libraries we use have globals that 
 // get reset when we hotload, and the imgui uses the
 // code loc to store the active widget, and those
 // numbers could change, so we have to reset that.
-game_dll_hotloaded_init :: () {
+hotloaded_dll_init :: () {
     using context.game_context;
     stbi_set_flip_vertically_on_load(1);
     stbi_flip_vertically_on_write(1);
@@ -287,12 +274,18 @@ game_update : Game_Update : (
     context_base: *Context_Base,
     game_memory_: *void, 
     input: Input,
-    time_elapsed_: float64
+    time_elapsed_: float64,
+    hotloaded: bool
 ) #no_context {
     game_memory := cast(*Game_Memory, game_memory_);
     push_context {
         context.base = context_base.*;
         context.game_context = *game_memory.game_context;
+
+        if hotloaded {
+            hotloaded_dll_init();
+            print("Game DLL has been hotloaded.\n");
+        }
 
         using game_memory;
         using game_memory.game;

@@ -8,12 +8,11 @@
 
 
 
-audio_thread: HANDLE;
-stdout: HANDLE;
 input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event; // :DynamicArray
 input_event_count: s64;
 keys_down: [Key.COUNT] bool; // :BitArray
 window: HWND;
+
 
 append_input_event :: (e: Input_Event) #no_context {
     if e.state == .DOWN {
@@ -30,10 +29,6 @@ append_input_event :: (e: Input_Event) #no_context {
 
 
 main :: () {
-    timeBeginPeriod(1); // Set the windows timer resolution to 1ms so we can switch threads effectively.
-
-    stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    assert(stdout != INVALID_HANDLE_VALUE);
     print("\n\n"); // Some blank lines to separate us from the compile messages
 
     assert(SetProcessDPIAware() != 0);
@@ -352,6 +347,55 @@ main :: () {
     wglSwapIntervalEXT := cast((s32) -> BOOL #c_call, wglGetProcAddress("wglSwapIntervalEXT"));
     assert(wglSwapIntervalEXT(1) != 0);
 
+    //
+    // Init audio
+    //
+
+    dsound: *IDirectSound8;
+    assert(DirectSoundCreate8(null, *dsound, null) == 0);
+    
+    dsound.SetCooperativeLevel(dsound, window, DSSCL_PRIORITY);
+
+    primary_buffer_descriptor := DSBUFFERDESC.{
+        dwSize        = size_of(DSBUFFERDESC),
+        dwFlags       = DSBCAPS_PRIMARYBUFFER,
+        dwBufferBytes = 0,
+    };
+    
+    primary_buffer: *IDirectSoundBuffer8;
+    assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
+
+    CHANNEL_COUNT :: 1;
+
+    wave_format := WAVEFORMATEX.{
+        wFormatTag = WAVE_FORMAT_PCM,
+        nChannels = CHANNEL_COUNT,
+        nSamplesPerSec = AUDIO_SAMPLES_PER_SECOND,
+        nBlockAlign = CHANNEL_COUNT * size_of(Sample),
+        nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * CHANNEL_COUNT * size_of(Sample),
+        wBitsPerSample =  size_of(Sample) * 8,
+        cbSize = 0
+    };
+
+    assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
+
+    AUDIO_BUFFER_SIZE :: AUDIO_SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT;
+    // 0.5 sec of audio data. This is what the Thekla Sound_Player uses. I don't know if this is a good value.
+
+    secondary_buffer_descriptor := DSBUFFERDESC.{
+        dwSize = size_of(DSBUFFERDESC),
+        dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
+        dwBufferBytes = AUDIO_BUFFER_SIZE * size_of(Sample),
+        lpwfxFormat = *wave_format
+    };
+
+    secondary_buffer: *IDirectSoundBuffer8;
+    dsound.CreateSoundBuffer(dsound, *secondary_buffer_descriptor, *secondary_buffer, null);
+
+    
+    audio_started: bool; // We only can start the audio if we've got samples once.
+    previous_write_sample: int;
+
 
     
     //
@@ -408,6 +452,7 @@ main :: () {
         DeleteFileA(GAME_DLL_NAME);
         assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
     }
+
     game_dll := LoadLibraryA(GAME_DLL_NAME);
     assert(game_dll != null);
     
@@ -429,136 +474,12 @@ main :: () {
 
     game_init(*context.base, *data);
 
-
-    get_game_calls :: (game_dll: HMODULE) -> Game_Update, Game_DLL_Hotloaded_Init, Game_Get_Audio_Samples {
-        game_update := cast(Game_Update, GetProcAddress(game_dll, "game_update"));
-        assert(game_update != null);
-        game_get_audio_samples := cast(Game_Get_Audio_Samples, GetProcAddress(game_dll, "game_get_audio_samples"));
-        assert(game_get_audio_samples != null);
-        game_dll_hotloaded_init := cast(Game_DLL_Hotloaded_Init, GetProcAddress(game_dll, "game_dll_hotloaded_init"));
-        assert(game_dll_hotloaded_init != null);
-        return game_update, game_dll_hotloaded_init, game_get_audio_samples;
-    }
-
-    game_update, game_dll_hotloaded_init, game_get_audio_samples := get_game_calls(game_dll);
+    game_update: Game_Update = xx GetProcAddress(game_dll, "game_update");
+    assert(game_update != null);
+    game_get_audio_samples: Game_Get_Audio_Samples = xx GetProcAddress(game_dll, "game_get_audio_samples");
+    assert(game_get_audio_samples != null);
 
 
-
-    // Now that the game is initted, it is safe to start the audio thread which might ask the game for samples.
-    audio_thread_proc :: (param: *void) -> u32 #c_call {
-        push_context {
-            dsound: *IDirectSound8;
-            assert(DirectSoundCreate8(null, *dsound, null) == 0);
-            
-            dsound.SetCooperativeLevel(dsound, window, DSSCL_PRIORITY);
-
-            primary_buffer_descriptor := DSBUFFERDESC.{
-                dwSize        = size_of(DSBUFFERDESC),
-                dwFlags       = DSBCAPS_PRIMARYBUFFER,
-                dwBufferBytes = 0,
-            };
-            
-            primary_buffer: *IDirectSoundBuffer8;
-            assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
-
-            CHANNEL_COUNT :: 1;
-
-            wave_format := WAVEFORMATEX.{
-                wFormatTag = WAVE_FORMAT_PCM,
-                nChannels = CHANNEL_COUNT,
-                nSamplesPerSec = AUDIO_SAMPLES_PER_SECOND,
-                nBlockAlign = CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
-                nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE,
-                wBitsPerSample = AUDIO_BYTES_PER_SAMPLE * 8,
-                cbSize = 0
-            };
-
-            assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
-
-            AUDIO_BUFFER_SIZE_IN_BYTES :: AUDIO_SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT * AUDIO_BYTES_PER_SAMPLE;
-            // 0.5 sec of audio data. This is what the Thekla Sound_Player uses. I don't know if this is a good value.
-
-            secondary_buffer_descriptor := DSBUFFERDESC.{
-                dwSize = size_of(DSBUFFERDESC),
-                dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
-                dwBufferBytes = AUDIO_BUFFER_SIZE_IN_BYTES,
-                lpwfxFormat = *wave_format
-            };
-
-            secondary_buffer: *IDirectSoundBuffer8;
-            dsound.CreateSoundBuffer(dsound, *secondary_buffer_descriptor, *secondary_buffer, null);
-
-            
-            audio_started: bool; // We only can start the audio if we've got samples once.
-            previous_write_byte: int;
-
-            while true {
-                AUDIO_BYTES_TO_WRITE :: AUDIO_SAMPLES_PER_SECOND * AUDIO_BYTES_PER_SAMPLE / 80;
-
-                write_byte: s32;
-                assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_byte) == 0);
-
-                region_1_data: *void;
-                region_1_size: s32;
-                region_2_data: *void;
-                region_2_size: s32;
-
-
-                secondary_buffer.Lock(
-                    secondary_buffer, write_byte, AUDIO_BYTES_TO_WRITE,
-                    *region_1_data, *region_1_size,
-                    *region_2_data, *region_2_size,
-                    0
-                );
-
-
-                samples_played: int;
-                if audio_started {
-                    if write_byte < previous_write_byte { // We looped around
-                        new_write_byte := write_byte + AUDIO_BUFFER_SIZE_IN_BYTES;
-                        samples_played = new_write_byte - previous_write_byte;
-                    } else {
-                        samples_played = write_byte - previous_write_byte;
-                    }
-                    samples_played /= AUDIO_BYTES_PER_SAMPLE;
-                }
-
-
-                buffer: [AUDIO_BYTES_TO_WRITE / AUDIO_BYTES_PER_SAMPLE] s16;
-
-                for * buffer {
-                    if it_index % 240 > 120 {
-                        it.* = 1 << 14;
-                    } else {
-                        it.* = -(1 << 14);
-                    }
-                }
-                
-                // game_get_audio_samples(game_memory, samples_played, buffer);
-
-                buffer_bytes := cast(*u8, buffer.data);
-                memcpy(region_1_data, buffer_bytes, region_1_size);
-                memcpy(region_2_data, buffer_bytes + region_1_size, region_2_size);
-
-                secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size, region_2_data, region_2_size);
-
-                if !audio_started {
-                    audio_started = true;
-                    assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
-                }
-
-                previous_write_byte = write_byte;
-            
-                Sleep(1);
-            }
-
-            return 0;
-        }
-    }
-    
-    audio_thread := CreateThread(null, 0, xx audio_thread_proc, null, 0, null);
-
-    
 
     while main_loop := true {
         message: MSG;
@@ -573,24 +494,11 @@ main :: () {
             TranslateMessage(*message);
             DispatchMessageA(*message);
         }
-        
-        new_dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
-        if new_dll_attrs != INVALID_FILE_ATTRIBUTES {
-            if MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME_FRESH) == 0 {
-                // @Hack this is to prevent us from trying to move the file
-                // when the compiler has locked it because it's writing to it.
-                assert(cast(u32, GetLastError()) == ERROR_SHARING_VIOLATION);
-            } else {
-                assert(FreeLibrary(game_dll) != 0);
-                assert(DeleteFileA(GAME_DLL_NAME) != 0);
-                assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
-                game_dll = LoadLibraryA(GAME_DLL_NAME);
-                assert(game_dll != null);
-                game_update, game_dll_hotloaded_init, game_get_audio_samples = get_game_calls(game_dll);
-                game_dll_hotloaded_init(*context.base, game_memory);
-                print("Game DLL has been hotloaded.\n");
-            }
-        }
+
+
+        //
+        // Do the gameplay update and render
+        //
 
         monitor_h := GetSystemMetrics(SM_CYSCREEN);
 
@@ -629,8 +537,99 @@ main :: () {
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
         time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
-        game_update(*context.base, game_memory, input, time_elapsed);
+
+
+        hotloaded := false;
+
+        new_dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
+        if new_dll_attrs != INVALID_FILE_ATTRIBUTES {
+            if MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME_FRESH) == 0 {
+                // @Hack this is to prevent us from trying to move the file
+                // when the compiler has locked it because it's writing to it.
+                assert(cast(u32, GetLastError()) == ERROR_SHARING_VIOLATION);
+            } else {
+                hotloaded = true;
+                assert(FreeLibrary(game_dll) != 0);
+                assert(DeleteFileA(GAME_DLL_NAME) != 0);
+                assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
+                game_dll = LoadLibraryA(GAME_DLL_NAME);
+                assert(game_dll != null);
+
+                game_update = xx GetProcAddress(game_dll, "game_update");
+                assert(game_update != null);
+                game_get_audio_samples = xx GetProcAddress(game_dll, "game_get_audio_samples");
+                assert(game_get_audio_samples != null);
+            }
+        }
+
+        game_update(*context.base, game_memory, input, time_elapsed, hotloaded);
         input_event_count=0;
+        
+
+        //
+        // Do audio update
+        //
+
+
+        // 3 frames worth of audio data. This should be enough to prevent audio crackling.
+
+        // Making a separate audio thread feels like a hackerman thing to do at this point.
+        // As such, I will keep everything on one thread. However, I will keep the idea
+        // that this may have to go on multiple threads in the back of my head for now.
+
+        // I've heard that WASAPI uses a callback to request more samples. If we switch to 
+        // WASAPI, we may have to make it multithreaded.
+
+        //          -berk, 2025 - 4 - 18
+
+
+        write_byte: s32;
+        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_byte) == 0);
+        write_sample := write_byte / size_of(Sample);
+
+        region_1_data: *Sample;
+        region_1_size_bytes: s32;
+        region_2_data: *Sample;
+        region_2_size_bytes: s32;
+
+        SAMPLES_TO_WRITE :: AUDIO_SAMPLES_PER_SECOND / 20;
+
+        secondary_buffer.Lock(
+            secondary_buffer, write_byte, size_of(Sample) * SAMPLES_TO_WRITE,
+            xx *region_1_data, *region_1_size_bytes,
+            xx *region_2_data, *region_2_size_bytes,
+            0
+        );
+
+        region_1_size := region_1_size_bytes / size_of(Sample);
+        region_2_size := region_2_size_bytes / size_of(Sample);
+        
+        // This should always be true.
+        assert(region_1_size + region_2_size == SAMPLES_TO_WRITE);
+
+        
+        samples_played := (write_sample - previous_write_sample + AUDIO_BUFFER_SIZE) % AUDIO_BUFFER_SIZE;
+
+        buffer: [SAMPLES_TO_WRITE] s16; // This has to be zero-initialized. That is the default audio value.
+
+        game_get_audio_samples(game_memory, samples_played, buffer);
+
+        memcpy(region_1_data, buffer.data,                 region_1_size * size_of(Sample));
+        memcpy(region_2_data, buffer.data + region_1_size, region_2_size * size_of(Sample));
+
+
+        secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size_bytes, region_2_data, region_2_size_bytes);
+        previous_write_sample = write_sample;
+
+        if !audio_started {
+            audio_started = true;
+            assert(secondary_buffer.Play(secondary_buffer, 0, 0, DSBPLAY_LOOPING) == 0);
+        }
+
+        
+        //
+        // Done.
+        //
 
         SwapBuffers(dc);
     }

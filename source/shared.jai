@@ -26,7 +26,7 @@ FRAME_ARENA_SIZE     :: 1 << 24;
 
 
 AUDIO_SAMPLES_PER_SECOND :: 48000;
-AUDIO_BYTES_PER_SAMPLE :: 2;
+Sample :: s16;
 
 
 Game_Init_Data :: struct {
@@ -60,7 +60,8 @@ Game_Update :: #type (
     context_base: *Context_Base, // :ContextBase
     game_memory: *void,
     input: Input,
-    time_elapsed: float64
+    time_elapsed: float64,
+    hotloaded: bool
 ) #no_context;
 
 
@@ -71,10 +72,10 @@ Game_Get_Audio_Samples :: #type (
 ) #no_context;
 
 
-Game_DLL_Hotloaded_Init :: #type (
-    context_base: *Context_Base, // :ContextBase
-    game_memory: *void
-) #no_context;
+Audio_Sample :: struct {
+    left: u16;
+    right: u16;
+}
 
 
 Input :: struct {
@@ -598,6 +599,7 @@ print :: (s: string, args: ..Any) {
             millisecond=wMilliseconds
         };
     }
+
 
     #scope_file
 
