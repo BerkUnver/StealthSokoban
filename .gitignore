@@ -12,3 +12,6 @@
 .vs
 .build
 screenshots
+
+assets/reaper/Backups
+# Reaper's backup folder

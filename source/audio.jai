@@ -80,8 +80,8 @@ load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
                 assert(format.nChannels == 1);
                 assert(format.wFormatTag == WAVE_FORMAT_PCM);
                 assert(format.nSamplesPerSec == AUDIO_SAMPLES_PER_SECOND);
-                assert(format.nBlockAlign == size_of(Sample));
-                assert(format.wBitsPerSample == size_of(Sample) * 8);
+                assert(format.nBlockAlign == size_of(s16));
+                assert(format.wBitsPerSample == size_of(s16) * 8);
             case "fact";
                 assert(false);
                 // The documentation states that PCM wav files _might_ have this.

@@ -113,6 +113,14 @@ get_angle :: (v: Vector2) -> float {
 }
 
 
+vector2_from_angle :: (rotation: float) -> Vector2 {
+    return .{
+        cos(rotation),
+        sin(rotation)
+    };
+}
+
+
 get_intersection_between_line_and_plane :: (line_point: Vector3, line_direction: Vector3, plane_point: Vector3, plane_normal: Vector3) -> parallel: bool, point: Vector3, t: float {
     denominator := dot(plane_normal, line_direction);
     if denominator == 0 return true, .{}, 0;

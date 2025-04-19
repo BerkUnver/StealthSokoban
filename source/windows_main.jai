@@ -365,21 +365,20 @@ main :: () {
     primary_buffer: *IDirectSoundBuffer8;
     assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
 
-    CHANNEL_COUNT :: 1;
-
+    
     wave_format := WAVEFORMATEX.{
         wFormatTag = WAVE_FORMAT_PCM,
-        nChannels = CHANNEL_COUNT,
+        nChannels = 2,
+        nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * size_of(Sample),
         nSamplesPerSec = AUDIO_SAMPLES_PER_SECOND,
-        nBlockAlign = CHANNEL_COUNT * size_of(Sample),
-        nAvgBytesPerSec = AUDIO_SAMPLES_PER_SECOND * CHANNEL_COUNT * size_of(Sample),
-        wBitsPerSample =  size_of(Sample) * 8,
+        nBlockAlign = size_of(Sample),
+        wBitsPerSample = 16,
         cbSize = 0
     };
 
     assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
 
-    AUDIO_BUFFER_SIZE :: AUDIO_SAMPLES_PER_SECOND / 2 * CHANNEL_COUNT;
+    AUDIO_BUFFER_SIZE :: AUDIO_SAMPLES_PER_SECOND / 2;
     // 0.5 sec of audio data. This is what the Thekla Sound_Player uses. I don't know if this is a good value.
 
     secondary_buffer_descriptor := DSBUFFERDESC.{
@@ -610,7 +609,8 @@ main :: () {
         
         samples_played := (write_sample - previous_write_sample + AUDIO_BUFFER_SIZE) % AUDIO_BUFFER_SIZE;
 
-        buffer: [SAMPLES_TO_WRITE] s16; // This has to be zero-initialized. That is the default audio value.
+        buffer: [SAMPLES_TO_WRITE] Sample; // This has to be zero-initialized. That is the default audio value.
+        // Things add to the value in the buffer if they want to add a sound.
 
         game_get_audio_samples(game_memory, samples_played, buffer);
 

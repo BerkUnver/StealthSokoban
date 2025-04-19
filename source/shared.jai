@@ -26,7 +26,11 @@ FRAME_ARENA_SIZE     :: 1 << 24;
 
 
 AUDIO_SAMPLES_PER_SECOND :: 48000;
-Sample :: s16;
+
+
+Sample :: struct {
+    l, r: s16;
+}
 
 
 Game_Init_Data :: struct {
@@ -68,7 +72,7 @@ Game_Update :: #type (
 Game_Get_Audio_Samples :: #type (
     game_memory_void_ptr: *void,
     samples_played: int, // How many samples we played since the previous update
-    buffer: [] s16
+    buffer: [] Sample
 ) #no_context;
 
 

@@ -657,6 +657,67 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
+get_camera_position :: (using level: *Level) -> focus: Vector3, offset: float {
+    get_player_camera :: (using level: *Level, distance: float) -> Vector3 {
+        assert(camera_mode == .NEAR || camera_mode == .FAR);
+        
+        player := *_Player[0];
+
+        position := to_vector3(player.position);
+
+        x, y, z: float;
+
+        x = lerp(camera_focus_old_x, position.x, camera_focus_x_interp);
+        z = lerp(camera_focus_old_z, position.z, camera_focus_z_interp);
+        
+        // @TODO: We may want to have different code depending on whether the player
+        // is moving upwards or downwards on a ladder vs falling. Handle those once
+        // ladders are in the game.
+        
+        if #complete player.state == {
+            case .GROUND;
+                y = position.y + 1.0 - player.ground.landing_interp;
+            case .FALLING;
+                if player.position.y <= player.falling.last_floor_y - 1 {
+                    y = position.y + 1.0 - player.falling.interp;
+                } else {
+                    y = xx player.falling.last_floor_y;
+                }
+            case .DEAD; #through;
+            case .SPAWNING;
+                y = position.y;
+        }
+
+        focus := Vector3.{x, y, z};
+
+        return focus + Vector3.{0.5, 0.5, 0.5};
+    }
+
+    NEAR_DISTANCE :: 30.0;
+    FAR_DISTANCE :: 60.0;
+    if camera_mode == {
+        case .NEAR;
+            return get_player_camera(level, NEAR_DISTANCE), NEAR_DISTANCE;
+
+        case .FAR;
+            return get_player_camera(level, FAR_DISTANCE), FAR_DISTANCE;
+
+        case .LEVEL;
+            RADIUS_MULTIPLIER :: 2.5;
+            radius := max(level_size.x, max(level_size.y, level_size.z));
+            camera_distance := radius * RADIUS_MULTIPLIER;
+            camera_distance = max(NEAR_DISTANCE, camera_distance);
+            focus := to_vector3(level_position) + to_vector3(level_size) / 2;
+
+            return focus, camera_distance;
+        
+        case;
+            assert(false);
+            return .{}, 0;
+    }
+}
+
+
 is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
     below := position;
     below.y -= 1;
@@ -1445,6 +1506,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         if entrance {
             if entrance.level_name {
                 set_state(level, .FADE_OUT_ENTRANCE);
+                play_positional_sound(level, to_vector3(entrance.position), *overworld_entrance_sound);
                 fade_out_entrance.eid = entrance.eid;
             } else {
                 log(.ERROR, "The Overworld_Entrance with eid % does not have a level name assigned to it.\n", entrance.eid);
@@ -1642,7 +1704,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 }
 
 
-GAME_FRUSTUM :: #run -> Matrix4 {
+GAMEPLAY_FRUSTUM :: #run -> Matrix4 {
     FOV :: PI / 5;
 
     right := cast(float, NEAR_PLANE * tan(FOV / 2));
@@ -1653,10 +1715,6 @@ GAME_FRUSTUM :: #run -> Matrix4 {
 
 
 get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
-    NEAR_DISTANCE :: 30.0;
-    FAR_DISTANCE :: 60.0;
-
-
     player := *_Player[0];
     
     // I would rather just do this update whenever the player's position changes. However, 
@@ -1676,68 +1734,22 @@ get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
     }
 
 
-    get_player_camera :: (distance: float) #expand {
-        assert(camera_mode == .NEAR || camera_mode == .FAR);
-        offset := Vector3.{0, 0, distance};
-        offset_matrix = make_translation_matrix4(offset);
-
-        position := to_vector3(player.position);
-
-        x, y, z: float;
-
-        x = lerp(camera_focus_old_x, position.x, camera_focus_x_interp);
-        z = lerp(camera_focus_old_z, position.z, camera_focus_z_interp);
-        
-        // @TODO: We may want to have different code depending on whether the player
-        // is moving upwards or downwards on a ladder vs falling. Handle those once
-        // ladders are in the game.
-        
-        if #complete player.state == {
-            case .GROUND;
-                y = position.y + 1.0 - player.ground.landing_interp;
-            case .FALLING;
-                if player.position.y <= player.falling.last_floor_y - 1 {
-                    y = position.y + 1.0 - player.falling.interp;
-                } else {
-                    y = xx player.falling.last_floor_y;
-                }
-            case .DEAD; #through;
-            case .SPAWNING;
-                y = position.y;
-        }
-
-        focus := Vector3.{x, y, z};
-        position_matrix = make_translation_matrix4(-focus - Vector3.{0.5, 0.5, 0.5});
-    }
-
-
-    offset_matrix: Matrix4;
-    position_matrix: Matrix4;
-    if camera_mode == {
-        case .NEAR;
-            get_player_camera(NEAR_DISTANCE);
-
-        case .FAR;
-            get_player_camera(FAR_DISTANCE);
-
-        case .LEVEL;
-            RADIUS_MULTIPLIER :: 2.5;
-            radius := max(level_size.x, max(level_size.y, level_size.z));
-            camera_distance := radius * RADIUS_MULTIPLIER;
-            camera_distance = max(NEAR_DISTANCE, camera_distance);
-            offset_matrix = make_translation_matrix4(.{0, 0, camera_distance});
-
-            focus := to_vector3(level_position) + to_vector3(level_size) / 2;
-            position_matrix = make_translation_matrix4(-focus);
-    }
-
-
     pitch := get_camera_pitch(level);
-    pitch_matrix := make_x_rotation_matrix(Matrix4, -pitch);
-    
-    yaw_matrix := make_y_rotation_matrix(Matrix4, xx -get_camera_yaw(level));
-    
-    return multiply(GAME_FRUSTUM, multiply(offset_matrix, multiply(pitch_matrix, multiply(yaw_matrix, position_matrix))));
+    yaw := get_camera_yaw(level);
+    focus, offset_z := get_camera_position(level);
+
+    pitch_quat, yaw_quat: Quaternion;
+    set_from_axis_and_angle(*pitch_quat, .{1, 0, 0}, pitch);
+    set_from_axis_and_angle(*yaw_quat, .{0, 1, 0}, yaw);
+    offset := rotate(rotate(.{0, 0, offset_z}, yaw_quat), pitch_quat);
+
+    return
+        multiply(GAMEPLAY_FRUSTUM,
+        // Offset is in the negative z direction so we don't have to make offset negative.
+        multiply(make_translation_matrix4(.{0, 0, offset_z}),
+        multiply(make_x_rotation_matrix(Matrix4, -pitch),
+        multiply(make_y_rotation_matrix(Matrix4, -yaw),
+                 make_translation_matrix4(-focus)))));
 }
 
 

@@ -75,6 +75,7 @@ Game_Context :: struct {
         player_bitmap: GLuint;
         exit_mesh: Mesh;
         overworld_entrance_mesh: Mesh;
+        overworld_entrance_sound: Wav;
         chroma_key_bitmap: GLuint;
         overworld_exit_mesh: Mesh;
         checkpoint_mesh: Mesh;
@@ -210,7 +211,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         consolas = load_font("consolas.ttf");
 
-        footstep = load_wav("footstep.wav", *permanent_arena);
+        footstep = load_wav("sounds/footstep.wav", *permanent_arena);
 
         gridlike_bitmap = load_bitmap("gridlike.tga");
         gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
@@ -222,6 +223,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
         enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
         overworld_entrance_mesh = load_mesh("overworld_entrance.my_mesh", *permanent_arena);
+        overworld_entrance_sound = load_wav("sounds/overworld_entrance.wav", *permanent_arena);
         chroma_key_bitmap = load_bitmap("chroma_key.tga");
         overworld_exit_mesh = load_mesh("overworld_exit.my_mesh", *permanent_arena);
         exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
@@ -1255,19 +1257,22 @@ gl_debug_callback :: (
 game_get_audio_samples : Game_Get_Audio_Samples : (
     game_memory_void_ptr: *void,
     samples_played: int,
-    buffer: [] s16 // This is set to zero in the OS layer.
+    buffer: [] Sample // This is set to zero in the OS layer.
 ) #no_context {
     push_context {
         game_memory := cast(*Game_Memory, game_memory_void_ptr);
         context.game_context = *game_memory.game_context;
         using context.game_context;
         using game_memory.game;
-        
         if mode != .GAMEPLAY return;
 
         using gameplay_level;
 
         player := *_Player[0];
+
+        yaw := vector2_from_angle(get_camera_yaw(gameplay_level));
+
+        
         
         i := 0;
         while true {
@@ -1289,32 +1294,50 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
             if sound.type == {
                 case .SIMPLE;
                     for sound.current_sample..end-1 {
-                        sample := sound.wav.data[it];
+                        sample := cast(s32, sound.wav.data[it]);
                         output := *buffer[it - sound.current_sample];
-                        result := cast(s32, sample) + cast(s32, output.*);
-                        if      result < S16_MIN output.* = S16_MIN;
-                        else if result > S16_MAX output.* = S16_MAX;
-                        else                     output.* = xx result;
+
+                        l_s32 := cast(s32, output.l) + sample;
+                        r_s32 := cast(s32, output.r) + sample;
+                        
+                        output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                        output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
                     }
                 case .POSITIONAL;
-                    distance := length(sound.positional.position - to_vector3(player.position));
-                    
+                    using sound.positional;
+                    angle := get_angle(yaw, Vector2.{position.x, position.z});
+
+                    l_volume, r_volume := 1.0;
+
+                    if angle < 0 {
+                        l_volume = 0;
+                    } else if angle > 0 {
+                        r_volume = 0;
+                    }
+
                     MIN_RADIUS :: 2.0;
                     MAX_RADIUS :: 4.0;
 
-                    volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
+                    distance := length(position - to_vector3(player.position));
+                    distance_volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
 
-                    if volume != 0 {
+                    l_volume *= distance_volume;
+                    r_volume *= distance_volume;
+
+                    if r_volume != 0 || l_volume != 0 {
                         for sound.current_sample..end-1 {
                             in := sound.wav.data[it];
-                            sample := cast(float, in) * volume;
-
-                            output := *buffer[it - sound.current_sample];
-                            result := cast(s32, output.*) + cast(s32, sample);
+                            sample := cast(float, sound.wav.data[it]);
+                            l_sample := cast(s32, sample * l_volume);
+                            r_sample := cast(s32, sample * r_volume);
                             
-                            if      result < S16_MIN output.* = S16_MIN;
-                            else if result > S16_MAX output.* = S16_MAX;
-                            else                     output.* = xx result;
+                            output := *buffer[it - sound.current_sample];
+
+                            l_s32 := cast(s32, output.l) + l_sample;
+                            r_s32 := cast(s32, output.r) + r_sample;
+                            
+                            output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                            output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
                         }
                     }
             }
