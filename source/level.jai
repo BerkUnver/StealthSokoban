@@ -657,7 +657,28 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
-get_camera_position :: (using level: *Level) -> focus: Vector3, offset: float {
+
+// The quaternion rotates global coordinates into camera coordinates.
+get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientation: Quaternion {
+    player := *_Player[0];
+    
+    // I would rather just do this update whenever the player's position changes. However, 
+    // that made the camera logic rather confusing, and I want to be able to directly set
+    // the player's position normally, so I am putting it here.
+
+    if player.position.x != camera_focus_x {
+        camera_focus_old_x = lerp(camera_focus_old_x, cast(float, camera_focus_x), camera_focus_x_interp);
+        camera_focus_x = player.position.x;
+        camera_focus_x_interp = 0;
+    }
+
+    if player.position.z != camera_focus_z {
+        camera_focus_old_z = lerp(camera_focus_old_z, cast(float, camera_focus_z), camera_focus_z_interp);
+        camera_focus_z = player.position.z;
+        camera_focus_z_interp = 0;
+    }
+
+
     get_player_camera :: (using level: *Level, distance: float) -> Vector3 {
         assert(camera_mode == .NEAR || camera_mode == .FAR);
         
@@ -693,28 +714,41 @@ get_camera_position :: (using level: *Level) -> focus: Vector3, offset: float {
         return focus + Vector3.{0.5, 0.5, 0.5};
     }
 
+    focus: Vector3;
+    distance: float;
+
     NEAR_DISTANCE :: 30.0;
     FAR_DISTANCE :: 60.0;
     if camera_mode == {
         case .NEAR;
-            return get_player_camera(level, NEAR_DISTANCE), NEAR_DISTANCE;
+            focus = get_player_camera(level, NEAR_DISTANCE);
+            distance = NEAR_DISTANCE;
 
         case .FAR;
-            return get_player_camera(level, FAR_DISTANCE), FAR_DISTANCE;
+            focus = get_player_camera(level, FAR_DISTANCE);
+            distance = FAR_DISTANCE;
 
         case .LEVEL;
             RADIUS_MULTIPLIER :: 2.5;
             radius := max(level_size.x, max(level_size.y, level_size.z));
-            camera_distance := radius * RADIUS_MULTIPLIER;
-            camera_distance = max(NEAR_DISTANCE, camera_distance);
-            focus := to_vector3(level_position) + to_vector3(level_size) / 2;
-
-            return focus, camera_distance;
+            distance = max(NEAR_DISTANCE, radius * RADIUS_MULTIPLIER);
+            focus = to_vector3(level_position) + to_vector3(level_size) / 2;
         
         case;
             assert(false);
-            return .{}, 0;
     }
+
+    pitch := get_camera_pitch(level);
+    yaw := get_camera_yaw(level);
+
+    pitch_quat, yaw_quat: Quaternion;
+    set_from_axis_and_angle(*pitch_quat, .{1, 0, 0}, pitch);
+    set_from_axis_and_angle(*yaw_quat, .{0, 1, 0}, yaw);
+    quat := pitch_quat * yaw_quat;
+
+    offset := rotate(Vector3.{0, 0, -distance}, conjugate(quat));
+
+    return focus + offset, quat;
 }
 
 
@@ -1711,45 +1745,6 @@ GAMEPLAY_FRUSTUM :: #run -> Matrix4 {
     top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
      
     return make_left_handed_frustum_matrix(-right, -top, NEAR_PLANE, right, top, FAR_PLANE);
-}
-
-
-get_gameplay_camera_matrix :: (using level: *Level) -> Matrix4 {
-    player := *_Player[0];
-    
-    // I would rather just do this update whenever the player's position changes. However, 
-    // that made the camera logic rather confusing, and I want to be able to directly set
-    // the player's position normally, so I am putting it here.
-
-    if player.position.x != camera_focus_x {
-        camera_focus_old_x = lerp(camera_focus_old_x, cast(float, camera_focus_x), camera_focus_x_interp);
-        camera_focus_x = player.position.x;
-        camera_focus_x_interp = 0;
-    }
-
-    if player.position.z != camera_focus_z {
-        camera_focus_old_z = lerp(camera_focus_old_z, cast(float, camera_focus_z), camera_focus_z_interp);
-        camera_focus_z = player.position.z;
-        camera_focus_z_interp = 0;
-    }
-
-
-    pitch := get_camera_pitch(level);
-    yaw := get_camera_yaw(level);
-    focus, offset_z := get_camera_position(level);
-
-    pitch_quat, yaw_quat: Quaternion;
-    set_from_axis_and_angle(*pitch_quat, .{1, 0, 0}, pitch);
-    set_from_axis_and_angle(*yaw_quat, .{0, 1, 0}, yaw);
-    offset := rotate(rotate(.{0, 0, offset_z}, yaw_quat), pitch_quat);
-
-    return
-        multiply(GAMEPLAY_FRUSTUM,
-        // Offset is in the negative z direction so we don't have to make offset negative.
-        multiply(make_translation_matrix4(.{0, 0, offset_z}),
-        multiply(make_x_rotation_matrix(Matrix4, -pitch),
-        multiply(make_y_rotation_matrix(Matrix4, -yaw),
-                 make_translation_matrix4(-focus)))));
 }
 
 

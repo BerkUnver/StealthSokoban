@@ -740,7 +740,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
     if #complete mode == {
         case .GAMEPLAY;
-            world_to_camera = get_gameplay_camera_matrix(level);
+            camera_position, quat := get_gameplay_camera_info(level);
+            world_to_camera = multiply(GAMEPLAY_FRUSTUM, multiply(rotation_matrix(Matrix4, quat), make_translation_matrix4(-camera_position)));
+
             position = level_position;
             size = level_size;
         case .EDITOR;
