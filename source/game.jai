@@ -740,8 +740,8 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
     if #complete mode == {
         case .GAMEPLAY;
-            camera_position, quat := get_gameplay_camera_info(level);
-            world_to_camera = multiply(GAMEPLAY_FRUSTUM, multiply(rotation_matrix(Matrix4, quat), make_translation_matrix4(-camera_position)));
+            camera_position, camera_quat := get_gameplay_camera_info(level);
+            world_to_camera = multiply(GAMEPLAY_FRUSTUM, multiply(rotation_matrix(Matrix4, camera_quat), make_translation_matrix4(-camera_position)));
 
             position = level_position;
             size = level_size;
@@ -1277,13 +1277,20 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         // @TODO: Accound for the player's current position when considering procedural animation
         // once procedural animation is added to the player.
 
-        player_to_camera := player_position - camera_position;
-        listener_direction := normalize(player_to_camera);
+        player_to_camera := camera_position - player_position;
+        player_to_camera_distance := length(player_to_camera);
         
-        LISTENER_DISTANCE_FROM_PLAYER :: 2.0;
-        listener_position := player_position - listener_direction * LISTENER_DISTANCE_FROM_PLAYER;
+
+        PLAYER_TO_CAMERA_RATIO :: 0.05;
+        listener_distance := player_to_camera_distance * PLAYER_TO_CAMERA_RATIO;
+
+        LISTENER_MIN_DISTANCE_FROM_PLAYER :: 1.5;
+        if listener_distance < LISTENER_MIN_DISTANCE_FROM_PLAYER listener_distance = LISTENER_MIN_DISTANCE_FROM_PLAYER;
+        if listener_distance > player_to_camera_distance listener_distance = player_to_camera_distance;
 
         // The listener position is somewhere between the camera position and the player position.
+        listener_position := player_position + normalize(player_to_camera) * listener_distance;
+
 
         i := 0;
         while true {
@@ -1318,9 +1325,9 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
                     using sound.positional;
                     
                     MIN_RADIUS :: 2.0;
-                    MAX_RADIUS :: 4.0;
+                    MAX_RADIUS :: 5.0;
 
-                    distance := length(position - to_vector3(player.position));
+                    distance := length(position - listener_position);
                     distance_volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
                     
                     if distance_volume > 0 {
