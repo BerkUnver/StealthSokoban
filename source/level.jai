@@ -227,6 +227,11 @@ Overworld_Entrance :: struct {
     using #as e: Entity;
     color: Vector4; @Color
     level_name: string;
+
+    activated: bool; @ReadOnly
+    // I believe we will eventually want to serialize this, as
+    // our savegames will consist of a bunch of serialized,
+    // partially-completed levels.
 }
 
 

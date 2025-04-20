@@ -10,7 +10,7 @@
 #load "font.jai";
 #load "draw.jai";
 #load "helpers.jai";
-#load "audio.jai";
+#load "sound.jai";
 #load "math.jai";
 #load "entities.jai";
 #load "level.jai";
@@ -585,6 +585,8 @@ game_update : Game_Update : (
                             for * _Overworld_Exit {
                                 entrance := get_entrance_for_overworld_exit(gameplay_level, it);
                                 if entrance && entrance.level_name == level_name {
+                                    entrance.activated = true;
+
                                     player := *_Player[0];
                                     player.position = it.position;
 
@@ -846,22 +848,38 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
     
+    OVERWORLD_ENTRANCE_DEFAULT_COLOR :: Vector4.{0, 0, 0, 1};
+    overworld_entrance_color :: (entrance: *Overworld_Entrance) -> Vector4 #expand {
+        player := *_Player[0];
+        if #complete mode == {
+            case .EDITOR;
+                return entrance.color;
+            case .GAMEPLAY;
+                if entrance.activated || player.position == entrance.position {
+                    return entrance.color;
+                } else {
+                    return OVERWORLD_ENTRANCE_DEFAULT_COLOR;
+                }
+        }
+    }
+    
     set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
     for * _Overworld_Entrance {
+
         set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-        set_uniform("substitute_color", it.color);
+        set_uniform("substitute_color", overworld_entrance_color(it));
         bind_and_draw(*overworld_entrance_mesh);
     }
 
 
     set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
     for * _Overworld_Exit {
-        substitute_color := Vector4.{0, 0, 0, 1};
+        substitute_color := OVERWORLD_ENTRANCE_DEFAULT_COLOR;
         if it.entrance {
             e := get_entity(level, it.entrance);
             entrance := as(e, Overworld_Entrance);
             if entrance {
-                substitute_color = entrance.color;
+                substitute_color = overworld_entrance_color(entrance);
             }
         }
 
