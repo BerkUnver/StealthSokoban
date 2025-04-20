@@ -383,7 +383,7 @@ main :: () {
 
     secondary_buffer_descriptor := DSBUFFERDESC.{
         dwSize = size_of(DSBUFFERDESC),
-        dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_GETCURRENTPOSITION2,
+        dwFlags = DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_CTRLVOLUME, // @Investigate do we actually need the DSBCAPS_CTRLVOLUME flag? The Jai Sound_Player had it.
         dwBufferBytes = AUDIO_BUFFER_SIZE * size_of(Sample),
         lpwfxFormat = *wave_format
     };

@@ -1271,11 +1271,20 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         using gameplay_level;
 
         player := *_Player[0];
-
-        yaw := vector2_from_angle(get_camera_yaw(gameplay_level));
-
+        player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
+        camera_position, camera_quat := get_gameplay_camera_info(gameplay_level);
         
+        // @TODO: Accound for the player's current position when considering procedural animation
+        // once procedural animation is added to the player.
+
+        player_to_camera := player_position - camera_position;
+        listener_direction := normalize(player_to_camera);
         
+        LISTENER_DISTANCE_FROM_PLAYER :: 2.0;
+        listener_position := player_position - listener_direction * LISTENER_DISTANCE_FROM_PLAYER;
+
+        // The listener position is somewhere between the camera position and the player position.
+
         i := 0;
         while true {
             if i == playing_sound_count break;
@@ -1307,41 +1316,54 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
                     }
                 case .POSITIONAL;
                     using sound.positional;
-                    angle := get_angle(yaw, Vector2.{position.x, position.z});
-
-                    l_volume, r_volume := 1.0;
-
-                    if angle < 0 {
-                        l_volume = 0;
-                    } else if angle > 0 {
-                        r_volume = 0;
-                    }
-
+                    
                     MIN_RADIUS :: 2.0;
                     MAX_RADIUS :: 4.0;
 
                     distance := length(position - to_vector3(player.position));
                     distance_volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
+                    
+                    if distance_volume > 0 {
+                        // This kind of panning is called "constant power panning",
+                        // where the pan is calculated as a sine curve that is
+                        // 1 when the sound is at the chosen ear and 0 when the
+                        // sound is at the opposite ear.
+                        
+                        // Source:
+                        // https://www.cs.cmu.edu/~music/icm-online/readings/panlaws/
 
-                    l_volume *= distance_volume;
-                    r_volume *= distance_volume;
+                        offset := sound.positional.position - listener_position;
+                        rotate(*offset, camera_quat);
 
-                    if r_volume != 0 || l_volume != 0 {
-                        for sound.current_sample..end-1 {
-                            in := sound.wav.data[it];
-                            sample := cast(float, sound.wav.data[it]);
-                            l_sample := cast(s32, sample * l_volume);
-                            r_sample := cast(s32, sample * r_volume);
-                            
-                            output := *buffer[it - sound.current_sample];
+                        angle := get_angle(.{0, 1}, .{offset.x, offset.z});
 
-                            l_s32 := cast(s32, output.l) + l_sample;
-                            r_s32 := cast(s32, output.r) + r_sample;
-                            
-                            output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
-                            output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
+                        // Zero means directly in front of the listener.
+                        // PI / 2 means to the left of the listener.
+                        // -PI / 2 means to the right of the listener.
+
+                        l_volume := cos((angle - PI/2) / 2);
+                        r_volume := cos((angle + PI/2) / 2);
+
+                        l_volume *= distance_volume;
+                        r_volume *= distance_volume;
+
+                        if r_volume != 0 || l_volume != 0 {
+                            for sound.current_sample..end-1 {
+                                in := sound.wav.data[it];
+                                sample := cast(float, sound.wav.data[it]);
+                                l_sample := cast(s32, sample * l_volume);
+                                r_sample := cast(s32, sample * r_volume);
+                                
+                                output := *buffer[it - sound.current_sample];
+
+                                l_s32 := cast(s32, output.l) + l_sample;
+                                r_s32 := cast(s32, output.r) + r_sample;
+                                
+                                output.l = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
+                                output.r = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                            }
                         }
-                    }
+                }
             }
         }
     }

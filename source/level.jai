@@ -1115,7 +1115,13 @@ play_sound :: (using level: *Level, wav: *Wav) {
 }
 
 
-play_positional_sound :: (using level: *Level, position: Vector3, wav: *Wav) {
+play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav: *Wav) {
+    // I am assuming we just want to issue all sounds from the center of 
+    // each cell, so we will use the gameplay position of everything.
+    // Maybe this will change once we have 3D movement.
+
+    position := to_vector3(gameplay_position) + Vector3.{0.5, 0.5, 0.5};
+
     if playing_sound_count == playing_sounds.count return;
     playing_sounds[playing_sound_count] = .{
         wav = wav,
@@ -1339,7 +1345,7 @@ use_desired_positions :: (using level: *Level) -> bool {
         if #complete it.result_state == {
             case .ALIVE;
                 if it.desired_vfx_modifiers & .MOVING {
-                    play_positional_sound(level, to_vector3(it.desired_position), *footstep);
+                    play_positional_sound(level, it.desired_position, *footstep);
                 }
 
                 it.vfx_modifiers |= it.desired_vfx_modifiers;
@@ -1540,7 +1546,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         if entrance {
             if entrance.level_name {
                 set_state(level, .FADE_OUT_ENTRANCE);
-                play_positional_sound(level, to_vector3(entrance.position), *overworld_entrance_sound);
+                play_positional_sound(level, entrance.position, *overworld_entrance_sound);
                 fade_out_entrance.eid = entrance.eid;
             } else {
                 log(.ERROR, "The Overworld_Entrance with eid % does not have a level name assigned to it.\n", entrance.eid);
@@ -1598,7 +1604,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         assert(player.state == .GROUND);
         if inside_bounding_box(new_player_position, level_position, level_size) {
             player.position = new_player_position;
-            play_positional_sound(level, to_vector3(player.position), *footstep);
+            play_positional_sound(level, player.position, *footstep);
         }
     } else if player.state == .GROUND { 
         player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
@@ -1717,7 +1723,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         // of you.
         
         player.position = new_player_position;
-        play_positional_sound(level, to_vector3(player.position), *footstep);
+        play_positional_sound(level, player.position, *footstep);
 
         colliding_eid := collision[pushed_index];
         if colliding_eid {
