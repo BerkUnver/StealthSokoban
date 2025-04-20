@@ -1292,6 +1292,41 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         listener_position := player_position + normalize(player_to_camera) * listener_distance;
 
 
+        // @TODO:
+        // I am moving on from this part of the audio as of now. However, there
+        // are some things I can do to improve audio.
+        
+        // - Audio attenuation curve: Make sounds fall off in a nicer fashion.
+        // In reality, volume decreases by half as distance doubles.
+        // I'm sensing that, like realistic graphics, realistic audio is a hole
+        // that I don't want to go down because that's not the joy of games
+        // for me. We can do a minimal amount of work to get it "good enough",
+        // however, any further is excessive.
+
+        // A much more artistically-valid thing to do is to change how sound
+        // works specifically to suit the game design I am going for. The original
+        // idea for this game was as a stealth game where one of the aspects was
+        // being able to hear enemies through walls, and using sound to better
+        // inform your decision-making.
+
+        // I do want to continue heading into the idea of having more realtime
+        // level elements in this game. As such, I should consider making audio
+        // better-suited for that.
+
+        // - Only activate sound effects in the same enclosed space as the
+        // player: Using pathfinding to figure out how loud to make the sound
+        // seems like overkill, we can just use distance. Perhaps there can be a
+        // little audio leakage from one enclosed space, so that if you are standing
+        // near a wall and there is something on the other side of the wall,
+        // you can hear it. However, this opens a whole can of worms. You start
+        // asking, "Hey, shouldn't we put a low-pass filter over the audio to 
+        // make it more realistic?". The way you do that on PCM audio is with
+        // Fast Fourier Transform, and that opens up a whole can of worms I don't
+        // ever want to touch. So we will avoid that.
+
+        //          -berk, 2025 - 4 - 20
+
+
         i := 0;
         while true {
             if i == playing_sound_count break;
