@@ -146,6 +146,7 @@ CAMERA_PITCH_VALUES :: float.[
     -PI / 2,
     -PI / 2 + 0.12 * PI,
     -PI / 2 + 0.35 * PI,
+    0,
     -PI / 2 + 0.65 * PI,
     -PI / 2 + 0.88 * PI,
     PI / 2,
@@ -1008,16 +1009,16 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
 }
 
 
-get_entrance_for_overworld_exit :: (level: *Level, exit: *Overworld_Exit) -> *Overworld_Entrance {
+get_entrance_for_overworld_exit :: (level: *Level, exit: *Overworld_Exit, log_errors := true) -> *Overworld_Entrance {
     if !exit.entrance {
-        log(.ERROR, "The Overworld_Exit with eid % has no entrance assigned.\n", exit.eid);
+        if log_errors log(.ERROR, "The Overworld_Exit with eid % has no entrance assigned.\n", exit.eid);
         return null;
     }
 
     e := get_entity(level, exit.entrance);
     entrance := as(e, Overworld_Entrance);
     if !entrance {
-        log(.ERROR, "The Overworld_Exit with eid % has an entrance assigned, but it is a % rather than an Overworld_Entrance.\n", exit.eid, e.type);
+        if log_errors log(.ERROR, "The Overworld_Exit with eid % has an entrance assigned, but it is a % rather than an Overworld_Entrance.\n", exit.eid, e.type);
         return null;
     }
 
@@ -1486,7 +1487,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
         for * _Overworld_Exit {
             entrance := get_entrance_for_overworld_exit(level, it);
-            if !entrance continue;
+            if !entrance || !entrance.activated continue;
 
             if it.position == player.position {
                 desired_position = entrance.position;

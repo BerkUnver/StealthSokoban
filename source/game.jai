@@ -580,7 +580,7 @@ game_update : Game_Update : (
 
                             gameplay_level = load_level_part_1_deserialize(OVERWORLD, *gameplay_arena);
                             assert(gameplay_level != null);
-                            assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
+                            assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, *gameplay_arena));
                             
                             for * _Overworld_Exit {
                                 entrance := get_entrance_for_overworld_exit(gameplay_level, it);
@@ -875,17 +875,11 @@ draw :: (using level: *Level, mode: Game_Mode) {
     set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
     for * _Overworld_Exit {
         substitute_color := OVERWORLD_ENTRANCE_DEFAULT_COLOR;
-        if it.entrance {
-            e := get_entity(level, it.entrance);
-            entrance := as(e, Overworld_Entrance);
-            if entrance {
-                substitute_color = overworld_entrance_color(entrance);
-            }
-        }
+        entrance := get_entrance_for_overworld_exit(level, it, log_errors=false);
+        if entrance substitute_color = overworld_entrance_color(entrance);
 
         set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
         set_uniform("substitute_color", substitute_color);
-
 
         bind_and_draw(*overworld_exit_mesh);
     }

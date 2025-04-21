@@ -146,16 +146,12 @@ Active_Widget_Data :: struct {
     }
     union {
         sv: struct {
-            mouse_offset: Vector2;
             hue: float;
             // When we're dragging the cursor around,
             // if we drag it such that s or v become
             // 0, the hue also becomes 0 because that's
             // how the conversion function works.
             // So we preserve it here.
-        }
-        slider: struct {
-            mouse_offset_x: float;
         }
         string_entry: struct {
             // :DynamicArray
@@ -261,24 +257,10 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
             }
 
         case .NO_ONE;
-            cursor_width := size.x * 0.04;
-            cursor_x := position.x + size.x * value.*;
-            cursor_position := Vector2.{
-                cursor_x - cursor_width / 2,
-                position.y
-            };
-            cursor_size := Vector2.{
-                cursor_width,
-                size.y
-            };
-
-            if inside(cursor_position, cursor_size, mouse) {
+            if inside(position, size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
                     if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
-                        activate(.{
-                            type = .SLIDER,
-                            slider = .{mouse_offset_x = cursor_x - mouse.x}
-                        });
+                        activate(.{type = .SLIDER});
                         break;
                     }
                 }
@@ -295,7 +277,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
             epsilon := 0.0;
             if strictly_less_than_1 epsilon = 0.001;
 
-            cursor_x = clamp(mouse.x + active_widget_data.slider.mouse_offset_x, position.x, end_x - epsilon);
+            cursor_x = clamp(mouse.x, position.x, end_x - epsilon);
             value.* = (cursor_x - position.x) / (end_x - position.x);
         case .NOT_ME; #through;
         case .NO_ONE;
@@ -421,33 +403,13 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
             }
 
         case .NO_ONE;
-            sv_cursor := Vector2.{
-                lerp(sv_x0, sv_x1, saturation),
-                lerp(sv_y0, sv_y1, 1 - value) // :ReversedValue
-            };
-
-            sv_cursor_size := bar_width * 0.045;
-            sv_cursor_position := Vector2.{
-                sv_cursor.x - sv_cursor_size,
-                sv_cursor.y - sv_cursor_size
-            };
-
-            cursor_selection_size := Vector2.{
-                sv_cursor_size * 2,
-                sv_cursor_size * 2
-            };
-            
-            if inside(sv_cursor_position, cursor_selection_size, mouse) {
+            if inside(sv_position, sv_size, mouse) {
                 for [] Input_Event.{event_count, events.data} {
                     if it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN {
                         activate(.{
                             type = .SV,
-                            sv = .{
-                                mouse_offset = sv_cursor - mouse,
-                                hue = hue
-                            }
+                            sv = .{hue = hue}
                         });
-                        break;
                     }
                 }
             }
@@ -458,7 +420,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     if #complete current_widget_state == {
         case .ACTIVE;
             assert(active_widget_data.type == .SV);
-            sv_cursor = mouse + active_widget_data.sv.mouse_offset;
+            sv_cursor = mouse;
             clamp(*sv_cursor.x, sv_x0, sv_x1);
             clamp(*sv_cursor.y, sv_y0, sv_y1);
 
