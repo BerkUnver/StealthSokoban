@@ -773,9 +773,9 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
 load_level_part_1_deserialize :: (level_name: string, arena: *Memory_Arena) -> *Level {
     using context.game_context;
     
-    scope_mark(*frame_arena);
+    scope_mark(frame_arena);
 
-    success, data := read_file(level_name, *frame_arena);
+    success, data := read_file(level_name, frame_arena);
     if !success {
         log(.ERROR, "Could not read the file \"%\"\n", level_name); 
         return null;
@@ -1095,7 +1095,7 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
 }
 
 
-get_enemy_spawner_draw_info :: (enemy_spawner: Enemy_Spawner) -> model_to_world: Matrix4, color: Vector4 {
+get_enemy_spawner_draw_info :: (enemy_spawner: *Enemy_Spawner) -> model_to_world: Matrix4, color: Vector4 {
     color: Vector4;
     if #complete enemy_spawner.enemy_spawner_type == {
         case .ALTERNATING;
@@ -1111,6 +1111,12 @@ get_enemy_spawner_draw_info :: (enemy_spawner: Enemy_Spawner) -> model_to_world:
     matrix := facing_to_matrix4(enemy_spawner.facing);
     matrix = make_translation_matrix4(to_vector3(enemy_spawner.position) + Vector3.{0.5, 0, 0.5}) * matrix;
     return matrix, color;
+}
+
+
+get_enemy_despawner_draw_info :: (enemy_despawner: *Enemy_Despawner) -> model_to_world: Matrix4 {
+    matrix := make_translation_matrix4(to_vector3(enemy_despawner.position) + Vector3.{0.5, 0, 0.5});
+    return matrix;
 }
 
 
@@ -1848,9 +1854,8 @@ gameplay_update :: (using level: *Level, dt: float) {
                 viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
             }
             
-            mark := get_mark(*frame_arena);
-            defer restore_mark(*frame_arena, mark);
-            positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+            scope_mark(frame_arena);
+            positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
             position_count := 1;
             
             player := *_Player[0];
@@ -2215,10 +2220,9 @@ gameplay_update :: (using level: *Level, dt: float) {
         viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
     }
 
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
+    scope_mark(frame_arena);
     // Should this instead be stashed in the data structure for the level so we know how much memory is being used?
-    positions := alloc_view(*frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
+    positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
     position_count := 1;
 
     player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);

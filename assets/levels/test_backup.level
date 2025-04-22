@@ -89,6 +89,16 @@ types
 		facing 2
 		;
 	]
+	_Enemy_Despawner 1[
+		e
+			eid 9
+			position
+				x -3
+				z 2
+				;
+			;
+		;
+	]
 	_Player 1[
 		e
 			eid 7

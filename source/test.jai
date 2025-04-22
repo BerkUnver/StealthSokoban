@@ -68,11 +68,11 @@ test :: () {
     expect(i == -10923);
     
     {
-        scope_mark(*frame_arena);
+        scope_mark(frame_arena);
 
         expected := int.[1, 2, 3];
         view: [] int;
-        err := deserialize("3[1 2 3]", *view, *frame_arena);
+        err := deserialize("3[1 2 3]", *view, frame_arena);
         expect(err);
         expect(view.count == expected.count);
         expect(memcmp(view.data, expected.data, size_of(type_of(expected))) == 0);
@@ -148,14 +148,14 @@ END
     }
 
     {
-        scope_mark(*frame_arena);
+        scope_mark(frame_arena);
 
         output: [..] int;
-        err := deserialize("3[1 2 3]", *output, *frame_arena);
+        err := deserialize("3[1 2 3]", *output, frame_arena);
         expect(err);
         expect(output.count == 3);
         expect(output.allocated == 3);
-        expect(output.allocator.data == *frame_arena);
+        expect(output.allocator.data == frame_arena);
         expect(memcmp(output.data, int.[1,2,3].data, 3 * size_of(int)) == 0);
     }
 
@@ -407,16 +407,16 @@ END
     //
 
     {
-        scope_mark(*frame_arena);
-        table := make_table(*frame_arena, 100, int, int);
+        scope_mark(frame_arena);
+        table := make_table(frame_arena, 100, int, int);
         add(*table, 2, 3);
         v := get(*table, 2);
         if expect(v != null) expect(v.* == 3);
     }
 
     {
-        scope_mark(*frame_arena);
-        table := make_table(*frame_arena, 100, int, int);
+        scope_mark(frame_arena);
+        table := make_table(frame_arena, 100, int, int);
         add(*table, 2, 3);
 
         if expect(delete(*table, 2)) {
@@ -429,8 +429,8 @@ END
             return 0;
         }
 
-        scope_mark(*frame_arena);
-        table := make_table(*frame_arena, 100, int, int, hash);
+        scope_mark(frame_arena);
+        table := make_table(frame_arena, 100, int, int, hash);
         add(*table, 0, 0);
         add(*table, 1, 1);
         add(*table, 2, 2);
@@ -457,8 +457,8 @@ END
             return 0;
         }
 
-        scope_mark(*frame_arena);
-        table := make_table(*frame_arena, 100, int, int, hash);
+        scope_mark(frame_arena);
+        table := make_table(frame_arena, 100, int, int, hash);
         add(*table, 0, 0);
         add(*table, 1, 1);
         add(*table, 2, 2);
@@ -469,8 +469,8 @@ END
     }
 
     { // Test deleting, then inserting into the deleted slot
-        scope_mark(*frame_arena);
-        table := make_table(*frame_arena, 100, int, int);
+        scope_mark(frame_arena);
+        table := make_table(frame_arena, 100, int, int);
         add(*table, 0, 0);
         delete(*table, 0);
         add(*table, 0, 1);

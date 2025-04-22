@@ -14,15 +14,15 @@ serialize :: (buf: [] u8, val: *$T) -> string {
     default: *void;
 
     #if INFO.type == .STRUCT {
-        mark := get_mark(*frame_arena);
-        default = alloc(*frame_arena, INFO.runtime_size, zero_init = false);
+        mark := get_mark(frame_arena);
+        default = alloc(frame_arena, INFO.runtime_size, zero_init = false);
         init_from_info(INFO, default);
     }
 
     serialize_next(*sb, INFO, val, default, 0); 
 
     #if INFO.type == .STRUCT {
-        restore_mark(*frame_arena, mark);
+        restore_mark(frame_arena, mark);
     }
 
     return get_string(*sb);
@@ -79,8 +79,8 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
             if array_info.element_type.type == .STRUCT {
                 separator = "\n";
                 struct_info := cast(*Type_Info_Struct, array_info.element_type);
-                mark = get_mark(*frame_arena);
-                default = alloc(*frame_arena, struct_info.runtime_size, zero_init = false);
+                mark = get_mark(frame_arena);
+                default = alloc(frame_arena, struct_info.runtime_size, zero_init = false);
                 init_from_info(struct_info, default);
             } else {
                 separator = " ";
@@ -95,7 +95,7 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
 
             if array_info.element_type.type == .STRUCT {
                 for 0..indent-1 print_string(sb, "\t");
-                restore_mark(*frame_arena, mark);
+                restore_mark(frame_arena, mark);
             }
 
             print_string(sb, "]");

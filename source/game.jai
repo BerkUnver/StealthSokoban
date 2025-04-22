@@ -25,8 +25,8 @@ Game_Context :: struct {
     
     keys_down: [] bool;
 
-    frame_arena: Memory_Arena;
-    permanent_arena: Memory_Arena;
+    frame_arena: *Memory_Arena;
+    permanent_arena: *Memory_Arena;
     
     // @Incomplete:
     // We might just want to init a new freetype library every time we instanciate a font
@@ -70,6 +70,7 @@ Game_Context :: struct {
         enemy_right_bitmap: GLuint;
         enemy_annihilation_mesh: Mesh;
         enemy_spawner_mesh: Mesh;
+        enemy_spawner_bitmap: GLuint;
         enemy_despawner_mesh: Mesh;
         player_mesh: Mesh;
         player_bitmap: GLuint;
@@ -93,10 +94,10 @@ Game :: struct {
     mode: Game_Mode;
 
     gameplay_level: *Level; // Stored in the arena.
-    gameplay_arena: Memory_Arena;
+    gameplay_arena: *Memory_Arena;
 
     editor_level: *Level;
-    editor_arena: Memory_Arena;
+    editor_arena: *Memory_Arena;
 
     time_elapsed: float64;
 }
@@ -125,8 +126,8 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         using context.game_context;
 
-        frame_arena = make_arena(data.frame_arena_memory, FRAME_ARENA_SIZE);
-        permanent_arena = make_arena(data.permanent_arena_memory, PERMANENT_ARENA_SIZE);
+        frame_arena = data.frame_arena;
+        permanent_arena = data.permanent_arena;
         
         keys_down = data.keys_down;
 
@@ -191,7 +192,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         camera_to_ui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
 
         assert(FT_Init_FreeType(*freetype) == 0);
-        success:, shader_include = read_file("shaders/include.gl", *permanent_arena);
+        success:, shader_include = read_file("shaders/include.gl", permanent_arena);
         assert(success);
         
         imm_state = imm_init();
@@ -211,24 +212,25 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         consolas = load_font("consolas.ttf");
 
-        footstep = load_wav("sounds/footstep.wav", *permanent_arena);
+        footstep = load_wav("sounds/footstep.wav", permanent_arena);
 
         gridlike_bitmap = load_bitmap("gridlike.tga");
         gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
         
-        enemy_mesh = load_mesh("enemy.my_mesh", *permanent_arena);
+        enemy_mesh = load_mesh("enemy.my_mesh", permanent_arena);
         enemy_left_bitmap = load_bitmap("enemy_left.tga");
         enemy_right_bitmap = load_bitmap("enemy_right.tga");
-        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, *permanent_arena);
-        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", *permanent_arena);
-        enemy_despawner_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        overworld_entrance_mesh = load_mesh("overworld_entrance.my_mesh", *permanent_arena);
-        overworld_entrance_sound = load_wav("sounds/overworld_entrance.wav", *permanent_arena);
+        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
+        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", permanent_arena);
+        enemy_spawner_bitmap = load_bitmap("enemy_spawner.tga");
+        enemy_despawner_mesh = load_mesh("enemy_despawner.my_mesh", permanent_arena);
+        overworld_entrance_mesh = load_mesh("overworld_entrance.my_mesh", permanent_arena);
+        overworld_entrance_sound = load_wav("sounds/overworld_entrance.wav", permanent_arena);
         chroma_key_bitmap = load_bitmap("chroma_key.tga");
-        overworld_exit_mesh = load_mesh("overworld_exit.my_mesh", *permanent_arena);
-        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, *permanent_arena);
-        checkpoint_mesh = load_mesh("checkpoint.my_mesh", *permanent_arena);
-        player_mesh = load_mesh("player.my_mesh", *permanent_arena);
+        overworld_exit_mesh = load_mesh("overworld_exit.my_mesh", permanent_arena);
+        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_arena);
+        checkpoint_mesh = load_mesh("checkpoint.my_mesh", permanent_arena);
+        player_mesh = load_mesh("player.my_mesh", permanent_arena);
         player_bitmap = load_bitmap("player.tga");
 
 
@@ -239,17 +241,17 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         using game_memory;
         using game_memory.game;
 
-        editor_arena = make_arena(data.editor_arena_memory, EDITOR_ARENA_SIZE);
-        gameplay_arena = make_arena(data.gameplay_arena_memory, GAMEPLAY_ARENA_SIZE);
+        editor_arena = data.editor_arena;
+        gameplay_arena = data.gameplay_arena;
         
         
-        editor_level = load_level_part_1_deserialize(OVERWORLD, *editor_arena);
+        editor_level = load_level_part_1_deserialize(OVERWORLD, editor_arena);
         assert(editor_level != null);
-        load_level_part_2_editor(OVERWORLD, editor_level, *editor_arena);
+        load_level_part_2_editor(OVERWORLD, editor_level, editor_arena);
 
-        gameplay_level = load_level_part_1_deserialize(OVERWORLD, *gameplay_arena);
+        gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
         assert(gameplay_level != null);
-        assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, *gameplay_arena));
+        assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
 
         mode = .EDITOR;    
     }
@@ -277,7 +279,8 @@ game_update : Game_Update : (
     game_memory_: *void, 
     input: Input,
     time_elapsed_: float64,
-    hotloaded: bool
+    hotloaded: bool,
+    changed_files: [] string
 ) #no_context {
     game_memory := cast(*Game_Memory, game_memory_);
     push_context {
@@ -289,21 +292,13 @@ game_update : Game_Update : (
             print("Game DLL has been hotloaded.\n");
         }
 
+        for changed_files {
+            print("Changed file: %\n", it);
+        }
+
         using game_memory;
         using game_memory.game;
         using game_memory.game_context;
-
-        defer assert(frame_arena.current == 0);
-        // I'm trying to enforce people who use the stack arena to use it
-        // like a stack and not just put stuff into it and expect it to
-        // get cleared at the end of the frame.
-        // Therefore, we check to make sure everyone has popped their stuff
-        // off of the stack.
-
-        // @TODO: This isn't a very good check because someone higher up the call
-        // stack could just call "restore_mark" and set the current to 0 even if
-        // someone lower in the call stack could have done it.
-        // This causes us to use more memory than we should.
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -364,7 +359,7 @@ game_update : Game_Update : (
                     if !closest_name {
                         comparison := strcmp(level_name, level.name);
                         if (ascending && comparison > 0) || (!ascending && comparison < 0) {
-                            closest_name = copy_string(*frame_arena, level_name);
+                            closest_name = copy_string(frame_arena, level_name);
                         }
                     } else {    
                         closest_name_comparison := strcmp(level_name, closest_name);
@@ -372,15 +367,15 @@ game_update : Game_Update : (
 
                         if (ascending && level_name_comparison > 0 && closest_name_comparison < 0)
                         || (!ascending && closest_name_comparison > 0 && level_name_comparison < 0) {
-                            restore_mark(*frame_arena, mark);
-                            closest_name = copy_string(*frame_arena, level_name);
+                            restore_mark(frame_arena, mark);
+                            closest_name = copy_string(frame_arena, level_name);
                         }
                     }
                 }
 
                 data := Find_Data.{
                     level = level.*,
-                    mark = get_mark(*frame_arena),
+                    mark = get_mark(frame_arena),
                     ascending = ascending
                 };
 
@@ -399,21 +394,21 @@ game_update : Game_Update : (
                     }
                 }
 
-                restore_mark(*frame_arena, data.mark);
+                restore_mark(frame_arena, data.mark);
             }
 
             if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay_level, *gameplay_arena);
-                    case .EDITOR;   load_next_level(false, .EDITOR,   *editor_level,   *editor_arena);
+                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay_level, gameplay_arena);
+                    case .EDITOR;   load_next_level(false, .EDITOR,   *editor_level, editor_arena);
                 }
                 continue;
             }
 
             if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay_level, *gameplay_arena);
-                    case .EDITOR;   load_next_level(true, .EDITOR,   *editor_level,   *editor_arena);
+                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay_level, gameplay_arena);
+                    case .EDITOR;   load_next_level(true, .EDITOR,   *editor_level, editor_arena);
                 }
                 continue;
 
@@ -425,16 +420,16 @@ game_update : Game_Update : (
                     using gameplay_level;
 
                     if it.key == #char "R" && it.state == .DOWN {
-                        scope_mark(*frame_arena);
+                        scope_mark(frame_arena);
 
-                        level_name := string.{name.count, alloc(*frame_arena, name.count, zero_init = true)};
+                        level_name := string.{name.count, alloc(frame_arena, name.count, zero_init = true)};
                         // We need the name to persist freeing the old level for when we load the new level.
                         memcpy(level_name.data, name.data, level_name.count);
-                        free_level(gameplay_level, *gameplay_arena);
+                        free_level(gameplay_level, gameplay_arena);
 
-                        gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
+                        gameplay_level = load_level_part_1_deserialize(level_name, gameplay_arena);
                         assert(gameplay_level != null);
-                        assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena, skip_intro=true));
+                        assert(load_level_part_2_gameplay(level_name, gameplay_level, gameplay_arena, skip_intro=true));
                         continue;
                     }
 
@@ -479,7 +474,7 @@ game_update : Game_Update : (
 
                         munge_data := Munge_Data.{
                             level_ptr = *editor_level,
-                            arena = *editor_arena
+                            arena = editor_arena
                         };
 
                         munge :: (data_: *void, level_name: string) {
@@ -513,7 +508,7 @@ game_update : Game_Update : (
                         continue;
                     }
 
-                    editor_handle_input(editor_level, *editor_arena, mouse, it);
+                    editor_handle_input(editor_level, editor_arena, mouse, it);
             }
         }
         
@@ -533,19 +528,19 @@ game_update : Game_Update : (
 
 
                 if !editor_imgui_disabled {
-                    scope_mark(*frame_arena);
-                    new_level_name := editor_draw_imgui(editor_level, *editor_arena);
+                    scope_mark(frame_arena);
+                    new_level_name := editor_draw_imgui(editor_level, editor_arena);
                     if new_level_name {
-                        free_level(editor_level, *editor_arena);
-                        success, data := read_file(new_level_name, *frame_arena);
+                        free_level(editor_level, editor_arena);
+                        success, data := read_file(new_level_name, frame_arena);
                         if success {
-                            editor_level = load_level_part_1_deserialize_mem(new_level_name, data, *editor_arena);
+                            editor_level = load_level_part_1_deserialize_mem(new_level_name, data, editor_arena);
                             assert(editor_level != null);
                         } else {
-                            editor_level = alloc(*editor_arena, Level, zero_init = false);
+                            editor_level = alloc(editor_arena, Level, zero_init = false);
                             editor_level.* = .{};
                         }
-                        load_level_part_2_editor(new_level_name, editor_level, *editor_arena);
+                        load_level_part_2_editor(new_level_name, editor_level, editor_arena);
                     }
                 }
             case .GAMEPLAY;
@@ -562,25 +557,25 @@ game_update : Game_Update : (
                             assert(entrance != null);
                             
                             assert(entrance.level_name != "");
-                            scope_mark(*frame_arena);
+                            scope_mark(frame_arena);
                             // We need to copy the string because it is going to be freed when we free the old level.
-                            level_name := copy_string(*frame_arena, entrance.level_name);
-                            free_level(gameplay_level, *gameplay_arena);
+                            level_name := copy_string(frame_arena, entrance.level_name);
+                            free_level(gameplay_level, gameplay_arena);
 
-                            gameplay_level = load_level_part_1_deserialize(level_name, *gameplay_arena);
+                            gameplay_level = load_level_part_1_deserialize(level_name, gameplay_arena);
                             assert(gameplay_level != null);
-                            assert(load_level_part_2_gameplay(level_name, gameplay_level, *gameplay_arena));
+                            assert(load_level_part_2_gameplay(level_name, gameplay_level, gameplay_arena));
                         }
                     case .FADE_OUT_EXIT;
                         using fade_out_exit;
                         if interp >= 1 {
-                            scope_mark(*frame_arena);
-                            level_name := copy_string(*frame_arena, name);
-                            free_level(gameplay_level, *gameplay_arena);
+                            scope_mark(frame_arena);
+                            level_name := copy_string(frame_arena, name);
+                            free_level(gameplay_level, gameplay_arena);
 
-                            gameplay_level = load_level_part_1_deserialize(OVERWORLD, *gameplay_arena);
+                            gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
                             assert(gameplay_level != null);
-                            assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, *gameplay_arena));
+                            assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
                             
                             for * _Overworld_Exit {
                                 entrance := get_entrance_for_overworld_exit(gameplay_level, it);
@@ -603,8 +598,8 @@ game_update : Game_Update : (
         }
 
         if screenshot_requested {
-            scope_mark(*frame_arena);
-            data := alloc(*frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
+            scope_mark(frame_arena);
+            data := alloc(frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
             glReadPixels(0, 0, INNER_WINDOW_W, INNER_WINDOW_H, GL_RGB, GL_UNSIGNED_BYTE, data);
             
             write :: (ctx: *void, data: *void, size: s32) #c_call {
@@ -661,7 +656,7 @@ editor_draw_imgui :: (using level: *Level, arena: *Memory_Arena) -> new_level_na
 
     label_length := label("Level", head, item_size);
     if string_entry(.{head.x + label_length, head.y}, .{item_size.x - label_length, item_size.y}, *level_name, *level_name_count) {
-        data := alloc(*frame_arena, level_name_count, zero_init=false);
+        data := alloc(frame_arena, level_name_count, zero_init=false);
         memcpy(data, level_name.data, level_name_count);
         new_level_name = .{level_name_count, data};
         // Maybe the correct thing to do is to load the new level, then rerender
@@ -816,25 +811,20 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
 
-    for * _Enemy_Spawner {
-        matrix, color := get_enemy_spawner_draw_info(it); 
+    set_uniform("color", Enemy_Despawner.COLOR);
+    for * _Enemy_Despawner {
+        matrix := get_enemy_despawner_draw_info(it);
         set_uniform("model_to_world", matrix);
-        set_uniform("color", color);
-        bind_and_draw(*enemy_spawner_mesh);
+        bind_and_draw(*enemy_despawner_mesh);
     }
 
-
-    draw_entities :: (entities: [] $T/Entity, mesh: *Mesh) #expand {
-        set_uniform("color", T.COLOR);
-        for * entities {
-            model_to_world := make_translation_matrix4(to_vector3(it.position));
-            set_uniform("model_to_world", model_to_world);
-            bind_and_draw(mesh);
-        }
+    
+    set_uniform("color", Exit.COLOR);
+    for * _Exit {
+        model_to_world := make_translation_matrix4(to_vector3(it.position));
+        set_uniform("model_to_world", model_to_world);
+        bind_and_draw(*exit_mesh);
     }
-
-    draw_entities(_Exit, *exit_mesh);
-    draw_entities(_Enemy_Despawner, *enemy_despawner_mesh);
 
          
     set_shader(item_and_bitmap_shader);
@@ -861,6 +851,14 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     return OVERWORLD_ENTRANCE_DEFAULT_COLOR;
                 }
         }
+    }
+
+    set_uniform_bitmap("bitmap", 1, enemy_spawner_bitmap);
+    for * _Enemy_Spawner {
+        matrix, color := get_enemy_spawner_draw_info(it); 
+        set_uniform("model_to_world", matrix);
+        set_uniform("substitute_color", color);
+        bind_and_draw(*enemy_spawner_mesh);
     }
     
     set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
@@ -1028,12 +1026,11 @@ draw :: (using level: *Level, mode: Game_Mode) {
             }
         case .EDITOR;
             {
-                mark := get_mark(*frame_arena);
-                defer restore_mark(*frame_arena, mark);
+                scope_mark(frame_arena);
 
                 position, size := get_block_extents(_Block);
                 
-                overlapping := alloc_view(*frame_arena, size.x * size.y * size.z, int);
+                overlapping := alloc_view(frame_arena, size.x * size.y * size.z, int);
 
                 for * block: _Block {
                     offset := block.position - position;

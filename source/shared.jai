@@ -37,10 +37,10 @@ Game_Init_Data :: struct {
     game_memory: *void;
     gl_extension_loader: (*u8) -> *void #c_call;
     keys_down: [] bool;
-    gameplay_arena_memory: *void;
-    editor_arena_memory: *void;
-    frame_arena_memory: *void;
-    permanent_arena_memory: *void;
+    gameplay_arena: *Memory_Arena;
+    editor_arena: *Memory_Arena;
+    frame_arena: *Memory_Arena;
+    permanent_arena: *Memory_Arena;
 }
 
 // :ContextBase
@@ -65,7 +65,8 @@ Game_Update :: #type (
     game_memory: *void,
     input: Input,
     time_elapsed: float64,
-    hotloaded: bool
+    hotloaded: bool,
+    changed_files: [] string
 ) #no_context;
 
 
@@ -475,12 +476,147 @@ alloc :: (arena: *Memory_Arena, count: s64, zero_init := true) -> *void {
     return ret;
 }
 
+get_mark :: (arena: *Memory_Arena) -> s64 {
+    return arena.current;
+}
+
+
+restore_mark :: (arena: *Memory_Arena, marker: s64) {
+    assert(arena.current >= marker);
+    arena.current = marker;
+}
+
+
+scope_mark :: (arena: *Memory_Arena) #expand {
+    mark := get_mark(arena);
+    `defer restore_mark(arena, mark);
+}
+
+
+alloc :: (arena: *Memory_Arena, $T: Type, zero_init := true) -> *T {
+    return alloc(arena, size_of(T), zero_init);
+}
+
+
+realloc :: (arena: *Memory_Arena, old: *void, old_count: s64, new_count: s64, zero_init := true) -> *void {
+    assert(old_count >= 0);
+    assert(new_count >= 0);
+
+    if old == null {
+        assert(old_count == 0);
+        return alloc(arena, new_count, zero_init);
+    }
+
+    current := arena.data + arena.current;
+    assert(arena.data <= old && old <= current);
+
+    if new_count < old_count return old;
+
+    if old + old_count == current {
+        alloc(arena, new_count - old_count, zero_init);
+        return old;
+    }
+
+    new := alloc(arena, new_count, false);
+    memcpy(new, old, old_count);
+    if zero_init memset(new + old_count, 0, new_count - old_count);
+
+    return new;
+}
+
+
+realloc_many :: (arena: *Memory_Arena, old: *$T, old_count: s64, new_count: s64, zero_init := true) -> *T {
+    return realloc(arena, old, old_count * size_of(T), new_count * size_of(T), zero_init); 
+}
+
+
+alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
+    byte_count := size_of(T) * count; 
+    ret := alloc(arena, byte_count, zero_init);
+    return .{data=xx ret, count=count};
+}
+
+
+reserve_array :: (arena: *Memory_Arena, reserve: s64, $T: Type, zero_init := true) -> [..] T {
+    mem := alloc(arena, reserve * size_of(T), zero_init);
+
+    array: [..] T;
+    array.data = mem;
+    array.allocated = reserve;
+    array.allocator.data = arena;
+
+    // I don't love the implicit allocator semantics that Jai wants you to use,
+    // so I am avoiding them for now. However, I will set the allocator data to the
+    // arena so we can assert that we're resizing using the same arena.
+
+    return array;
+}
+
+
+alloc_array :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [..] T {
+    allocated := count;
+    if 0 < allocated && allocated < 8 allocated = 8;
+    mem := alloc(arena, allocated * size_of(T), zero_init);
+
+    array: [..] T;
+    array.count = count;
+    array.data = mem;
+    array.allocated = allocated;
+    array.allocator.data = arena;
+    
+    return array;
+}
+
+
+alloc_extra_array_capacity :: (arena: *Memory_Arena, array: *[..] $T, new_capacity: s64, zero_init := true) {
+    if new_capacity < array.allocated return;
+    mem := alloc(arena, new_capacity * size_of(T), zero_init=false);
+    memcpy(mem, array.data, size_of(T) * array.count);
+    if zero_init memset(mem + size_of(T) * array.count, 0, size_of(T) * (new_capacity - array.count));
+
+    array.data = mem;
+    array.allocated = new_capacity;
+}
+
+
+append_no_resize :: (a: *[..] $T) -> *T {
+    assert(a.count < a.allocated);
+    item := a.data + a.count;
+    a.count += 1;
+    return item;
+}
+
+
+append_no_resize :: (a: *[..] $T, item: T) {
+    append_no_resize(a).* = item;
+}
+
 
 print :: (s: string, args: ..Any) {
     buf: [4096] u8;
     sb := make_string_builder(buf);
     print(*sb, s, ..args);
     os_print(get_string(*sb));
+}
+
+
+append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
+    if a.count == a.allocated {
+        if a.count == 0 a.allocated = 8;
+        else a.allocated *= 2;
+
+        a.data = realloc_many(arena, a.data, a.count, a.allocated, zero_init = false);
+    }
+
+    item := a.data + a.count;
+    a.count += 1;
+
+    return item;
+}
+
+
+append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
+    append(a, arena).* = item;
 }
 
 

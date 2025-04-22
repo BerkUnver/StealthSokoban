@@ -707,10 +707,10 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
     {
         _, size := get_block_extents(_Block); // :LevelSizeInEditor
 
-        scope_mark(*frame_arena);
+        scope_mark(frame_arena);
 
         size_1d := size.x * size.y * size.z;
-        data := alloc_view(*frame_arena, size_1d, View_State, zero_init = false);
+        data := alloc_view(frame_arena, size_1d, View_State, zero_init = false);
         memset(data.data, xx (View_State.SEEN | .VISIBLE), size_1d);
 
         update_view_texture(*view_texture, size, data);

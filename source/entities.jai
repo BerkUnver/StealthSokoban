@@ -233,19 +233,16 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 
 entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
     enemy := as(e, Enemy);
-    if enemy {
-        matrix, _ := get_enemy_draw_info(level, enemy);
-        return matrix;
-    }
+    if enemy return get_enemy_draw_info(level, enemy);
 
     enemy_spawner := as(e, Enemy_Spawner);
-    if enemy_spawner {
-        matrix, _ := get_enemy_spawner_draw_info(enemy_spawner);
-        return matrix;
-    }
+    if enemy_spawner return get_enemy_spawner_draw_info(enemy_spawner);
 
     player := as(e, Player);
     if player return get_player_draw_info(player);
+
+    enemy_despawner := as(e, Enemy_Despawner);
+    if enemy_despawner return get_enemy_despawner_draw_info(enemy_despawner);
 
     return make_translation_matrix4(to_vector3(e.position));
 }

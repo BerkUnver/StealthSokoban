@@ -189,9 +189,9 @@ load_mesh :: (path: string, arena: *Memory_Arena) -> Mesh {
         vertex_count: u32;
     }
 
-    scope_mark(*frame_arena);
+    scope_mark(frame_arena);
 
-    success, str := read_file(path, *frame_arena);
+    success, str := read_file(path, frame_arena);
     assert(success);
 
     header:, str = get(str, Mesh_Header);
@@ -282,8 +282,7 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
     
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
+    scope_mark(frame_arena);
     
     vertices: [..] Block_Vertex;
 
@@ -296,7 +295,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
             success, index := get_3d_index(position, size);
             if !success || !filled[index] {
                 for 0..5 {
-                    append(*vertices, *frame_arena).* = .{
+                    append(*vertices, frame_arena).* = .{
                        position = origin + CUBE_VERTICES[xx face + it],
                        uv = CUBE_UVS[xx face + it],
                        viewed_offset = position,
@@ -344,9 +343,8 @@ Gridlike_Edge :: enum_flags u8 {
 
 make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
     using context.game_context;
-
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
+    
+    scope_mark(frame_arena);
 
     vertices: [..] Block_Vertex;
 
@@ -568,7 +566,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
             for i: 0..5 {
                 index := xx face + i;
-                append(*vertices, *frame_arena).* = .{
+                append(*vertices, frame_arena).* = .{
                     position = origin + CUBE_VERTICES[index],
                     uv = CUBE_UVS[index],
                     viewed_offset = above,
@@ -706,11 +704,10 @@ free :: (tex: *View_Texture) {
 
 load_bitmap :: (file_name: string) -> GLuint {
     using context.game_context;
+    
+    scope_mark(frame_arena);
 
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
-
-    success, str := read_file(file_name, *frame_arena);
+    success, str := read_file(file_name, frame_arena);
     if !success {
         log(.ERROR, "Failed to load the file for bitmap \"%\"\n", file_name);
         assert(false);
@@ -758,10 +755,9 @@ load_bitmap :: (file_name: string) -> GLuint {
 load_shader :: (file_name: string, prefix := "") -> GLuint {
     using context.game_context;
     
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
+    scope_mark(frame_arena);
 
-    success, str := read_file(file_name, *frame_arena);
+    success, str := read_file(file_name, frame_arena);
     if !success {
         log(.ERROR, "Failed to load the file for shader \"%\"\n", file_name);
         assert(false);
@@ -781,8 +777,7 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
     // be best just to load everything from one file for now.
 
     /*
-    mark := get_mark(*frame_arena);
-    defer restore_mark(*frame_arena, mark);
+    scope_mark(frame_arena);
     include_paths: [..] string;
     
     shader_text := text;

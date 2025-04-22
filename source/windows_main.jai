@@ -435,7 +435,63 @@ main :: () {
         print(*sb, "%assets\0", game_path);
         assert(SetCurrentDirectoryA(get_string(*sb).data) != 0);
     }
-   
+
+    //
+    // Init the file watcher for game assets
+    //
+
+    // We only need to handle files being changed.
+    // This ignores things like files / directories being moved, files being deleted, etc.
+    // As such, this implementation can be very simple.
+    
+    dir := CreateFileA(
+        ".",
+        FILE_LIST_DIRECTORY,
+        FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+        null,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+        null
+    );
+    assert(dir != INVALID_HANDLE_VALUE);
+
+    event := CreateEventA(null, BOOL.FALSE, BOOL.FALSE, null);
+    assert(event != null);
+
+    overlapped := OVERLAPPED.{hEvent = event};
+    
+    // The Windows documentation says that this memory has to be DWORD-aligned.
+    // The extra three bytes are so we can make sure it's stack-aligned properly.
+    // It appears to always be DWORD-aligned when I compile it but just in case...
+    file_notification_memory: [4099] u8; 
+    file_notification_ptr := file_notification_memory.data;
+    alignment := cast(u64, file_notification_ptr) % 4;
+    if alignment != 0 {
+        file_notification_ptr += alignment;
+        print("It wasn't DWORD-aligned!\n");
+    }
+    assert(cast(u64, file_notification_ptr) % 4 == 0);
+
+    file_notifications: [] u8 = .{4096, file_notification_ptr};
+    
+
+    read_directory_changes :: () #expand {
+        assert(ReadDirectoryChangesW(
+            dir,
+            file_notifications.data,
+            xx file_notifications.count,
+            BOOL.TRUE,
+            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
+            null,
+            *overlapped,
+            null
+        ) == .TRUE);
+    }
+
+    read_directory_changes();
+
+
+
 
     //
     // Initialize the game state
@@ -461,14 +517,19 @@ main :: () {
     
     game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
 
+    gameplay_arena := make_arena(VirtualAlloc(null, GAMEPLAY_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), GAMEPLAY_ARENA_SIZE);
+    editor_arena := make_arena(VirtualAlloc(null, EDITOR_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), EDITOR_ARENA_SIZE);
+    frame_arena := make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
+    permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
+
     data := Game_Init_Data.{
         game_memory            = game_memory,
         gl_extension_loader    = wglGetProcAddress,
         keys_down = keys_down,
-        gameplay_arena_memory  = VirtualAlloc(null, GAMEPLAY_ARENA_SIZE,  MEM_COMMIT, PAGE_READWRITE),
-        editor_arena_memory    = VirtualAlloc(null, EDITOR_ARENA_SIZE,    MEM_COMMIT, PAGE_READWRITE),
-        frame_arena_memory     = VirtualAlloc(null, FRAME_ARENA_SIZE,     MEM_COMMIT, PAGE_READWRITE),
-        permanent_arena_memory = VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE),
+        gameplay_arena = *gameplay_arena,
+        editor_arena = *editor_arena,
+        frame_arena = *frame_arena,
+        permanent_arena = *permanent_arena
     };
 
     game_init(*context.base, *data);
@@ -493,7 +554,6 @@ main :: () {
             TranslateMessage(*message);
             DispatchMessageA(*message);
         }
-
 
         //
         // Do the gameplay update and render
@@ -561,8 +621,62 @@ main :: () {
             }
         }
 
-        game_update(*context.base, game_memory, input, time_elapsed, hotloaded);
-        input_event_count=0;
+
+        //
+        // Check for reloaded files.
+        //
+        
+        {
+            // There's some stuff wrong with this.
+            // @TODO: Windows likes to notify you twice on consecutive frames if a file has been changed.
+            // Find a way to ignore these.
+
+            // Blender also likes to save to a temp file with a "@" at the end of the file extension, then delete the 
+            // old file and rename the save to the original file name. This causes the watcher to see the creation of
+            // the temp file (for some reason), then 
+
+            scope_mark(*frame_arena);
+
+            changed_files: [..] string;
+            if HasOverlappedIoCompleted(overlapped) {
+                bytes_transferred: u32;
+                success := GetOverlappedResult(dir, *overlapped, *bytes_transferred, .FALSE);
+                if success && bytes_transferred != 0 {
+                    notif := cast(*FILE_NOTIFY_INFORMATION, file_notifications.data);
+                    while (true) {
+                         // The FILE_NOTIFY_CHANGE_FILE_NAME flag specified when initting the watcher causes it to 
+                         // detect file deletions. We don't care about those, but we do care about name changes.
+                        if notif.Action != FILE_ACTION_REMOVED {
+                            success, name := utf16_to_ascii(.{notif.FileNameLength / 2, notif.FileName.data}, *frame_arena);
+                            if success {
+                                append(*changed_files, *frame_arena).* = name;
+                            }
+                        }
+
+                        if notif.NextEntryOffset == 0 break;
+                        notif = xx (cast(*u8, notif) + notif.NextEntryOffset);
+                    }
+                }
+
+                read_directory_changes();
+            }
+
+            game_update(*context.base, game_memory, input, time_elapsed, hotloaded, changed_files);
+            input_event_count=0;
+        }
+
+        assert(frame_arena.current == 0);
+        // I'm trying to enforce people who use the stack arena to use it
+        // like a stack and not just put stuff into it and expect it to
+        // get cleared at the end of the frame.
+        // Therefore, we check to make sure everyone has popped their stuff
+        // off of the stack.
+
+        // @TODO: This isn't a very good check because someone higher up the call
+        // stack could just call "restore_mark" and set the current to 0 even if
+        // someone lower in the call stack could have done it.
+        // This causes us to use more memory than we should.
+        
         
 
         //
@@ -633,4 +747,20 @@ main :: () {
 
         SwapBuffers(dc);
     }
+}
+
+
+utf16_to_ascii :: (utf16: [] u16, arena: *Memory_Arena) -> bool, string {
+    mark := get_mark(arena);
+    ascii: *u8 = xx alloc(arena, utf16.count);
+
+    for utf16 {
+        if it >= 128 {
+            restore_mark(arena, mark);
+            return false, .{};
+        }
+        ascii[it_index] = xx it;
+    }
+
+    return true, .{utf16.count, ascii};
 }

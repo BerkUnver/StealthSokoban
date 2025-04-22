@@ -1898,7 +1898,7 @@ ConnectNamedPipe :: (hNamedPipe: HANDLE, lpOverlapped: *OVERLAPPED) -> BOOL #for
 //ChangeTimerQueueTimer
 //ClosePrivateNamespace
 //CreateBoundaryDescriptor
-CreateEventA :: (lpEventAttributes: *SECURITY_ATTRIBUTES, bManualReset: s32, bInitialState: s32, lpName: *u8) -> HANDLE #foreign kernel32;
+CreateEventA :: (lpEventAttributes: *SECURITY_ATTRIBUTES, bManualReset: BOOL, bInitialState: BOOL, lpName: *u8) -> HANDLE #foreign kernel32; // @Added changed s32 to BOOL
 CreateEventW :: (lpEventAttributes: *SECURITY_ATTRIBUTES, bManualReset: s32, bInitialState: s32, lpName: *u16) -> HANDLE #foreign kernel32;
 //CreateEventEx
 //CreateMutex
@@ -1920,8 +1920,13 @@ DeleteCriticalSection :: (lpCriticalSection: *CRITICAL_SECTION) #foreign kernel3
 //DeleteTimerQueueTimer
 EnterCriticalSection :: (lpCriticalSection: *CRITICAL_SECTION) #foreign kernel32;
 //EnterSynchronizationBarrier
-GetOverlappedResult :: (hFile: HANDLE, lpOverlapped: *OVERLAPPED, lpNumberOfBytesTransferred: *s32, bWait: s32) -> s32 #foreign kernel32;
+GetOverlappedResult :: (hFile: HANDLE, lpOverlapped: *OVERLAPPED, lpNumberOfBytesTransferred: *u32, bWait: BOOL) -> s32 #foreign kernel32;
+// @Added changed the types of this to more correctly reflect the windows types
+// lpNumberOfBytesTransferred: *s32 -> *u32
+// bWait: s32 -> BOOL
+
 //GetOverlappedResultEx
+
 InitializeCriticalSection :: (lpCriticalSection: *CRITICAL_SECTION) #foreign kernel32;
 //InitializeCriticalSectionAndSpinCount
 //InitializeCriticalSectionEx
@@ -2384,11 +2389,11 @@ DLL_PROCESS_DETACH   :: 0;
 
 // Directory Management API
 
-FILE_NOTIFY_INFORMATION :: struct {
-    NextEntryOffset: s32;
-    Action:          s32;
-    FileNameLength:  s32;
-    FileName: [1]    s16;    // This s16 is a WCHAR
+FILE_NOTIFY_INFORMATION :: struct { // @Added Made everything unsigned.
+    NextEntryOffset: u32;
+    Action:          u32;
+    FileNameLength:  u32;
+    FileName: [1]    u16;   // This u16 is a WCHAR
 }
 
 FILE_NOTIFY_CHANGE_FILE_NAME    :: 0x00000001;
@@ -2423,7 +2428,7 @@ CreateDirectoryW :: (lpPathName: *u16, lpSecurityAttributes: *SECURITY_ATTRIBUTE
 GetCurrentDirectoryA :: (nBufferLength: DWORD, lpBuffer: *u8) -> DWORD #foreign kernel32;
 GetCurrentDirectoryW :: (nBufferLength: DWORD, lpBuffer: *u16) -> DWORD #foreign kernel32;
 //ReadDirectoryChangesExW
-ReadDirectoryChangesW :: (hDirectory: HANDLE, lpBuffer: *void, nBufferLength: s32, bWatchSubtree: s32, dwNotifyFilter: s32, lpBytesReturned: *s32, lpOverlapped: *OVERLAPPED, lpCompletionRoutine: *void) -> BOOL #foreign kernel32;
+ReadDirectoryChangesW :: (hDirectory: HANDLE, lpBuffer: *void, nBufferLength: s32, bWatchSubtree: BOOL, dwNotifyFilter: s32, lpBytesReturned: *s32, lpOverlapped: *OVERLAPPED, lpCompletionRoutine: *void) -> BOOL #foreign kernel32; // @Added Changed s32 to BOOL.
 RemoveDirectoryA :: (lpPathName: *u8) -> BOOL #foreign kernel32;
 RemoveDirectoryW :: (lpPathName: *u16) -> BOOL #foreign kernel32;
 //RemoveDirectoryTransacted
