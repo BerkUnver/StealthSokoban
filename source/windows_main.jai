@@ -2,6 +2,7 @@
 // @TODO: Switch to the wide character version of everything.
 
 #load "shared.jai";
+#load "windows_winapi.jai";
 
 #program_export NvOptimusEnablement: u32 = 1;
 #program_export AmdPowerXpressRequestHighPerformance: s32 = 1;
@@ -29,8 +30,6 @@ append_input_event :: (e: Input_Event) #no_context {
 
 
 main :: () {
-    print("\n\n"); // Some blank lines to separate us from the compile messages
-
     assert(SetProcessDPIAware() != 0);
     module_handle := GetModuleHandleA(null);
 
@@ -411,7 +410,6 @@ main :: () {
     //
 
     { 
-        // @TODO: Get rid of MAX_PATH
         exe_path: [MAX_PATH] u8;
         GetModuleFileNameA(null, exe_path.data, exe_path.count);
 
@@ -430,7 +428,7 @@ main :: () {
         assert(last_path_index >= 0 && second_to_last_path_index >= 0);
         game_path := string.{second_to_last_path_index + 1, exe_path.data};
 
-        assets_path_buf: [MAX_PATH] u8;
+        assets_path_buf: [4096] u8 = ---;
         sb := make_string_builder(assets_path_buf);
         print(*sb, "%assets\0", game_path);
         assert(SetCurrentDirectoryA(get_string(*sb).data) != 0);
@@ -468,7 +466,6 @@ main :: () {
     alignment := cast(u64, file_notification_ptr) % 4;
     if alignment != 0 {
         file_notification_ptr += alignment;
-        print("It wasn't DWORD-aligned!\n");
     }
     assert(cast(u64, file_notification_ptr) % 4 == 0);
 

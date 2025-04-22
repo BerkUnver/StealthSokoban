@@ -69,6 +69,14 @@ realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: []
 }
 
 
+print :: (s: string, args: ..Any) {
+    buf: [4096] u8;
+    sb := make_string_builder(buf);
+    print(*sb, s, ..args);
+    os_print(get_string(*sb));
+}
+
+
 Log_Level :: enum {
     OK;
     ERROR;
