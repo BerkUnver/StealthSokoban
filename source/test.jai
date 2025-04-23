@@ -425,7 +425,7 @@ END
     }
 
     { // Test collisions
-        hash :: (s: string) -> u32 {
+        hash :: (any: Any) -> u32 {
             return 0;
         }
 
@@ -453,7 +453,7 @@ END
     }
 
     { // Test skipping over removed values
-        hash :: (s: string) -> u32 {
+        hash :: (any: Any) -> u32 {
             return 0;
         }
 

@@ -3,7 +3,7 @@
 Table :: struct(
     Key_Type: Type,
     Value_Type: Type,
-    hash_function := djb2_hash
+    hash_function := default_hash
     // hash_function is an autobake instead of a function pointer
     // so dll hot-reloading will still work.
 ) {
@@ -34,14 +34,22 @@ djb2_hash :: (s: string) -> u32 {
 }
 
 
+// @CompilerBug The compiler crashes if I try to make this a polymorph,
+// I think it does not like polymorphs as default parameters for bakeable
+// function arguments.
+default_hash :: (any: Any) -> u32 {
+    return djb2_hash(.{any.type.runtime_size, any.value_pointer});
+}
+
+
 table_hash :: (table: *Table, val: $T) -> u32 {
-    hash := table.hash_function(.{size_of(T), xx *val});
+    hash := table.hash_function(dynamic_any(type_info(T), *val));
     if hash < FIRST_VALID_HASH hash += FIRST_VALID_HASH;
     return hash;
 }
 
 
-make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_function := djb2_hash) -> result: Table(K, V, hash_function) {
+make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_function := default_hash) -> result: Table(K, V, hash_function) {
     // @TODO: Test what happens when max_count close to zero.
     assert(max_count >= 0);
     entries_count := cast(int, ceil(cast(float, max_count) / LOAD_FACTOR));
@@ -63,6 +71,12 @@ make_table :: (arena: *Memory_Arena, max_count: int, $K: Type, $V: Type, $hash_f
 
 
 add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type, arena: *Memory_Arena = null) {
+    ptr := add(table, key, arena);
+    ptr.* = value;
+}
+
+
+add :: (using table: *Table, key: table.Key_Type, arena: *Memory_Arena = null) -> *table.Value_Type {
     if count >= max_count {
         assert(arena != null);
         
@@ -89,11 +103,12 @@ add :: (using table: *Table, key: table.Key_Type, value: table.Value_Type, arena
 
     entries[index] = .{
         key=key,
-        value=value,
         hash=hash
     };
 
     count += 1;
+
+    return *entries[index].value;
 }
 
 

@@ -22,7 +22,6 @@ Cube_Vertex :: enum {
 
 
 
-
 // We need a way for shaders with different inputs to work on the same vertex format.
 // My idea to handle this right now is to have a defined layout index for each kind of vertex input.
 // When we set up the VAO and write the layouts in the shaders, we use these constants instead of 

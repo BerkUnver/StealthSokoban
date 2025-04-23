@@ -17,6 +17,7 @@
 #load "editor.jai";
 #load "serialize.jai";
 #load "table.jai";
+#load "assets.jai";
 #load "test.jai";
 
 #if OS == .WINDOWS {
@@ -49,44 +50,45 @@ Game_Context :: struct {
     camera_to_ui: Matrix4;
     
     editor_imgui_disabled: bool;
-    
-    using assets: struct {
-        imm_color_shader: GLuint;
-        imm_text_shader: GLuint;
-        imm_saturation_value_shader: GLuint;
-        imm_hue_shader: GLuint;
-        gameplay_gridlike_shader: GLuint;
-        editor_gridlike_shader: GLuint;
-        color_shader: GLuint;
-        wireframe_shader: GLuint;
-        bitmap_shader: GLuint;
-        item_and_color_shader: GLuint;
-        item_and_bitmap_shader: GLuint;
-        occlusion_shader: GLuint;
+  
 
 
-        consolas: Font;
+    asset_table: Asset_Table;
 
-        footstep: Wav;
+    imm_color_shader: GLuint;
+    imm_text_shader: GLuint;
+    imm_saturation_value_shader: GLuint;
+    imm_hue_shader: GLuint;
+    gameplay_gridlike_shader: GLuint;
+    editor_gridlike_shader: GLuint;
+    color_shader: GLuint;
+    wireframe_shader: GLuint;
+    bitmap_shader: GLuint;
+    item_and_color_shader: GLuint;
+    item_and_bitmap_shader: GLuint;
+    occlusion_shader: GLuint;
 
-        gridlike_bitmap: GLuint;
-        gridlike_outline_bitmap: GLuint;
-        enemy_mesh: Mesh;
-        enemy_left_bitmap: GLuint;
-        enemy_right_bitmap: GLuint;
-        enemy_annihilation_mesh: Mesh;
-        enemy_spawner_mesh: Mesh;
-        enemy_spawner_bitmap: GLuint;
-        enemy_despawner_mesh: Mesh;
-        player_mesh: Mesh;
-        player_bitmap: GLuint;
-        exit_mesh: Mesh;
-        overworld_entrance_mesh: Mesh;
-        overworld_entrance_sound: Wav;
-        chroma_key_bitmap: GLuint;
-        overworld_exit_mesh: Mesh;
-        checkpoint_mesh: Mesh;
-    };
+
+    consolas: Font;
+
+    footstep: *Wav;
+    gridlike_bitmap: GLuint;
+    gridlike_outline_bitmap: GLuint;
+    enemy_mesh: *Mesh;
+    enemy_left_bitmap: GLuint;
+    enemy_right_bitmap: GLuint;
+    enemy_annihilation_mesh: Mesh;
+    enemy_spawner_mesh: *Mesh;
+    enemy_spawner_bitmap: GLuint;
+    enemy_despawner_mesh: *Mesh;
+    player_mesh: *Mesh;
+    player_bitmap: GLuint;
+    exit_mesh: Mesh;
+    overworld_entrance_mesh: *Mesh;
+    overworld_entrance_sound: *Wav;
+    chroma_key_bitmap: GLuint;
+    overworld_exit_mesh: *Mesh;
+    checkpoint_mesh: *Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -203,6 +205,9 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         imm_state = imm_init();
 
+        
+        asset_table = make_asset_table();
+
         imm_color_shader = load_shader("shaders/imm_color.gl");
         imm_text_shader = load_shader("shaders/imm_text.gl");
         imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
@@ -218,26 +223,23 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         consolas = load_font("consolas.ttf");
 
-        footstep = load_wav("sounds/footstep.wav", permanent_arena);
-
-        gridlike_bitmap = load_bitmap("gridlike.tga");
-        gridlike_outline_bitmap = load_bitmap("gridlike_outline.tga");
-        
-        enemy_mesh = load_mesh("enemy.my_mesh", permanent_arena);
-        enemy_left_bitmap = load_bitmap("enemy_left.tga");
-        enemy_right_bitmap = load_bitmap("enemy_right.tga");
-        enemy_annihilation_mesh = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
-        enemy_spawner_mesh = load_mesh("enemy_spawner.my_mesh", permanent_arena);
-        enemy_spawner_bitmap = load_bitmap("enemy_spawner.tga");
-        enemy_despawner_mesh = load_mesh("enemy_despawner.my_mesh", permanent_arena);
-        overworld_entrance_mesh = load_mesh("overworld_entrance.my_mesh", permanent_arena);
-        overworld_entrance_sound = load_wav("sounds/overworld_entrance.wav", permanent_arena);
-        chroma_key_bitmap = load_bitmap("chroma_key.tga");
-        overworld_exit_mesh = load_mesh("overworld_exit.my_mesh", permanent_arena);
-        exit_mesh = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_arena);
-        checkpoint_mesh = load_mesh("checkpoint.my_mesh", permanent_arena);
-        player_mesh = load_mesh("player.my_mesh", permanent_arena);
-        player_bitmap = load_bitmap("player.tga");
+        footstep                    = load_asset(Wav, *asset_table, "sounds/footstep.wav");
+        gridlike_bitmap             = load_bitmap("gridlike.tga");
+        gridlike_outline_bitmap     = load_bitmap("gridlike_outline.tga");
+        enemy_mesh                  = load_asset(Mesh, *asset_table, "enemy.my_mesh");
+        enemy_left_bitmap           = load_bitmap("enemy_left.tga");
+        enemy_annihilation_mesh     = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
+        enemy_spawner_mesh          = load_asset(Mesh, *asset_table, "enemy_spawner.my_mesh");
+        enemy_spawner_bitmap        = load_bitmap("enemy_spawner.tga");
+        enemy_despawner_mesh        = load_asset(Mesh, *asset_table, "enemy_despawner.my_mesh");
+        overworld_entrance_mesh     = load_asset(Mesh, *asset_table, "overworld_entrance.my_mesh");
+        overworld_entrance_sound    = load_asset(Wav, *asset_table, "sounds/overworld_entrance.wav");
+        chroma_key_bitmap           = load_bitmap("chroma_key.tga");
+        overworld_exit_mesh         = load_asset(Mesh, *asset_table, "overworld_exit.my_mesh");
+        exit_mesh                   = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_arena);
+        checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
+        player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
+        player_bitmap               = load_bitmap("player.tga");
 
 
         //
@@ -298,13 +300,11 @@ game_update : Game_Update : (
             print("Game DLL has been hotloaded.\n");
         }
 
-        for changed_files {
-            print("Changed file: %\n", it);
-        }
-
         using game_memory;
         using game_memory.game;
         using game_memory.game_context;
+
+        reload_assets(*asset_table, changed_files);
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -821,7 +821,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     for * _Enemy_Despawner {
         matrix := get_enemy_despawner_draw_info(it);
         set_uniform("model_to_world", matrix);
-        bind_and_draw(*enemy_despawner_mesh);
+        bind_and_draw(enemy_despawner_mesh);
     }
 
     
@@ -840,7 +840,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
         matrix, bitmap := get_enemy_draw_info(level, it);
         set_uniform("model_to_world", matrix);
         set_uniform_bitmap("bitmap", 1, bitmap);
-        bind_and_draw(*enemy_mesh);
+        bind_and_draw(enemy_mesh);
     }
 
     
@@ -864,7 +864,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
         matrix, color := get_enemy_spawner_draw_info(it); 
         set_uniform("model_to_world", matrix);
         set_uniform("substitute_color", color);
-        bind_and_draw(*enemy_spawner_mesh);
+        bind_and_draw(enemy_spawner_mesh);
     }
     
     set_uniform_bitmap("bitmap", 1, chroma_key_bitmap);
@@ -872,7 +872,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
         set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
         set_uniform("substitute_color", overworld_entrance_color(it));
-        bind_and_draw(*overworld_entrance_mesh);
+        bind_and_draw(overworld_entrance_mesh);
     }
 
 
@@ -885,7 +885,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
         set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
         set_uniform("substitute_color", substitute_color);
 
-        bind_and_draw(*overworld_exit_mesh);
+        bind_and_draw(overworld_exit_mesh);
     }
 
 
@@ -905,7 +905,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
         set_uniform("substitute_color", color);
         set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-        bind_and_draw(*checkpoint_mesh);    
+        bind_and_draw(checkpoint_mesh);    
     }
 
 
@@ -972,7 +972,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     for * _Player {
         matrix := world_to_camera * get_player_draw_info(it);
         set_uniform("projection", matrix);
-        bind_and_draw(*player_mesh);
+        bind_and_draw(player_mesh);
     }
 
     
@@ -981,7 +981,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
         set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
         bind_and_draw(*exit_mesh);
     }
-    
+
     //
     // Draw the player
     //
@@ -994,7 +994,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     for * _Player {
         matrix := world_to_camera * get_player_draw_info(it);
         set_uniform("projection", matrix);
-        bind_and_draw(*player_mesh);
+        bind_and_draw(player_mesh);
     }
 
     

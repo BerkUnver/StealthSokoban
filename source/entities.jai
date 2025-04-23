@@ -210,21 +210,21 @@ entity_mesh :: (e: *Entity) -> *Mesh {
         case .Door;
             return *as(e, Door).mesh;
         case .Player;
-            return *player_mesh;
+            return player_mesh;
         case .Exit;
             return *exit_mesh;
         case .Enemy;
-            return *enemy_mesh;
+            return enemy_mesh;
         case .Enemy_Spawner;
-            return *enemy_spawner_mesh;
+            return enemy_spawner_mesh;
         case .Enemy_Despawner;
-            return *enemy_despawner_mesh;
+            return enemy_despawner_mesh;
         case .Checkpoint;
-            return *checkpoint_mesh;
+            return checkpoint_mesh;
         case .Overworld_Entrance;
-            return *overworld_entrance_mesh;
+            return overworld_entrance_mesh;
         case .Overworld_Exit;
-            return *overworld_exit_mesh;
+            return overworld_exit_mesh;
     }
 
     return null;
