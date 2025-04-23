@@ -244,7 +244,7 @@ draw_text :: (str: string, position: Vector2, font: *Font, color: Vector4) -> en
     using context.game_context;
     
     set_shader(imm_text_shader, .{flags = .BLEND});
-    set_uniform_bitmap("bitmap", 0, font.bitmap);
+    set_uniform_bitmap("bitmap", 0, *font.bitmap);
     set_uniform("projection", ui_to_camera);
     
     x := position.x;

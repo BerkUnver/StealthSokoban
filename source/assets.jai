@@ -1,11 +1,8 @@
-// @Cleanup You currently need to do five (!) things to register a new asset.
-// Let's turn that into one.
-
-Asset_Info :: struct { name, type, proc: string; }
+Asset_Info :: struct { name, type, proc: string; needs_permanent_arena: bool; }
 ASSET_INFOS :: Asset_Info.[
-    .{"Sound", "Wav", "load_wav"},
-    .{"Mesh", "Mesh", "load_mesh"},
-    // .{"Bitmap", "GLuint", "load_bitmap"},
+    .{"Sound", "Wav", "load_wav", true},
+    .{"Mesh", "Mesh", "load_mesh", true},
+    .{"Bitmap", "Bitmap", "load_bitmap", false},
 ];
 
 
@@ -14,19 +11,19 @@ Asset :: struct {
         buf: [4096] u8 = ---;
         sb := make_string_builder(buf);
 
-        print(*sb, "    Type :: enum u8 {\n");
+        print(*sb, "Type :: enum u8 {\n");
         for ASSET_INFOS {
-            print(*sb, "        %;\n", it.name);
+            print(*sb, "    %;\n", it.name);
         }
-        print(*sb, "    }\n\n");
+        print(*sb, "}\n\n");
        
-        print(*sb, "    type: Type;\n\n");
+        print(*sb, "type: Type;\n\n");
 
-        print(*sb, "    union {\n");
+        print(*sb, "union {\n");
         for ASSET_INFOS {
-            print(*sb, "        _%: %;\n", it.name, it.type);
+            print(*sb, "    _%: %;\n", it.name, it.type);
         }
-        print(*sb, "    }\n");
+        print(*sb, "}\n");
 
         return get_string(*sb);
     }
@@ -52,7 +49,8 @@ load_asset :: ($T: Type, table: *Asset_Table, name: string) -> *T {
         #insert -> string {
             buf: [4096] u8 = ---;
             sb := make_string_builder(buf);
-            print(*sb, "asset.* = .{ type = .%, _% = %(name, permanent_arena) };\n", ASSET_INFO.name, ASSET_INFO.name, ASSET_INFO.proc);
+            str := ifx ASSET_INFO.needs_permanent_arena then ", permanent_arena" else "";
+            print(*sb, "asset.* = .{ type = .%, _% = %(name%) };\n", ASSET_INFO.name, ASSET_INFO.name, ASSET_INFO.proc, str);
             return get_string(*sb);
         }
     } else {
@@ -89,14 +87,19 @@ reload_assets :: (table: *Asset_Table, names: [] string) {
     for names {
         asset := get(table, it);
         if !asset continue;
-        print("Asset name: %\n", it);
-        if asset.type == {
-            case .Sound;
-                asset._Sound = load_wav(it, permanent_arena);
-            case .Mesh;
-                asset._Mesh = load_mesh(it, permanent_arena);
-            // case .Bitmap;
-            //     asset._Bitmap = load_bitmap(it);
+        log(.OK, "Hotloading asset \"%\"\n", it);
+        #insert -> string {
+            buf: [4096] u8 = ---;
+            sb := make_string_builder(buf);
+            print(*sb, "if asset.type == {\n");
+            for ASSET_INFOS {
+                print(*sb, "    case .%;\n", it.name);
+                str := ifx it.needs_permanent_arena then ", permanent_arena" else "";
+                print(*sb, "        asset._% = %(it%);\n", it.name, it.proc, str);
+            }
+            print(*sb, "    case; assert(false);\n");
+            print(*sb, "}\n");
+            return get_string(*sb);
         }
     }
 }

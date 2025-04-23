@@ -1,5 +1,5 @@
 Font :: struct {
-    bitmap: GLuint;
+    bitmap: Bitmap;
     space_advance: float;
     glyphs: [VALID_ASCII_END + 1 - VALID_ASCII_START] Glyph;
     ascender: float;
@@ -110,10 +110,10 @@ load_font :: (file_name: string) -> Font {
         x += glyph_width;
     }
 
-    bitmap: GLuint;
+    handle: GLuint;
 
-    glGenTextures(1, *bitmap);
-    glBindTexture(GL_TEXTURE_2D, bitmap);
+    glGenTextures(1, *handle);
+    glBindTexture(GL_TEXTURE_2D, handle);
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
@@ -131,7 +131,7 @@ load_font :: (file_name: string) -> Font {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    font.bitmap = bitmap;
+    font.bitmap = .{handle = handle};
 
     return font;
 }

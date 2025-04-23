@@ -20,6 +20,16 @@ Cube_Vertex :: enum {
 }
 
 
+Bitmap :: struct {
+    // This only accounts for 2D textures right now.
+    handle: GLuint;
+}
+
+
+Shader :: struct {
+    program: GLuint;
+}
+
 
 
 // We need a way for shaders with different inputs to work on the same vertex format.
@@ -701,7 +711,7 @@ free :: (tex: *View_Texture) {
 }
 
 
-load_bitmap :: (file_name: string) -> GLuint {
+load_bitmap :: (file_name: string) -> Bitmap {
     using context.game_context;
     
     scope_mark(frame_arena);
@@ -729,9 +739,9 @@ load_bitmap :: (file_name: string) -> GLuint {
         assert(false);
     }
 
-    bitmap: GLuint;
-    glGenTextures(1, *bitmap);
-    glBindTexture(GL_TEXTURE_2D, bitmap);
+    handle: GLuint;
+    glGenTextures(1, *handle);
+    glBindTexture(GL_TEXTURE_2D, handle);
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
@@ -746,12 +756,12 @@ load_bitmap :: (file_name: string) -> GLuint {
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    return bitmap;
+    
+    return .{handle = handle};
 }
 
 
-load_shader :: (file_name: string, prefix := "") -> GLuint {
+load_shader :: (file_name: string, prefix := "") -> Shader {
     using context.game_context;
     
     scope_mark(frame_arena);
@@ -766,7 +776,7 @@ load_shader :: (file_name: string, prefix := "") -> GLuint {
 }
 
 
-load_shader :: (name: string, text: string, prefix: string) -> GLuint {
+load_shader :: (name: string, text: string, prefix: string) -> Shader {
     using context.game_context;
 
     LOG_SIZE :: 1024;
@@ -914,7 +924,8 @@ load_shader :: (name: string, text: string, prefix: string) -> GLuint {
         log(.ERROR, "Linking error in shader \"%\"\n%", name, str);
         assert(false);
     }
-    return program;
+
+    return .{program = program};
 }
 
 
@@ -937,9 +948,9 @@ Pipeline :: struct {
 }
 
 
-set_shader :: (shader: GLuint, using pipeline := Pipeline.{}) {
+set_shader :: (shader: Shader, using pipeline := Pipeline.{}) {
     using context.game_context;
-    glUseProgram(shader);
+    glUseProgram(shader.program);
 
     if flags & .BLEND glEnable(GL_BLEND);
     else              glDisable(GL_BLEND);
@@ -992,10 +1003,18 @@ set_uniform :: (name: *u8, val: $T) {
 }
 
 
-set_uniform_bitmap :: (name: *u8, unit_index: int, bitmap: GLuint, type: GLenum = GL_TEXTURE_2D) {
+set_uniform_bitmap :: (name: *u8, unit_index: int, bitmap: *Bitmap) {
     using context.game_context;
     glActiveTexture(GL_TEXTURE0 + cast(GLenum, unit_index));
-    glBindTexture(type, bitmap);
+    glBindTexture(GL_TEXTURE_2D, bitmap.handle);
+    set_uniform(name, cast(s32, unit_index));
+}
+
+
+set_uniform_view_texture :: (name: *u8, unit_index: int, texture: *View_Texture) {
+    using context.game_context;
+    glActiveTexture(GL_TEXTURE0 + cast(GLenum, unit_index));
+    glBindTexture(GL_TEXTURE_BUFFER, texture.tbo);
     set_uniform(name, cast(s32, unit_index));
 }
 

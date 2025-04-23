@@ -1026,7 +1026,7 @@ get_entrance_for_overworld_exit :: (level: *Level, exit: *Overworld_Exit, log_er
 }
 
 
-get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, bitmap: GLuint {
+get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4, bitmap: *Bitmap {
     using context.game_context;
 
     matrix := Matrix4_Identity;
@@ -1057,7 +1057,7 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     matrix = make_translation_matrix4(to_vector3(enemy.position) + Vector3.{0.5, 0.5, 0.5}) * matrix;
 
     
-    bitmap: GLuint;
+    bitmap: *Bitmap;
     if #complete enemy.favored_direction == {
         case .LEFT;
             bitmap = enemy_left_bitmap;
@@ -1120,14 +1120,14 @@ get_enemy_despawner_draw_info :: (enemy_despawner: *Enemy_Despawner) -> model_to
 }
 
 
-play_sound :: (using level: *Level, wav: *Wav) {
+play_sound :: (using level: *Level, wav: *Sound) {
     if playing_sound_count == playing_sounds.count return;
     playing_sounds[playing_sound_count] = .{wav=wav};
     playing_sound_count += 1;
 }
 
 
-play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav: *Wav) {
+play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav: *Sound) {
     // I am assuming we just want to issue all sounds from the center of 
     // each cell, so we will use the gameplay position of everything.
     // Maybe this will change once we have 3D movement.

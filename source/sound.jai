@@ -1,4 +1,4 @@
-Wav :: struct {
+Sound :: struct {
     base: *void;
     // Most of the WAV file is just uncompressed data. It's probably good just to
     // store a pointer directly into the WAV for our data. Let's keep the base
@@ -8,7 +8,7 @@ Wav :: struct {
 
 
 Playing_Sound :: struct {
-    wav: *Wav;
+    wav: *Sound;
     current_sample: int;
 
     type: enum u8 {
@@ -24,7 +24,7 @@ Playing_Sound :: struct {
 }
 
 
-load_wav :: (path: string, arena: *Memory_Arena) -> Wav {
+load_sound :: (path: string, arena: *Memory_Arena) -> Sound {
     success, base := read_file(path, arena);
     assert(success);
 

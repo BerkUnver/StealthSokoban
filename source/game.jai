@@ -55,38 +55,38 @@ Game_Context :: struct {
 
     asset_table: Asset_Table;
 
-    imm_color_shader: GLuint;
-    imm_text_shader: GLuint;
-    imm_saturation_value_shader: GLuint;
-    imm_hue_shader: GLuint;
-    gameplay_gridlike_shader: GLuint;
-    editor_gridlike_shader: GLuint;
-    color_shader: GLuint;
-    wireframe_shader: GLuint;
-    bitmap_shader: GLuint;
-    item_and_color_shader: GLuint;
-    item_and_bitmap_shader: GLuint;
-    occlusion_shader: GLuint;
+    imm_color_shader: Shader;
+    imm_text_shader: Shader;
+    imm_saturation_value_shader: Shader;
+    imm_hue_shader: Shader;
+    gameplay_gridlike_shader: Shader;
+    editor_gridlike_shader: Shader;
+    color_shader: Shader;
+    wireframe_shader: Shader;
+    bitmap_shader: Shader;
+    item_and_color_shader: Shader;
+    item_and_bitmap_shader: Shader;
+    occlusion_shader: Shader;
 
 
     consolas: Font;
 
-    footstep: *Wav;
-    gridlike_bitmap: GLuint;
-    gridlike_outline_bitmap: GLuint;
+    footstep: *Sound;
+    gridlike_bitmap: *Bitmap;
+    gridlike_outline_bitmap: *Bitmap;
     enemy_mesh: *Mesh;
-    enemy_left_bitmap: GLuint;
-    enemy_right_bitmap: GLuint;
+    enemy_left_bitmap: *Bitmap;
+    enemy_right_bitmap: *Bitmap;
     enemy_annihilation_mesh: Mesh;
     enemy_spawner_mesh: *Mesh;
-    enemy_spawner_bitmap: GLuint;
+    enemy_spawner_bitmap: *Bitmap;
     enemy_despawner_mesh: *Mesh;
     player_mesh: *Mesh;
-    player_bitmap: GLuint;
+    player_bitmap: *Bitmap;
     exit_mesh: Mesh;
     overworld_entrance_mesh: *Mesh;
-    overworld_entrance_sound: *Wav;
-    chroma_key_bitmap: GLuint;
+    overworld_entrance_sound: *Sound;
+    chroma_key_bitmap: *Bitmap;
     overworld_exit_mesh: *Mesh;
     checkpoint_mesh: *Mesh;
 }
@@ -223,23 +223,24 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         consolas = load_font("consolas.ttf");
 
-        footstep                    = load_asset(Wav, *asset_table, "sounds/footstep.wav");
-        gridlike_bitmap             = load_bitmap("gridlike.tga");
-        gridlike_outline_bitmap     = load_bitmap("gridlike_outline.tga");
+        footstep                    = load_asset(Sound, *asset_table, "sounds/footstep.wav");
+        gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
+        gridlike_outline_bitmap     = load_asset(Bitmap, *asset_table, "gridlike_outline.tga");
         enemy_mesh                  = load_asset(Mesh, *asset_table, "enemy.my_mesh");
-        enemy_left_bitmap           = load_bitmap("enemy_left.tga");
+        enemy_left_bitmap           = load_asset(Bitmap, *asset_table, "enemy_left.tga");
+        enemy_right_bitmap          = load_asset(Bitmap, *asset_table, "enemy_right.tga");
         enemy_annihilation_mesh     = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
         enemy_spawner_mesh          = load_asset(Mesh, *asset_table, "enemy_spawner.my_mesh");
-        enemy_spawner_bitmap        = load_bitmap("enemy_spawner.tga");
+        enemy_spawner_bitmap        = load_asset(Bitmap, *asset_table, "enemy_spawner.tga");
         enemy_despawner_mesh        = load_asset(Mesh, *asset_table, "enemy_despawner.my_mesh");
         overworld_entrance_mesh     = load_asset(Mesh, *asset_table, "overworld_entrance.my_mesh");
-        overworld_entrance_sound    = load_asset(Wav, *asset_table, "sounds/overworld_entrance.wav");
-        chroma_key_bitmap           = load_bitmap("chroma_key.tga");
+        overworld_entrance_sound    = load_asset(Sound, *asset_table, "sounds/overworld_entrance.wav");
+        chroma_key_bitmap           = load_asset(Bitmap, *asset_table, "chroma_key.tga");
         overworld_exit_mesh         = load_asset(Mesh, *asset_table, "overworld_exit.my_mesh");
         exit_mesh                   = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_arena);
         checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
         player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
-        player_bitmap               = load_bitmap("player.tga");
+        player_bitmap               = load_asset(Bitmap, *asset_table, "player.tga");
 
 
         //
@@ -759,7 +760,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
             set_shader(gameplay_gridlike_shader);
             set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
             set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
-            set_uniform_bitmap("viewed", 2, view_texture.tbo, GL_TEXTURE_BUFFER);
+            set_uniform_view_texture("viewed", 2, *view_texture);
             set_uniform("viewed_size", level_size);
 
             for * _Block {
@@ -802,7 +803,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     set_item_shader_uniforms :: () #expand {
         set_uniform("viewed_position", position);
         set_uniform("viewed_size", size);
-        set_uniform_bitmap("viewed", 0, view_texture.tbo, GL_TEXTURE_BUFFER);
+        set_uniform_view_texture("viewed", 0, *view_texture);
         set_uniform("world_to_camera", world_to_camera);
     }
     
@@ -1223,6 +1224,16 @@ gl_debug_callback :: (
 
     push_context {
         context.game_context = userParam;
+
+        severity_str: string;
+        if severity == {
+            case GL_DEBUG_SEVERITY_HIGH;            severity_str = "HIGH";
+            case GL_DEBUG_SEVERITY_MEDIUM;          severity_str = "MEDIUM";
+            case GL_DEBUG_SEVERITY_LOW;             severity_str = "LOW";
+            case GL_DEBUG_SEVERITY_NOTIFICATION;    return;
+            case; assert(false);
+        }
+
         source_str: string;
         if source == {
             case GL_DEBUG_SOURCE_API;               source_str = "API";
@@ -1248,14 +1259,6 @@ gl_debug_callback :: (
             case; assert(false);
         }
         
-        severity_str: string;
-        if severity == {
-            case GL_DEBUG_SEVERITY_HIGH;            severity_str = "HIGH";
-            case GL_DEBUG_SEVERITY_MEDIUM;          severity_str = "MEDIUM";
-            case GL_DEBUG_SEVERITY_LOW;             severity_str = "LOW";
-            case GL_DEBUG_SEVERITY_NOTIFICATION;    severity_str = "NOTIFICATION";
-            case; assert(false);
-        }
 
         message_str := string.{data=message, count=length};
 
