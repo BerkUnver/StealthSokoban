@@ -64,9 +64,9 @@ Game_Update :: #type (
     context_base: *Context_Base, // :ContextBase
     game_memory: *void,
     input: Input,
-    time_elapsed: float64,
+    dt: float,
     hotloaded: bool,
-    changed_files: [] string
+    changed_file_names: [] string
 ) #no_context;
 
 
@@ -593,10 +593,12 @@ append_no_resize :: (a: *[..] $T, item: T) {
 
 
 append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
-    if a.count == a.allocated {
-        if a.count == 0 a.allocated = 8;
-        else a.allocated *= 2;
-
+    if a.allocated == 0 {
+        assert(a.count == 0);
+        a.allocated = 8;
+        a.data = alloc_view(arena, a.allocated, T, zero_init=false).data;
+    } else if a.count == a.allocated {
+        a.allocated *= 2;
         a.data = realloc_many(arena, a.data, a.count, a.allocated, zero_init = false);
     }
 

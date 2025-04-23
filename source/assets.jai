@@ -1,8 +1,8 @@
-Asset_Info :: struct { name, type, proc: string; needs_permanent_arena: bool; }
+Asset_Info :: struct { type, proc: string; needs_permanent_arena: bool; }
 ASSET_INFOS :: Asset_Info.[
-    .{"Sound", "Wav", "load_wav", true},
-    .{"Mesh", "Mesh", "load_mesh", true},
-    .{"Bitmap", "Bitmap", "load_bitmap", false},
+    .{"Sound", "load_sound", true},
+    .{"Mesh", "load_mesh", true},
+    .{"Bitmap", "load_bitmap", false},
 ];
 
 
@@ -13,7 +13,7 @@ Asset :: struct {
 
         print(*sb, "Type :: enum u8 {\n");
         for ASSET_INFOS {
-            print(*sb, "    %;\n", it.name);
+            print(*sb, "    %;\n", it.type);
         }
         print(*sb, "}\n\n");
        
@@ -21,7 +21,7 @@ Asset :: struct {
 
         print(*sb, "union {\n");
         for ASSET_INFOS {
-            print(*sb, "    _%: %;\n", it.name, it.type);
+            print(*sb, "    _%: %;\n", it.type, it.type);
         }
         print(*sb, "}\n");
 
@@ -50,14 +50,14 @@ load_asset :: ($T: Type, table: *Asset_Table, name: string) -> *T {
             buf: [4096] u8 = ---;
             sb := make_string_builder(buf);
             str := ifx ASSET_INFO.needs_permanent_arena then ", permanent_arena" else "";
-            print(*sb, "asset.* = .{ type = .%, _% = %(name%) };\n", ASSET_INFO.name, ASSET_INFO.name, ASSET_INFO.proc, str);
+            print(*sb, "asset.* = .{ type = .%, _% = %(name%) };\n", ASSET_INFO.type, ASSET_INFO.type, ASSET_INFO.proc, str);
             return get_string(*sb);
         }
     } else {
         #insert -> string {
             buf: [4096] u8 = ---;
             sb := make_string_builder(buf);
-            print(*sb, "assert(asset.type == .%);\n", ASSET_INFO.name);
+            print(*sb, "assert(asset.type == .%);\n", ASSET_INFO.type);
             return get_string(*sb);
         }
     }
@@ -65,13 +65,13 @@ load_asset :: ($T: Type, table: *Asset_Table, name: string) -> *T {
     #insert -> string {
         buf: [4096] u8 = ---;
         sb := make_string_builder(buf);
-        print(*sb, "return *asset._%;\n", ASSET_INFO.name);
+        print(*sb, "return *asset._%;\n", ASSET_INFO.type);
         return get_string(*sb);
     }
 }
 
 
-reload_assets :: (table: *Asset_Table, names: [] string) {
+reload_assets :: (table: *Asset_Table, changed_file_names: [] string) {
     using context.game_context;
 
     // @Hack:
@@ -84,7 +84,7 @@ reload_assets :: (table: *Asset_Table, names: [] string) {
     // We could clean up the GPU resources instead of loading new ones
     // but until the CPU stuff is fixed let's just leave it.
 
-    for names {
+    for changed_file_names {
         asset := get(table, it);
         if !asset continue;
         log(.OK, "Hotloading asset \"%\"\n", it);
@@ -93,9 +93,9 @@ reload_assets :: (table: *Asset_Table, names: [] string) {
             sb := make_string_builder(buf);
             print(*sb, "if asset.type == {\n");
             for ASSET_INFOS {
-                print(*sb, "    case .%;\n", it.name);
+                print(*sb, "    case .%;\n", it.type);
                 str := ifx it.needs_permanent_arena then ", permanent_arena" else "";
-                print(*sb, "        asset._% = %(it%);\n", it.name, it.proc, str);
+                print(*sb, "        asset._% = %(it%);\n", it.type, it.proc, str);
             }
             print(*sb, "    case; assert(false);\n");
             print(*sb, "}\n");

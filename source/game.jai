@@ -106,8 +106,6 @@ Game :: struct {
 
     editor_level: *Level;
     editor_arena: *Memory_Arena;
-
-    time_elapsed: float64;
 }
 
 Game_Mode :: enum {
@@ -287,9 +285,9 @@ game_update : Game_Update : (
     context_base: *Context_Base,
     game_memory_: *void, 
     input: Input,
-    time_elapsed_: float64,
+    dt: float,
     hotloaded: bool,
-    changed_files: [] string
+    changed_file_names: [] string
 ) #no_context {
     game_memory := cast(*Game_Memory, game_memory_);
     push_context {
@@ -298,14 +296,14 @@ game_update : Game_Update : (
 
         if hotloaded {
             hotloaded_dll_init();
-            print("Game DLL has been hotloaded.\n");
+            log(.OK, "Game DLL has been hotloaded.\n");
         }
 
         using game_memory;
         using game_memory.game;
         using game_memory.game_context;
 
-        reload_assets(*asset_table, changed_files);
+        reload_assets(*asset_table, changed_file_names);
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -519,14 +517,6 @@ game_update : Game_Update : (
             }
         }
         
-        dt: float;
-        if time_elapsed == 0 { // We're on the first tick. Set dt to something reasonable.
-            dt = 1.0 / 60.0;
-        } else {
-            dt = cast(float, time_elapsed_ - time_elapsed);
-        }
-        time_elapsed = time_elapsed_;
-
 
         if #complete mode == {
             case .EDITOR;
@@ -1351,6 +1341,9 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
 
             sound := *playing_sounds[i];
             sound.current_sample += samples_played;
+            
+            // This should catch when the sound is reloaded and the new one is shorter
+            // than the old one.
 
             if sound.current_sample >= sound.wav.data.count {
                 sound.* = playing_sounds[playing_sound_count-1];

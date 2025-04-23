@@ -403,6 +403,8 @@ main :: () {
     ticks_per_second_s64: s64;
     assert(QueryPerformanceFrequency(xx *ticks_per_second_s64) != 0);
     ticks_per_second := cast(float64, ticks_per_second_s64);
+
+    time_elapsed: float64;
     
 
     //
@@ -434,8 +436,58 @@ main :: () {
         assert(SetCurrentDirectoryA(get_string(*sb).data) != 0);
     }
 
+
+    //
+    // Initialize the game state
+    //
+    
+
+    
+    GAME_DLL_NAME_FRESH :: "stealth_sokoban_game_fresh.dll";
+    GAME_DLL_NAME :: "stealth_sokoban_game.dll";
+    
+    dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
+    if dll_attrs != INVALID_FILE_ATTRIBUTES {
+        // :MoveFileAFileWatcher
+        assert(CopyFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME, .FALSE) != 0);
+    }
+
+    game_dll := LoadLibraryA(GAME_DLL_NAME);
+    assert(game_dll != null);
+    
+
+    game_init := cast(Game_Init_Proc, GetProcAddress(game_dll, "game_init"));
+    assert(game_init != null);
+    
+    game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
+
+    gameplay_arena := make_arena(VirtualAlloc(null, GAMEPLAY_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), GAMEPLAY_ARENA_SIZE);
+    editor_arena := make_arena(VirtualAlloc(null, EDITOR_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), EDITOR_ARENA_SIZE);
+    frame_arena := make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
+    permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
+
+    data := Game_Init_Data.{
+        game_memory            = game_memory,
+        gl_extension_loader    = wglGetProcAddress,
+        keys_down = keys_down,
+        gameplay_arena = *gameplay_arena,
+        editor_arena = *editor_arena,
+        frame_arena = *frame_arena,
+        permanent_arena = *permanent_arena
+    };
+
+    game_init(*context.base, *data);
+
+    game_update: Game_Update = xx GetProcAddress(game_dll, "game_update");
+    assert(game_update != null);
+    game_get_audio_samples: Game_Get_Audio_Samples = xx GetProcAddress(game_dll, "game_get_audio_samples");
+    assert(game_get_audio_samples != null);
+
     //
     // Init the file watcher for game assets
+    //
+    // Set this up after we load the dll so we don't detect
+    // the name changes and deleting the old dll if it exists.
     //
 
     // We only need to handle files being changed.
@@ -471,71 +523,31 @@ main :: () {
 
     file_notifications: [] u8 = .{4096, file_notification_ptr};
     
-
     read_directory_changes :: () #expand {
         assert(ReadDirectoryChangesW(
             dir,
             file_notifications.data,
             xx file_notifications.count,
             BOOL.TRUE,
-            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
+            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
             null,
             *overlapped,
             null
         ) == .TRUE);
     }
-
     read_directory_changes();
-
-
-
-
-    //
-    // Initialize the game state
-    //
+    
+    // :DynamicArray Hopefully Windows doesn't spam us with file reloaded messages.
+    changed_file_memory: [4096] u8;
+    changed_file_arena := make_arena(changed_file_memory.data, changed_file_memory.count);
     
 
-    
-    GAME_DLL_NAME_FRESH :: "stealth_sokoban_game_fresh.dll";
-    GAME_DLL_NAME :: "stealth_sokoban_game.dll";
-    
-    dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
-    if dll_attrs != INVALID_FILE_ATTRIBUTES {
-        DeleteFileA(GAME_DLL_NAME);
-        assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
+    Changed_File :: struct {
+        name: string;
+        batch_interp: float;
     }
 
-    game_dll := LoadLibraryA(GAME_DLL_NAME);
-    assert(game_dll != null);
-    
-
-    game_init := cast(Game_Init_Proc, GetProcAddress(game_dll, "game_init"));
-    assert(game_init != null);
-    
-    game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
-
-    gameplay_arena := make_arena(VirtualAlloc(null, GAMEPLAY_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), GAMEPLAY_ARENA_SIZE);
-    editor_arena := make_arena(VirtualAlloc(null, EDITOR_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), EDITOR_ARENA_SIZE);
-    frame_arena := make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
-    permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
-
-    data := Game_Init_Data.{
-        game_memory            = game_memory,
-        gl_extension_loader    = wglGetProcAddress,
-        keys_down = keys_down,
-        gameplay_arena = *gameplay_arena,
-        editor_arena = *editor_arena,
-        frame_arena = *frame_arena,
-        permanent_arena = *permanent_arena
-    };
-
-    game_init(*context.base, *data);
-
-    game_update: Game_Update = xx GetProcAddress(game_dll, "game_update");
-    assert(game_update != null);
-    game_get_audio_samples: Game_Get_Audio_Samples = xx GetProcAddress(game_dll, "game_get_audio_samples");
-    assert(game_get_audio_samples != null);
-
+    changed_files: [..] Changed_File;
 
 
     while main_loop := true {
@@ -591,23 +603,89 @@ main :: () {
 
         ticks_since_start: s64;
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
-        time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
+        new_time_elapsed := cast(float64, ticks_since_start) / ticks_per_second;
 
 
+        //
+        // Check for reloaded files.
+        //
 
-        hotloaded := false;
 
-        new_dll_attrs := GetFileAttributesA(GAME_DLL_NAME_FRESH);
-        if new_dll_attrs != INVALID_FILE_ATTRIBUTES {
-            if MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME_FRESH) == 0 {
-                // @Hack this is to prevent us from trying to move the file
-                // when the compiler has locked it because it's writing to it.
-                assert(cast(u32, GetLastError()) == ERROR_SHARING_VIOLATION);
-            } else {
+        if HasOverlappedIoCompleted(overlapped) {
+            bytes_transferred: u32;
+            success := GetOverlappedResult(dir, *overlapped, *bytes_transferred, .FALSE);
+            if success && bytes_transferred != 0 {
+               notif := cast(*FILE_NOTIFY_INFORMATION, file_notifications.data);
+                while true {
+                     // The FILE_NOTIFY_CHANGE_FILE_NAME flag specified when initting the watcher causes it to 
+                     // detect file deletions. We don't care about those, but we do care about name changes.
+                    
+                    if notif.Action != FILE_ACTION_REMOVED && notif.Action != FILE_ACTION_RENAMED_OLD_NAME {
+                        mark := get_mark(*changed_file_arena);
+                        success, name := utf16_to_ascii(.{notif.FileNameLength / 2, notif.FileName.data}, *changed_file_arena);
+                        if !success continue;
+                        
+                        found := false;
+                        for * changed_files {
+                            if it.name == name {
+                                restore_mark(*changed_file_arena, mark);
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if !found {
+                            append(*changed_files, *changed_file_arena).* = .{name = name};
+                        }
+                    }
+
+                    if notif.NextEntryOffset == 0 break;
+                    notif = xx (cast(*u8, notif) + notif.NextEntryOffset);
+                }
+            }
+
+            read_directory_changes();
+        }
+
+
+        dt: float;
+        if time_elapsed == 0 {
+            dt = 1.0 / 60.0;
+        } else {
+            dt = cast(float, new_time_elapsed - time_elapsed);
+        }
+        time_elapsed = new_time_elapsed;
+
+        {
+            scope_mark(*frame_arena);
+            changed_file_names: [..] string;
+
+            BATCH_TIME :: 0.1;
+            for * changed_files {
+                it.batch_interp += dt / BATCH_TIME;
+                if it.batch_interp >= 1 {
+                    append(*changed_file_names, *frame_arena).* = it.name;
+                    remove it;
+                }
+            }
+
+
+            hotloaded := false;
+
+            for changed_file_names {
+                if it != GAME_DLL_NAME_FRESH continue;
+
                 hotloaded = true;
                 assert(FreeLibrary(game_dll) != 0);
-                assert(DeleteFileA(GAME_DLL_NAME) != 0);
-                assert(MoveFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME) != 0);
+                assert(CopyFileA(GAME_DLL_NAME_FRESH, GAME_DLL_NAME, .FALSE) != 0);
+                // :MoveFileAFileWatcher
+                // @Investivate For some reason, deleting the fresh dll fails when using
+                // the file watcher! Maybe the thread the watcher is running on (I believe
+                // that is what happens when you use ReadDirectoryChangesW) is locking the
+                // file, but I have no idea why it would do that. The error message you get
+                // from GetLastError() after MoveFileA failes is ERROR_FILE_NOT_FOUND. I
+                // have no idea why.
+
                 game_dll = LoadLibraryA(GAME_DLL_NAME);
                 assert(game_dll != null);
 
@@ -615,51 +693,18 @@ main :: () {
                 assert(game_update != null);
                 game_get_audio_samples = xx GetProcAddress(game_dll, "game_get_audio_samples");
                 assert(game_get_audio_samples != null);
+
+                remove it;
+                break;
             }
+            game_update(*context.base, game_memory, input, dt, hotloaded, changed_file_names);
+            input_event_count=0;
         }
 
-
-        //
-        // Check for reloaded files.
-        //
-        
-        {
-            // There's some stuff wrong with this.
-            // @TODO: Windows likes to notify you twice on consecutive frames if a file has been changed.
-            // Find a way to ignore these.
-
-            // Blender also likes to save to a temp file with a "@" at the end of the file extension, then delete the 
-            // old file and rename the save to the original file name. This causes the watcher to see the creation of
-            // the temp file (for some reason), then 
-
-            scope_mark(*frame_arena);
-
-            changed_files: [..] string;
-            if HasOverlappedIoCompleted(overlapped) {
-                bytes_transferred: u32;
-                success := GetOverlappedResult(dir, *overlapped, *bytes_transferred, .FALSE);
-                if success && bytes_transferred != 0 {
-                    notif := cast(*FILE_NOTIFY_INFORMATION, file_notifications.data);
-                    while (true) {
-                         // The FILE_NOTIFY_CHANGE_FILE_NAME flag specified when initting the watcher causes it to 
-                         // detect file deletions. We don't care about those, but we do care about name changes.
-                        if notif.Action != FILE_ACTION_REMOVED {
-                            success, name := utf16_to_ascii(.{notif.FileNameLength / 2, notif.FileName.data}, *frame_arena);
-                            if success {
-                                append(*changed_files, *frame_arena).* = name;
-                            }
-                        }
-
-                        if notif.NextEntryOffset == 0 break;
-                        notif = xx (cast(*u8, notif) + notif.NextEntryOffset);
-                    }
-                }
-
-                read_directory_changes();
-            }
-
-            game_update(*context.base, game_memory, input, time_elapsed, hotloaded, changed_files);
-            input_event_count=0;
+        if changed_files.count == 0 {
+            // Prevent too many reloaded asset names from piling up.
+            changed_files.allocated = 0;
+            clear(*changed_file_arena);
         }
 
         assert(frame_arena.current == 0);
@@ -673,8 +718,7 @@ main :: () {
         // stack could just call "restore_mark" and set the current to 0 even if
         // someone lower in the call stack could have done it.
         // This causes us to use more memory than we should.
-        
-        
+      
 
         //
         // Do audio update
@@ -761,3 +805,4 @@ utf16_to_ascii :: (utf16: [] u16, arena: *Memory_Arena) -> bool, string {
 
     return true, .{utf16.count, ascii};
 }
+
