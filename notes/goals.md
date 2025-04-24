@@ -69,3 +69,7 @@ Adding the level name entry bar was a mistake. I will only add editor features w
 Getting gameplay features into a good-enough state for the exhibition is the PRIORITY.
 
 For after the exhibition, I need to address the fact that this doesn't feel like _my_ game, it just feels like a game. Like I had some ideas one day and thought, "That would be cool, I guess". I need to understand how to make it my own, but I can't do that right now because the exhibition is a month away.
+
+
+##### 2025 - 4 - 23 Addendum: Course Correction 2
+I did asset hot-reloading which turned out to be a hackerman impulse. I think that qualifies as an editor feature. Let's define it like this. Any feature that the end user WILL NOT INTERACT WITH is by definition from the hackerman impulse. As such, those can be shunted to editor days which we can schedule as editor programming days in slots that used to be for editor programming, but now that most of that is done are for gameplay programming.

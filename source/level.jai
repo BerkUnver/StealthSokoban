@@ -1016,6 +1016,11 @@ get_entrance_for_overworld_exit :: (level: *Level, exit: *Overworld_Exit, log_er
     }
 
     e := get_entity(level, exit.entrance);
+    
+    // This is one of the circumstances we might expect get_entity to fail it.
+    // We could have deleted the corresponding Overworld_Entrance.
+    if !e return null;
+
     entrance := as(e, Overworld_Entrance);
     if !entrance {
         if log_errors log(.ERROR, "The Overworld_Exit with eid % has an entrance assigned, but it is a % rather than an Overworld_Entrance.\n", exit.eid, e.type);

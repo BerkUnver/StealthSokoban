@@ -65,26 +65,30 @@ For people in the exhibition to thoroughly understand and enjoy the demo, we nee
 
 Now, let's sort these by priority.
 
-# NEED
+# NEED OR THE GAME BREAKS
 - ~~Saving level state with checkpoints. When you die you go back to the last checkpoint. <--- DYNAMIC MEMORY ALLOCATION?~~
 - ~~Level entrance and exit~~
 - Pause menu with options to exit the current level, reset the demo.
 - ~~Overworld exits only activate once you have completed the corresponding level~~
-- More introductory levels
-
-# WE SHOULD HAVE
-- Better meshes for level items
-- SFX. Walking, pushing, etc.
-- Some visual indication of when the pulling button has been pressed.
-- Playtesting!
-- Multipush
+- Enemy pre-warming
 - Pulling from all directions of a block.
-- Interpolation for player movement, including pulling blocks.
+- Store the overworld state for when you return
+- Make a release mode where all the developer hotkeys are disabled.
+
+# NEED OR THE GAME IS INCOMPREHENSIBLE
+- Better meshes for level items
 - Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
 - Better vfx for invisible parts of the level. The color of what you can see should "leak" into the areas you cannot see.
-- MUSIC. A tastefully-chosen selection of not-well-known classical music is likely the best we can do for now.
 - Some explanation of basic movement. Input hinting in the game?
-- Enemy pre-warming
+- Some visual indication of when the pulling button has been pressed.
+- Playtesting!
+
+# WE SHOULD HAVE
+- More introductory levels
+- SFX. Walking, pushing, etc.
+- Multipush
+- Interpolation for player movement, including pulling blocks.
+- MUSIC. A tastefully-chosen selection of not-well-known classical music is likely the best we can do for now.
 
 # WOULD BE NICE
 - Better enemy death effect (Enemies don't disappear right away, not just an orange cube).
