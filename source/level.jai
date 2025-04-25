@@ -1,12 +1,13 @@
 Level :: struct {
     using types: Entity_Types;
-    
-    name: string; @NoSerialize // The file name
 
-    unused_eids: [..] Entity_Id; @NoSerialize
+    enemy_pre_warm_ticks: int;
+   
+    name: string; @NoSerialize // The file name
     entities: Table(Entity_Id, *Entity); @NoSerialize
-    
+    unused_eids: [..] Entity_Id; @NoSerialize
     view_texture: View_Texture; @NoSerialize
+
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
     // between what is modifiable in the editor (which should be as close as we can get to a 
@@ -332,7 +333,7 @@ Enemy :: struct {
     facing: Facing;
 
     vfx_modifiers: Enemy_Vfx_Modifiers; @NoSerialize
-    moving_from: Vector3; @NoSerialize
+    vfx_moving_from: Vector3; @NoSerialize
 
     result_state: enum u8 {
         ALIVE;
@@ -1042,7 +1043,7 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     if enemy.vfx_modifiers & .MOVING {
         weight := level.enemy_timer / ENEMY_MOVING_VFX_TIME;
         weight = weight * weight;
-        position := (to_vector3(enemy.position) - enemy.moving_from) * (1 - weight);
+        position := (to_vector3(enemy.position) - enemy.vfx_moving_from) * (1 - weight);
         matrix = make_translation_matrix4(-position);
     }
 
@@ -1259,7 +1260,7 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
 }
 
 
-// This takes in all the entities that have a "desired_position", and tries to apply them.
+// This takes in all the entities that have a "desired_...", and tries to apply them.
 use_desired_positions :: (using level: *Level) -> bool {
     using context.game_context;
 
@@ -1362,6 +1363,7 @@ use_desired_positions :: (using level: *Level) -> bool {
         if #complete it.result_state == {
             case .ALIVE;
                 if it.desired_vfx_modifiers & .MOVING {
+                    it.vfx_moving_from = to_vector3(it.position);
                     play_positional_sound(level, it.desired_position, footstep);
                 }
 
@@ -1394,6 +1396,169 @@ use_desired_positions :: (using level: *Level) -> bool {
 
     return true;
 }
+
+
+gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
+    if !just_do_falls {
+        // Run the Enemy_Despawner update BEFORE we do enemy movement.
+        // That way, only enemies that were already in a grid cell get despawned.
+        for * _Enemy_Despawner {
+            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+            assert(in_bounds);
+
+            eid := collision[index];
+            if !eid continue;
+            
+            e := get_entity(level, eid);
+            enemy := as(e, Enemy);
+            if !enemy continue;
+            
+            collision[index] = 0;
+            delete_entity(level, eid);
+        }
+
+        for * _Enemy {
+            if is_colliding_below(level, it.position) {
+                can_move_to :: (using level: *Level, position: Vector3i) -> bool {
+                    if !is_colliding_below(level, position) return false;
+                    in_bounds, index := get_3d_index(position, level_position, level_size);
+                    assert(in_bounds);
+                    eid := collision[index];
+                    if eid == 0 return true;
+                    if get_entity(level, eid).type == .Block return false;
+                    return true;
+                }
+
+
+                moved := true;
+                new_facing := it.facing;
+                desired_direction := facing_to_vector3i(it.facing);
+
+                if !can_move_to(level, it.position + desired_direction) {
+                    if #complete it.favored_direction == {
+                        case .LEFT;
+                            new_facing = facing_left(it.facing);
+                        case .RIGHT;    
+                            new_facing = facing_right(it.facing);
+                    }
+
+                    desired_direction = facing_to_vector3i(new_facing);
+
+                    if !can_move_to(level, it.position + desired_direction) {
+                        if #complete it.favored_direction == {
+                            case .LEFT;
+                                new_facing = facing_right(it.facing);
+                            case .RIGHT;
+                                new_facing = facing_left(it.facing);
+                        }
+
+                        desired_direction = facing_to_vector3i(new_facing);
+
+                        if !can_move_to(level, it.position + desired_direction) {
+                            new_facing = facing_opposite(it.facing);
+                            desired_direction = facing_to_vector3i(new_facing);
+
+                            if !can_move_to(level, it.position + desired_direction) {
+                                moved = false;
+                            }
+                        }
+                    }
+                }
+
+
+                if moved {
+                    it.facing = new_facing;
+                    // It's okay to set this here instead of when we actually go to do the move
+                    // later because either an enemy move succeeds or the enemy is destroyed.
+                    // Maybe we should have a desired_facing variable like the other members
+                    // to be consistent.
+
+                    it.desired_position = it.position + desired_direction;
+                    it.desired_vfx_modifiers = .MOVING;
+                } else {
+                    it.desired_position = it.position;
+                    it.desired_vfx_modifiers = 0;
+                }
+            } else {
+                it.desired_position = it.position;
+                it.desired_position.y -= 1;
+                it.desired_vfx_modifiers = .FALLING;
+            }
+        }
+    } else {
+        for * _Enemy {
+            if is_colliding_below(level, it.position) {
+                it.desired_position = it.position;
+                it.desired_vfx_modifiers = 0;
+            } else {
+                it.desired_position = it.position;
+                it.desired_position.y -= 1;
+                it.desired_vfx_modifiers = .FALLING;
+            }
+        }
+    }
+
+    
+     
+
+    for * _Block it.desired_position = it.position;
+    
+    assert(use_desired_positions(level));
+
+    if !just_do_falls {
+        // Now that Enemies have moved, we can run enemy spawner code.
+        for * _Enemy_Spawner {
+            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+            assert(in_bounds);
+            
+            should_spawn_enemy := false;
+
+            if collision[index] == 0 {
+                should_spawn_enemy = true;
+            } else {
+                e := get_entity(level, collision[index]);
+                if e.type == .Enemy {
+                    enemy_in_bounds, enemy_index := get_3d_index(e.position, level_position, level_size);
+                    assert(enemy_in_bounds);
+                    collision[enemy_index] = 0;
+                    delete_entity(level, e.eid);
+                    append_no_resize(*mutual_annihilations, .{position = it.position});
+                } else if e.type != .Block {
+                    should_spawn_enemy = true;
+                }
+            }
+
+            if should_spawn_enemy {
+                e := make_entity(level, Enemy);
+                e.position = it.position;
+                e.vfx_modifiers |= .SPAWNING;
+
+                if it.enemy_spawner_type == {
+                    case .ALTERNATING;
+                        e.favored_direction = it.alternating_direction;
+                    case .ALL_RIGHT;
+                        e.favored_direction = .RIGHT;
+                    case .ALL_LEFT;
+                        e.favored_direction = .LEFT;
+                }
+
+                e.facing = it.facing;
+                assert(collision[index] == 0);
+                collision[index] = e.eid;
+            }
+
+
+            if it.enemy_spawner_type == .ALTERNATING {
+                // Flip the direction every tick
+                if it.alternating_direction == .LEFT {
+                    it.alternating_direction = .RIGHT;
+                } else {
+                    it.alternating_direction = .LEFT;
+                }
+            }
+        }
+    }
+} 
 
 
 gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
@@ -1555,8 +1720,11 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 if it.position != player.position continue;
                 if !it.entrance continue;
 
-                entrance = get_entrance_for_overworld_exit(level, it);
-                if entrance break;
+                maybe_entrance := get_entrance_for_overworld_exit(level, it);
+                if maybe_entrance && maybe_entrance.activated {
+                   entrance = maybe_entrance;
+                   break;
+                }
             }
         }
 
@@ -1800,7 +1968,7 @@ gameplay_update :: (using level: *Level, dt: float) {
     // I wanted to do fmod_cycling on the enemy timer no matter what state we are in so I 
     // pulled this stuff out of the .GAMEPLAY state update.
 
-    enemy_update_in_gameplay_state: enum {
+    enemy_tick_in_gameplay_state: enum {
         NONE;
         FALLING;
         ALL;
@@ -1808,9 +1976,9 @@ gameplay_update :: (using level: *Level, dt: float) {
 
     if enemy_timer >= ENEMY_TICK_TIME {
         enemy_timer = fmod_cycling(enemy_timer, ENEMY_TICK_TIME);
-        enemy_update_in_gameplay_state = .ALL;
+        enemy_tick_in_gameplay_state = .ALL;
     } else if floor(old_enemy_timer / ENEMY_TICK_TIME * FALLS_PER_ENEMY_TICK) < floor(enemy_timer / ENEMY_TICK_TIME * FALLS_PER_ENEMY_TICK) {
-        enemy_update_in_gameplay_state = .FALLING;
+        enemy_tick_in_gameplay_state = .FALLING;
     }
 
 
@@ -1953,170 +2121,13 @@ gameplay_update :: (using level: *Level, dt: float) {
             }
             */
 
-            if enemy_update_in_gameplay_state != .NONE {
-                if enemy_update_in_gameplay_state == .ALL {
-                    // Run the Enemy_Despawner update BEFORE we do enemy movement.
-                    // That way, only enemies that were already in a grid cell get despawned.
-                    for * _Enemy_Despawner {
-                        in_bounds, index := get_3d_index(it.position, level_position, level_size);
-                        assert(in_bounds);
-
-                        eid := collision[index];
-                        if !eid continue;
-                        
-                        e := get_entity(level, eid);
-                        enemy := as(e, Enemy);
-                        if !enemy continue;
-                        
-                        collision[index] = 0;
-                        delete_entity(level, eid);
-                    }
-
-                    for * _Enemy {
-                        if is_colliding_below(level, it.position) {
-                            can_move_to :: (using level: *Level, position: Vector3i) -> bool {
-                                if !is_colliding_below(level, position) return false;
-                                in_bounds, index := get_3d_index(position, level_position, level_size);
-                                assert(in_bounds);
-                                eid := collision[index];
-                                if eid == 0 return true;
-                                if get_entity(level, eid).type == .Block return false;
-                                return true;
-                            }
-
-                            it.moving_from = to_vector3(it.position);
-
-                            desired_direction := facing_to_vector3i(it.facing);
-
-                            if can_move_to(level, it.position + desired_direction) {
-                                it.desired_position = it.position + desired_direction;
-                                it.desired_vfx_modifiers = .MOVING;
-                            } else {
-                                new_facing: Facing;
-
-                                if #complete it.favored_direction == {
-                                    case .LEFT;
-                                        new_facing = facing_left(it.facing);
-                                    case .RIGHT;    
-                                        new_facing = facing_right(it.facing);
-                                }
-
-                                desired_direction := facing_to_vector3i(new_facing);
-
-                                if can_move_to(level, it.position + desired_direction) {
-                                    it.desired_position = it.position + desired_direction;
-                                    it.desired_vfx_modifiers = .MOVING;
-                                    it.facing = new_facing;
-                                } else {
-                                    new_facing: Facing;
-                                    if #complete it.favored_direction == {
-                                        case .LEFT;
-                                            new_facing = facing_right(it.facing);
-                                        case .RIGHT;
-                                            new_facing = facing_left(it.facing);
-                                    }
-
-                                    desired_direction := facing_to_vector3i(new_facing);
-
-                                    if can_move_to(level, it.position + desired_direction) {
-                                        it.desired_position = it.position + desired_direction;
-                                        it.desired_vfx_modifiers = .MOVING;
-                                        it.facing = new_facing;
-                                    } else {
-                                        new_facing := facing_opposite(it.facing);
-                                        desired_direction := facing_to_vector3i(new_facing);
-
-                                        if can_move_to(level, it.position + desired_direction) {
-                                            it.desired_position = it.position + desired_direction;
-                                            it.desired_vfx_modifiers = .MOVING;
-                                            it.facing = new_facing;
-                                        } else {
-                                            it.desired_position = it.position;
-                                            it.desired_vfx_modifiers = 0;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            it.desired_position = it.position;
-                            it.desired_position.y -= 1;
-                            it.desired_vfx_modifiers = .FALLING;
-                        }
-                    }
-                } else {
-                    for * _Enemy {
-                        if is_colliding_below(level, it.position) {
-                            it.desired_position = it.position;
-                            it.desired_vfx_modifiers = 0;
-                        } else {
-                            it.desired_position = it.position;
-                            it.desired_position.y -= 1;
-                            it.desired_vfx_modifiers = .FALLING;
-                        }
-                    }
-                }
-
-                
-                 
-
-                for * _Block it.desired_position = it.position;
-                
-                assert(use_desired_positions(level));
-
-                if enemy_update_in_gameplay_state == .ALL {
-                    // Now that Enemies have moved, we can run enemy spawner code.
-                    for * _Enemy_Spawner {
-                        in_bounds, index := get_3d_index(it.position, level_position, level_size);
-                        assert(in_bounds);
-                        
-                        should_spawn_enemy := false;
-
-                        if collision[index] == 0 {
-                            should_spawn_enemy = true;
-                        } else {
-                            e := get_entity(level, collision[index]);
-                            if e.type == .Enemy {
-                                enemy_in_bounds, enemy_index := get_3d_index(e.position, level_position, level_size);
-                                assert(enemy_in_bounds);
-                                collision[enemy_index] = 0;
-                                delete_entity(level, e.eid);
-                                append_no_resize(*mutual_annihilations, .{position = it.position});
-                            } else if e.type != .Block {
-                                should_spawn_enemy = true;
-                            }
-                        }
-
-                        if should_spawn_enemy {
-                            e := make_entity(level, Enemy);
-                            e.position = it.position;
-                            e.vfx_modifiers |= .SPAWNING;
-
-                            if it.enemy_spawner_type == {
-                                case .ALTERNATING;
-                                    e.favored_direction = it.alternating_direction;
-                                case .ALL_RIGHT;
-                                    e.favored_direction = .RIGHT;
-                                case .ALL_LEFT;
-                                    e.favored_direction = .LEFT;
-                            }
-
-                            e.facing = it.facing;
-                            assert(collision[index] == 0);
-                            collision[index] = e.eid;
-                        }
-
-
-                        if it.enemy_spawner_type == .ALTERNATING {
-                            // Flip the direction every tick
-                            if it.alternating_direction == .LEFT {
-                                it.alternating_direction = .RIGHT;
-                            } else {
-                                it.alternating_direction = .LEFT;
-                            }
-                        }
-                    }
-                }
-            } 
+            if enemy_tick_in_gameplay_state == {
+                case .NONE;
+                case .FALLING;
+                    gameplay_enemy_tick(level, just_do_falls=true);
+                case .ALL;
+                    gameplay_enemy_tick(level, just_do_falls=false);
+            }
 
 
             for * mutual_annihilations {

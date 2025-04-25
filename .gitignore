@@ -15,3 +15,5 @@ screenshots
 
 assets/reaper/Backups
 # Reaper's backup folder
+
+__pycache__

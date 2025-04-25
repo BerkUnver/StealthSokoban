@@ -77,8 +77,8 @@ Now, let's sort these by priority.
 
 # NEED OR THE GAME IS INCOMPREHENSIBLE
 - Better meshes for level items
-- Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
 - Better vfx for invisible parts of the level. The color of what you can see should "leak" into the areas you cannot see.
+- Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
 - Some explanation of basic movement. Input hinting in the game?
 - Some visual indication of when the pulling button has been pressed.
 - Playtesting!

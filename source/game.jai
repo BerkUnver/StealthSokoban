@@ -708,6 +708,8 @@ editor_draw_imgui :: (using level: *Level, arena: *Memory_Arena) -> new_level_na
         e := get_entity(level, editor.selected);
         type := ENTITIES[e.type];
         imgui_for_value(e, type, head, item_size, arena);
+    } else {
+        imgui_for_value(level, type_info(Level), head, item_size, arena);
     }
 
     return new_level_name;
@@ -807,14 +809,6 @@ draw :: (using level: *Level, mode: Game_Mode) {
         bind_and_draw(*enemy_annihilation_mesh);
     }
 
-
-    set_uniform("color", Enemy_Despawner.COLOR);
-    for * _Enemy_Despawner {
-        matrix := get_enemy_despawner_draw_info(it);
-        set_uniform("model_to_world", matrix);
-        bind_and_draw(enemy_despawner_mesh);
-    }
-
     
     set_uniform("color", Exit.COLOR);
     for * _Exit {
@@ -833,6 +827,14 @@ draw :: (using level: *Level, mode: Game_Mode) {
         set_uniform_bitmap("bitmap", 1, bitmap);
         bind_and_draw(enemy_mesh);
     }
+
+    for * _Enemy_Despawner {
+        matrix := get_enemy_despawner_draw_info(it);
+        set_uniform("model_to_world", matrix);
+        set_uniform_bitmap("bitmap", 1, enemy_spawner_bitmap);
+        bind_and_draw(enemy_despawner_mesh);
+    }
+
 
     
     OVERWORLD_ENTRANCE_DEFAULT_COLOR :: Vector4.{0, 0, 0, 1};

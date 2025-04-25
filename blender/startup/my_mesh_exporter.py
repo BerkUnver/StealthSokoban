@@ -1,3 +1,14 @@
+# There are a couple problems with this script.
+
+# @TODO: For some reason, a mesh does not have uv_layers when you are 
+# in edit mode, causing exporting to fail unless you switch to object
+# mode.
+
+# @TODO: The bpy.data.meshes.new call generates an extra mesh in the 
+# mesh data block of your blender file. This isn't that much of a
+# problem, as the mesh gets deleted when you exit Blender because it
+# has zero references. This shouldn't be hard to fix either.
+
 import bmesh
 import bpy
 import bpy_extras
