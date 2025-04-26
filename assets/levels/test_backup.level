@@ -61,50 +61,22 @@ types
 		moveable 1
 		;
 	]
-	_Enemy 2[
-		e
-			eid 4
-			position
-				z 2
-				;
-			;
-		;
+	_Enemy 1[
 		e
 			eid 5
 			position
-				x -1
+				x -2
 				z 2
 				;
 			;
-		;
-	]
-	_Enemy_Spawner 1[
-		e
-			eid 6
-			position
-				x 2
-				z 2
-				;
-			;
-		facing 2
-		;
-	]
-	_Enemy_Despawner 1[
-		e
-			eid 9
-			position
-				x -3
-				z 2
-				;
-			;
+		facing 3
 		;
 	]
 	_Player 1[
 		e
 			eid 7
 			position
-				x -1
-				z -1
+				x -2
 				;
 			;
 		;
@@ -120,4 +92,5 @@ types
 		;
 	]
 	;
+enemy_pre_warm_ticks 2
 ;

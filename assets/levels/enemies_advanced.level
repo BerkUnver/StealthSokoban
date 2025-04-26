@@ -533,4 +533,5 @@ types
 		;
 	]
 	;
+enemy_pre_warm_ticks 10
 ;

@@ -183,6 +183,16 @@ Player_State :: enum {
 }
 
 
+/*
+Player_State :: enum  {
+    ALIVE;
+    SPAWNING;
+    DEAD;
+    DEBUG_MOVEMENT;
+}
+*/
+
+
 Player :: struct {
     using #as e: Entity;
     state: Player_State; @NoSerialize
@@ -205,6 +215,7 @@ Player :: struct {
             interp: float;
         }
     } @NoSerialize
+    desired_position: Vector3i; @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -940,6 +951,16 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
     self_ptr = .{arena.current, xx level};
     checkpoint = alloc_view(arena, self_ptr.count, u8, zero_init = false); 
 
+    
+    for 0..enemy_pre_warm_ticks-1 {
+        gameplay_enemy_tick(level, just_do_falls=false, do_vfx=false);
+        for 1..FALLS_PER_ENEMY_TICK-1 {
+            gameplay_enemy_tick(level, just_do_falls=true, do_vfx=false);
+        }
+        // @TODO: Detect when enemies walk into the player, issue an error!
+    }
+
+
     if skip_intro {
         set_state(player, .GROUND);
         set_state(level, .PLAYING);
@@ -948,7 +969,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
         set_state(player, .SPAWNING);
         // State is default set to FADE_IN_START.
     }
-    
+
     return true;
 }
 
@@ -1261,7 +1282,7 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
 
 
 // This takes in all the entities that have a "desired_...", and tries to apply them.
-use_desired_positions :: (using level: *Level) -> bool {
+use_desired_positions :: (using level: *Level, do_vfx: bool) -> bool {
     using context.game_context;
 
     memset(desired_collision.data, 0, byte_count(desired_collision));
@@ -1362,9 +1383,13 @@ use_desired_positions :: (using level: *Level) -> bool {
     for * _Enemy {
         if #complete it.result_state == {
             case .ALIVE;
-                if it.desired_vfx_modifiers & .MOVING {
-                    it.vfx_moving_from = to_vector3(it.position);
-                    play_positional_sound(level, it.desired_position, footstep);
+                if do_vfx {
+                    if it.desired_vfx_modifiers & .MOVING {
+                        it.vfx_moving_from = to_vector3(it.position);
+                        play_positional_sound(level, it.desired_position, footstep);
+                    }
+                } else {
+                    assert(it.desired_vfx_modifiers == 0);
                 }
 
                 it.vfx_modifiers |= it.desired_vfx_modifiers;
@@ -1374,7 +1399,7 @@ use_desired_positions :: (using level: *Level) -> bool {
                 // We currently use the shader that doesn't draw things if they are outside the level.
                 // I am assuming that enemies only fall out of the bottom of the level when this is true.
                 // Therefore, we should draw the annihilation only at the enemy's old position.
-                append_no_resize(*mutual_annihilations, .{position = it.position});
+                if do_vfx append_no_resize(*mutual_annihilations, .{position = it.position});
                 delete_entity(level, it.eid);
                 it_index -= 1; // :DeleteEntityInLoop
                 
@@ -1398,7 +1423,7 @@ use_desired_positions :: (using level: *Level) -> bool {
 }
 
 
-gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
+gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
     if !just_do_falls {
         // Run the Enemy_Despawner update BEFORE we do enemy movement.
         // That way, only enemies that were already in a grid cell get despawned.
@@ -1474,7 +1499,8 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
                     // to be consistent.
 
                     it.desired_position = it.position + desired_direction;
-                    it.desired_vfx_modifiers = .MOVING;
+                    if do_vfx it.desired_vfx_modifiers = .MOVING;
+                    else      it.desired_vfx_modifiers = 0;
                 } else {
                     it.desired_position = it.position;
                     it.desired_vfx_modifiers = 0;
@@ -1482,7 +1508,8 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
             } else {
                 it.desired_position = it.position;
                 it.desired_position.y -= 1;
-                it.desired_vfx_modifiers = .FALLING;
+                if do_vfx it.desired_vfx_modifiers = .FALLING;
+                else      it.desired_vfx_modifiers = 0;
             }
         }
     } else {
@@ -1493,7 +1520,8 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
             } else {
                 it.desired_position = it.position;
                 it.desired_position.y -= 1;
-                it.desired_vfx_modifiers = .FALLING;
+                if do_vfx it.desired_vfx_modifiers = .FALLING;
+                else      it.desired_vfx_modifiers = 0;
             }
         }
     }
@@ -1503,7 +1531,7 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
 
     for * _Block it.desired_position = it.position;
     
-    assert(use_desired_positions(level));
+    assert(use_desired_positions(level, do_vfx));
 
     if !just_do_falls {
         // Now that Enemies have moved, we can run enemy spawner code.
@@ -1531,7 +1559,7 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool) {
             if should_spawn_enemy {
                 e := make_entity(level, Enemy);
                 e.position = it.position;
-                e.vfx_modifiers |= .SPAWNING;
+                if do_vfx e.vfx_modifiers |= .SPAWNING;
 
                 if it.enemy_spawner_type == {
                     case .ALTERNATING;
@@ -1898,7 +1926,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         }
 
         
-        if !use_desired_positions(level) return;
+        if !use_desired_positions(level, do_vfx=true) return;
 
         assert(player.state != .DEAD);
         // There's no way you could walk into mutually annhilating enemies while
@@ -2000,133 +2028,12 @@ gameplay_update :: (using level: *Level, dt: float) {
                 set_state(level, .PLAYING);
             }
         case .PLAYING; 
-            // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
-            // I will see if this turns out to be a bad idea.
-
-            /*
-
-            // The following code is nontrivial so I will write an explanation.
-            // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
-            // Here's why:
-            // A cell will only be visible if it has at least one neighboring cell that is visible.
-            // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
-            // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
-            // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
-            // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
-           
-            // :SlowRaycast
-            // @Speed So, this is our first real reality check of this game.
-            // Running this with ~4000 raycasts/frame is already lagging out the game.
-            // For this initial development period this is fine, but we will soon have levels bigger than that.
-            // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
-
-            //      -berk, 2025 - 2 - 3
-
-
-            for :iterate_vector3i level_size {
-                viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
-            }
-            
-            scope_mark(frame_arena);
-            positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
-            position_count := 1;
-            
-            player := *_Player[0];
-
-            player_success, player_index := get_3d_index(player.position, level_position, level_size);
-            assert(player_success);
-            positions[0] = .{player_index, player.position};
-            viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
-            
-            end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
-            while position_count != 0 {
-                position_count -= 1;
-                using index_and_position := positions[position_count];
-
-                start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
-                
-                visitor :: (position: Vector3i, using level: *Level) -> terminate_raycast: bool {
-                    in_bounds, index := get_3d_index(position, level_position, level_size);
-                    if !in_bounds return false;
-                    eid := collision[index];
-                    if is_null(eid) return false;
-                    return as(eid, Block) != null;
-                }
-                
-                if raycast(start, end, visitor, level) continue;
-
-                viewed[index] |= (.SEEN | .VISIBLE);
-
-                check_position :: (p: Vector3i) #expand {
-                    in_bounds, index := get_3d_index(p, level_position, level_size);
-                    if !in_bounds || (viewed[index] & .QUEUED_FOR_FLOODFILL) return;
-                    eid := collision[index];
-                    if as(eid, Block) return;
-                    viewed[index] |= .QUEUED_FOR_FLOODFILL;
-                    positions[position_count] = .{index, p};
-                    position_count += 1;
-                }
-                
-                // We only need to floodfill in the directions facing away from where the player is facing.
-                // This is important because we add a little epsilon fudge factor to allow the raycast to
-                // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
-                // in all directions, we could end up having a successful raycast above a wall, floodfilling
-                // downwards to a place behind a wall, then doing a raycast from there and having it
-                // succeed if the ray perfectly aligns with grid boundaries.
-
-                // [*] [ ] [ ]
-                // [W] [S] [W]
-                // [S] [S] [P]
-
-                // P: Player, W: Fall, S: Succeed raycast
-                // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
-                // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
-                // factor even though it shouldn't.
-
-                // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
-                // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
-                // cause the "fudge factor" to be stricter against the player instead of looser against them,
-                // which would prevent this ambiguity from happening.
-                
-                // :SlowRaycast
-                // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
-                // fudge factor is going to have to be stricter anyway because we can't do floodfilling
-                // in a compute shader.
-
-                //          - berk, 11 - 2 - 2025
-
-                check_axis :: (i: int) #expand #no_abc {
-                    diff := end.component[i] - start.component[i];
-                    if diff < 0 {
-                        positive := position;
-                        positive.component[i] += 1;
-                        check_position(positive);
-                    } else if diff > 0 {
-                        negative := position;
-                        negative.component[i] -= 1;
-                        check_position(negative);
-                    } else {
-                        positive := position;
-                        positive.component[i] += 1;
-                        check_position(positive);
-                        negative := position;
-                        negative.component[i] -= 1;
-                        check_position(negative);
-                    }
-                }
-
-                check_axis(0);
-                check_axis(1);
-                check_axis(2);
-            }
-            */
-
             if enemy_tick_in_gameplay_state == {
                 case .NONE;
                 case .FALLING;
-                    gameplay_enemy_tick(level, just_do_falls=true);
+                    gameplay_enemy_tick(level, just_do_falls=true, do_vfx=true);
                 case .ALL;
-                    gameplay_enemy_tick(level, just_do_falls=false);
+                    gameplay_enemy_tick(level, just_do_falls=false, do_vfx=true);
             }
 
 
@@ -2230,6 +2137,128 @@ gameplay_update :: (using level: *Level, dt: float) {
     //
     // Update floodfill view
     //
+
+
+    // I commented this out because I want to experiement with a purely floodfill-based visibility mechanic.
+    // I will see if this turns out to be a bad idea.
+
+    /*
+
+    // The following code is nontrivial so I will write an explanation.
+    // We are using a variant of the naive version of floodfill where you try to fill all the cells adjacent to you.
+    // Here's why:
+    // A cell will only be visible if it has at least one neighboring cell that is visible.
+    // That means if a raycast fails, we can stop propagating the raycast early. This might be premature optimization
+    // because in our worst-cast scenario you will have to check most of the cells in the level anyway.
+    // The QUEUED_FOR_FLOODFILL bit exists to tell us that a cell is already on the floodfill stack.
+    // This prevents many copies of the same cell from ending up on the floodfill stack and blowing up memory.
+   
+    // :SlowRaycast
+    // @Speed So, this is our first real reality check of this game.
+    // Running this with ~4000 raycasts/frame is already lagging out the game.
+    // For this initial development period this is fine, but we will soon have levels bigger than that.
+    // Rather than optimizing CPU floodfill, the best solution might to be to run it as a compute shader.
+
+    //      -berk, 2025 - 2 - 3
+
+
+    for :iterate_vector3i level_size {
+        viewed[it_index] &= ~(.VISIBLE | .QUEUED_FOR_FLOODFILL);
+    }
+    
+    scope_mark(frame_arena);
+    positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, struct {index: s64; position: Vector3i;}, zero_init=false);
+    position_count := 1;
+    
+    player := *_Player[0];
+
+    player_success, player_index := get_3d_index(player.position, level_position, level_size);
+    assert(player_success);
+    positions[0] = .{player_index, player.position};
+    viewed[player_index] |= .QUEUED_FOR_FLOODFILL;
+    
+    end := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
+    while position_count != 0 {
+        position_count -= 1;
+        using index_and_position := positions[position_count];
+
+        start := to_vector3(position) + Vector3.{0.5, 0.5, 0.5};
+        
+        visitor :: (position: Vector3i, using level: *Level) -> terminate_raycast: bool {
+            in_bounds, index := get_3d_index(position, level_position, level_size);
+            if !in_bounds return false;
+            eid := collision[index];
+            if is_null(eid) return false;
+            return as(eid, Block) != null;
+        }
+        
+        if raycast(start, end, visitor, level) continue;
+
+        viewed[index] |= (.SEEN | .VISIBLE);
+
+        check_position :: (p: Vector3i) #expand {
+            in_bounds, index := get_3d_index(p, level_position, level_size);
+            if !in_bounds || (viewed[index] & .QUEUED_FOR_FLOODFILL) return;
+            eid := collision[index];
+            if as(eid, Block) return;
+            viewed[index] |= .QUEUED_FOR_FLOODFILL;
+            positions[position_count] = .{index, p};
+            position_count += 1;
+        }
+        
+        // We only need to floodfill in the directions facing away from where the player is facing.
+        // This is important because we add a little epsilon fudge factor to allow the raycast to
+        // not behave inconsistently when it perfectly aligns with grid boundaries. If we raycast
+        // in all directions, we could end up having a successful raycast above a wall, floodfilling
+        // downwards to a place behind a wall, then doing a raycast from there and having it
+        // succeed if the ray perfectly aligns with grid boundaries.
+
+        // [*] [ ] [ ]
+        // [W] [S] [W]
+        // [S] [S] [P]
+
+        // P: Player, W: Fall, S: Succeed raycast
+        // We floodfill to above the wall on the left, which floodfills in the z axis and the raycast
+        // succeeds, which then floodfills downwards into [*], which succeeds because of the fudge
+        // factor even though it shouldn't.
+
+        // This could possibly hint to deeper underlying logical fallacies in the code. BE ON THE
+        // LOOKOUT FOR FURTHER WEIRD STUFF. If anything else weird happens it might be good to
+        // cause the "fudge factor" to be stricter against the player instead of looser against them,
+        // which would prevent this ambiguity from happening.
+        
+        // :SlowRaycast
+        // If @Speed becomes an issue and we decide to put do this as a compute shader then the 
+        // fudge factor is going to have to be stricter anyway because we can't do floodfilling
+        // in a compute shader.
+
+        //          - berk, 11 - 2 - 2025
+
+        check_axis :: (i: int) #expand #no_abc {
+            diff := end.component[i] - start.component[i];
+            if diff < 0 {
+                positive := position;
+                positive.component[i] += 1;
+                check_position(positive);
+            } else if diff > 0 {
+                negative := position;
+                negative.component[i] -= 1;
+                check_position(negative);
+            } else {
+                positive := position;
+                positive.component[i] += 1;
+                check_position(positive);
+                negative := position;
+                negative.component[i] -= 1;
+                check_position(negative);
+            }
+        }
+
+        check_axis(0);
+        check_axis(1);
+        check_axis(2);
+    }
+    */
 
 
     for :iterate_vector3i level_size {
