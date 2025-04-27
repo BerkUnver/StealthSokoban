@@ -1687,6 +1687,62 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
 }
 
 
+get_enemy_next_position :: (using level: *Level, enemy: *Enemy) -> moved: bool, desired_position: Vector3i, desired_facing: Facing {
+    can_move_to :: (using level: *Level, position: Vector3i) -> bool {
+        if !is_colliding_below(level, position) return false;
+        in_bounds, index := get_3d_index(position, level_position, level_size);
+        assert(in_bounds);
+        eid := collision[index];
+        if eid == 0 return true;
+        if get_entity(level, eid).type == .Block return false;
+        return true;
+    }
+
+
+    moved := true;
+    new_facing := enemy.facing;
+    desired_direction := facing_to_vector3i(enemy.facing);
+
+    if can_move_to(level, enemy.position + desired_direction) {
+        return true, enemy.position + desired_direction, new_facing;
+    }
+
+    if #complete enemy.favored_direction == {
+        case .LEFT;
+            new_facing = facing_left(enemy.facing);
+        case .RIGHT;    
+            new_facing = facing_right(enemy.facing);
+    }
+
+    desired_direction = facing_to_vector3i(new_facing);
+
+    if can_move_to(level, enemy.position + desired_direction) {
+        return true, enemy.position + desired_direction, new_facing;
+    }
+
+
+    if #complete enemy.favored_direction == {
+        case .LEFT;
+            new_facing = facing_right(enemy.facing);
+        case .RIGHT;
+            new_facing = facing_left(enemy.facing);
+    }
+
+    if can_move_to(level, enemy.position + desired_direction) {
+        return true, enemy.position + desired_direction, new_facing;
+    }
+
+    new_facing = facing_opposite(enemy.facing);
+    desired_direction = facing_to_vector3i(new_facing);
+
+    if can_move_to(level, enemy.position + desired_direction) {
+        return true, enemy.position + desired_direction, new_facing;
+    }
+    
+    return false, .{}, 0;
+}
+
+
 gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
     set_default_desired(level);
 
@@ -1710,61 +1766,15 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
 
         for * _Enemy {
             if is_colliding_below(level, it.position) {
-                can_move_to :: (using level: *Level, position: Vector3i) -> bool {
-                    if !is_colliding_below(level, position) return false;
-                    in_bounds, index := get_3d_index(position, level_position, level_size);
-                    assert(in_bounds);
-                    eid := collision[index];
-                    if eid == 0 return true;
-                    if get_entity(level, eid).type == .Block return false;
-                    return true;
-                }
-
-
-                moved := true;
-                new_facing := it.facing;
-                desired_direction := facing_to_vector3i(it.facing);
-
-                if !can_move_to(level, it.position + desired_direction) {
-                    if #complete it.favored_direction == {
-                        case .LEFT;
-                            new_facing = facing_left(it.facing);
-                        case .RIGHT;    
-                            new_facing = facing_right(it.facing);
-                    }
-
-                    desired_direction = facing_to_vector3i(new_facing);
-
-                    if !can_move_to(level, it.position + desired_direction) {
-                        if #complete it.favored_direction == {
-                            case .LEFT;
-                                new_facing = facing_right(it.facing);
-                            case .RIGHT;
-                                new_facing = facing_left(it.facing);
-                        }
-
-                        desired_direction = facing_to_vector3i(new_facing);
-
-                        if !can_move_to(level, it.position + desired_direction) {
-                            new_facing = facing_opposite(it.facing);
-                            desired_direction = facing_to_vector3i(new_facing);
-
-                            if !can_move_to(level, it.position + desired_direction) {
-                                moved = false;
-                            }
-                        }
-                    }
-                }
-
-
+                moved, desired_position, desired_facing := get_enemy_next_position(level, it);
                 if moved {
-                    it.facing = new_facing;
+                    it.facing = desired_facing;
                     // It's okay to set this here instead of when we actually go to do the move
                     // later because either an enemy move succeeds or the enemy is destroyed.
                     // Maybe we should have a desired_facing variable like the other members
                     // to be consistent.
 
-                    it.desired_position = it.position + desired_direction;
+                    it.desired_position = desired_position;
                     if do_vfx it.desired_vfx_modifiers = .MOVING;
                     else      it.desired_vfx_modifiers = 0;
                 } else {
