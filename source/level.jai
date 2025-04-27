@@ -221,7 +221,6 @@ Player :: struct {
     } @NoSerialize
 
     result_collision_state: Result_Collision_State; @NoSerialize
-    result_toggle_debug_movement_state: Player_State; @NoSerialize
 
     COLOR :: Vector4.{1, 1, 1, 1};
 }
@@ -1374,10 +1373,9 @@ use_desired :: (using level: *Level, do_vfx: bool) {
 
         case .TOGGLE_DEBUG_MOVEMENT;
             if #complete player.state == {
-                case .NORMAL; #through;
-                case .DEAD; #through;
+                case .NORMAL;
+                case .DEAD;
                 case .STUCK_INSIDE_A_BLOCK;
-                    player.result_toggle_debug_movement_state = .DEBUG_MOVEMENT;
                     
                 case .DEBUG_MOVEMENT;
                     in_bounds, index := get_3d_index(player.position, level_position, level_size);
@@ -1387,17 +1385,17 @@ use_desired :: (using level: *Level, do_vfx: bool) {
                     if !eid {
                         result_collision[index] = player.eid;
                         player.result_collision_state = .IN_COLLISION;
-                        player.result_toggle_debug_movement_state = .NORMAL;
                     } else {
                         e := get_entity(level, eid);
                         if e.type == {
                             case .Block;
-                                player.result_toggle_debug_movement_state = .STUCK_INSIDE_A_BLOCK;
+                                // :StuckInsideABlockHack
+
                             case .Enemy;
-                                player.result_toggle_debug_movement_state = .NORMAL;
                                 player.result_collision_state = .SECONDARY_ANNIHILATOR;
                                 enemy := as(e, Enemy);
                                 enemy.result_collision_state = .PRIMARY_ANNIHILATOR;
+
                             case;
                                 assert(false);
                         }
@@ -1540,14 +1538,22 @@ use_desired :: (using level: *Level, do_vfx: bool) {
                 case .DEBUG_MOVEMENT;
                     in_bounds, index := get_3d_index(player.position, level_position, level_size);
                     assert(in_bounds);
-                    eid := collision[index];
-                    assert(eid != 0);
-                    e := get_entity(level, eid);
+
+                    inside_block := false;
                     
+                    // :StuckInsideABlockHack
                     // @Hack If the player is in a Block, the result_collision_state variable never got set.
                     // We could check it for .INVALID, but that also seems like a hack, so I am doing this instead.
+                    // We could also set some kind of result_... variable on the player.
+                    eid := collision[index];
+                    if eid {
+                        e := get_entity(level, eid);
+                        if e.type == .Block inside_block = true;
+                    }
 
-                    if e.type == .Block {
+
+
+                    if inside_block {
                         player.state = .STUCK_INSIDE_A_BLOCK;
                     } else {
                         if #complete player.result_collision_state == {
@@ -1571,36 +1577,6 @@ use_desired :: (using level: *Level, do_vfx: bool) {
                     }
             }
 
-
-            if #complete player.result_toggle_debug_movement_state == {
-                case .NORMAL;
-                    if #complete player.result_collision_state == {
-                        case .INVALID;
-                            assert(false);
-
-                        case .IN_COLLISION;
-                            player.state = .NORMAL;
-
-                        case .OUT_OF_BOUNDS;
-                            player.state = .DEAD;
-
-                        case .PRIMARY_ANNIHILATOR;
-                            in_bounds, index := get_3d_index(player.position, level_position, level_size);
-                            assert(in_bounds);
-                            assert(collision[index] == player.eid);
-                            collision[index] = 0;
-                            player.state = .DEAD;
-
-                        case .SECONDARY_ANNIHILATOR;
-                            player.state = .DEAD;
-                    }
-                case .STUCK_INSIDE_A_BLOCK; 
-                    player.state = .STUCK_INSIDE_A_BLOCK;
-                case .DEBUG_MOVEMENT;
-                    player.state = .DEBUG_MOVEMENT;
-                case .DEAD;
-                    assert(false);
-            }
         case .MOVE;
             if #complete player.state == {
                 case .NORMAL;
