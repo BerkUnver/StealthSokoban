@@ -192,7 +192,9 @@ Result_Collision_State :: enum u8 {
 
 Player_State :: enum u8 {
     NORMAL;
-         // The player is inside of the collision array
+        // The player is inside of the collision array
+    DEAD;
+        // The player is not in the collision array.
     STUCK_INSIDE_A_BLOCK;
         // The player was in the DEBUG_MOVEMENT state, but when they came out of it they were
         // inside of a wall. The player is not in the collision array.
@@ -379,6 +381,9 @@ Enemy_Spawner :: struct {
     enemy_spawner_type: Enemy_Spawner_Type;
     alternating_direction: Favored_Direction; @NoSerialize
     facing: Facing;
+    
+    desired_spawn: bool;
+    result_spawn: bool;
 
     COLOR :: Vector4.{0.5, 0, 0, 1};
 }
@@ -1259,6 +1264,10 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
 }
 
 
+// Call this before you call use_desired.
+// Then, set whatever you want to be changed to what it needs to be.
+// This is mainly to prevent bugs so you don't have to remember to 
+// set everything you don't want the change to its default value.
 set_default_desired :: (using level: *Level) {
     for * _Block {
         if it.moveable it.moveable_desired_position = it.position;
@@ -1268,7 +1277,11 @@ set_default_desired :: (using level: *Level) {
         it.desired_position = it.position;
         it.desired_vfx_modifiers = 0;
     }
-    
+
+    for * _Enemy_Spawner {
+        it.desired_spawn = false;
+    }
+
     player := *_Player[0];
     player.desired.type = .NONE;
 }
@@ -1292,7 +1305,10 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
         it.result_collision_state = .INVALID;
     }
     memset(result_collision.data, 0, byte_count(result_collision));
-
+    
+    for * _Enemy_Spawner {
+        it.result_spawn = false;
+    }
 
     //
     // Try to set up the new collision array
@@ -1321,8 +1337,6 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
 
     
     for * _Enemy {
-        it.result_collision_state = .IN_COLLISION; // A baseline state. Set this to something if it needs to be something else.
-
         in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
         
         if !in_bounds {
@@ -1337,6 +1351,7 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
         eid := result_collision[index];
         if eid == 0 {
             result_collision[index] = it.eid;
+            it.result_collision_state = .IN_COLLISION;
             continue;
         }
 
@@ -1371,15 +1386,15 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
                         result_collision[index] = player.eid;
                         player.result_collision_state = .IN_COLLISION;
                     }
+                case .DEAD;
                 case .STUCK_INSIDE_A_BLOCK;
                 case .DEBUG_MOVEMENT;
             }
 
         case .TOGGLE_DEBUG_MOVEMENT;
             if #complete player.state == {
-                case .NORMAL;
-                    player.result_toggle_debug_movement_state = .DEBUG_MOVEMENT;
-
+                case .NORMAL; #through;
+                case .DEAD; #through;
                 case .STUCK_INSIDE_A_BLOCK;
                     player.result_toggle_debug_movement_state = .DEBUG_MOVEMENT;
                     
@@ -1427,17 +1442,18 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
                             }
                         } else {
                             result_collision[index] = player.eid;
+                            player.result_collision_state = .IN_COLLISION;
                         }
                     } else {
-                        if player.desired.move.position.y < level_position.y {
-                            // :PlayerStates Kill the player.
-                        } else {
-                            return false;
-                        }
+                        player.result_collision_state = .OUT_OF_BOUNDS;
                     }
+                
+                case .DEAD;
+                    assert(false); // Something is definitely wrong if we try to move while the player is dead.
 
                 case .STUCK_INSIDE_A_BLOCK;
-                    // The player will not move.
+                    assert(false); // We shouldn't be trying to move when the player is stuck inside a block (I think?)
+
                 case .DEBUG_MOVEMENT;
                     // We don't have to do anything, the player
                     // should be able to move no matter what.
@@ -1446,6 +1462,35 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
     }
 
     
+    // Technically, we should be able to run this code in an order independent from the code that puts the enemies in the
+    // new collision grid. However, we would need a way to put a "stub" in the collision grid that represents a spawning
+    // entity or something, which I'm not going to bother with right now.
+    for * _Enemy_Spawner {
+        if !it.desired_spawn continue;
+
+        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+        assert(in_bounds);
+        
+        eid := result_collision[index];
+        if eid {
+            e := get_entity(level, eid);
+            if e.type == {
+                case .Block;
+                case .Enemy;
+                    enemy := as(e, Enemy);
+                    enemy.result_collision_state = .PRIMARY_ANNIHILATOR;
+                case .Player;
+                    player := as(e, Player);
+                    player.result_collision_state = .PRIMARY_ANNIHILATOR;
+                case;
+                    assert(false);
+            }
+        } else {
+            it.result_spawn = true;
+        }
+    }
+
+
     //
     // If we made it to here, that means the move is valid and we can do the update.
     //
@@ -1505,6 +1550,47 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
     if #complete player.desired.type == {
         case .NONE;
         case .TOGGLE_DEBUG_MOVEMENT;
+            if #complete player.state == {
+                case .NORMAL; #through;
+                case .DEAD; #through;
+                case .STUCK_INSIDE_A_BLOCK;
+                    player.state = .DEBUG_MOVEMENT;
+
+                case .DEBUG_MOVEMENT;
+                    in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                    assert(in_bounds);
+                    eid := collision[index];
+                    assert(eid != 0);
+                    e := get_entity(level, eid);
+                    
+                    // @Hack If the player is in a Block, the result_collision_state variable never got set.
+                    // We could check it for .INVALID, but that also seems like a hack, so I am doing this instead.
+
+                    if e.type == .Block {
+                        player.state = .STUCK_INSIDE_A_BLOCK;
+                    } else {
+                        if #complete player.result_collision_state == {
+                            case .INVALID;
+                                assert(false);
+
+                            case .IN_COLLISION;
+                                player.state = .NORMAL;
+
+                            case .OUT_OF_BOUNDS;
+                                assert(false);
+
+                            case .PRIMARY_ANNIHILATOR;
+                                player.state = .DEAD;
+                                assert(collision[index] == player.eid);
+                                collision[index] = 0;
+                            
+                            case .SECONDARY_ANNIHILATOR;
+                                player.state = .DEAD;
+                        }
+                    }
+            }
+
+
             if #complete player.result_toggle_debug_movement_state == {
                 case .NORMAL;
                     if #complete player.result_collision_state == {
@@ -1514,19 +1600,87 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
                         case .IN_COLLISION;
                             player.state = .NORMAL;
 
-                        case .OUT_OF_BOUNDS; #through;
-                        case .PRIMARY_ANNIHILATOR; #through;
+                        case .OUT_OF_BOUNDS;
+                            player.state = .DEAD;
+
+                        case .PRIMARY_ANNIHILATOR;
+                            in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                            assert(in_bounds);
+                            assert(collision[index] == player.eid);
+                            collision[index] = 0;
+                            player.state = .DEAD;
+
                         case .SECONDARY_ANNIHILATOR;
-                            assert(false);
-                            // :PlayerStates Kill the player correctly!
+                            player.state = .DEAD;
                     }
                 case .STUCK_INSIDE_A_BLOCK; 
                     player.state = .STUCK_INSIDE_A_BLOCK;
                 case .DEBUG_MOVEMENT;
                     player.state = .DEBUG_MOVEMENT;
+                case .DEAD;
+                    assert(false);
             }
         case .MOVE;
+            if #complete player.state == {
+                case .NORMAL;
+                    if #complete player.result_collision_state == {
+                        case .INVALID;
+                            assert(false);
+
+                        case .IN_COLLISION;
+                            player.position = player.desired.move.position;
+
+                        case .OUT_OF_BOUNDS;
+                            player.state = .DEAD;
+                            // If the player went out of bounds, then they shouldn't use their new position.
+
+                        case .PRIMARY_ANNIHILATOR;
+                            player.position = player.desired.move.position;
+                            in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                            assert(in_bounds);
+                            assert(collision[index] == player.eid);
+                            collision[index] = 0;
+                            player.state = .DEAD;
+
+                        case .SECONDARY_ANNIHILATOR;
+                            player.position = player.desired.move.position;
+                            player.state = .DEAD;
+                    }
+                case .STUCK_INSIDE_A_BLOCK;
+                case .DEBUG_MOVEMENT;
+                    in_bounds, index := get_3d_index(player.desired.move.position, level_position, level_size);
+                    if in_bounds {
+                        player.position = player.desired.move.position;
+                    }
+                case .DEAD;
+                    assert(false);
+            }
             player.position = player.desired.move.position;
+    }
+
+
+    for * _Enemy_Spawner {
+        if it.result_spawn {
+            enemy := make_entity(level, Enemy);
+            enemy.position = it.position;
+            enemy.facing = it.facing;
+            if #complete it.enemy_spawner_type == {
+                case .ALTERNATING;
+                    enemy.favored_direction = it.alternating_direction;
+                case .ALL_RIGHT;
+                    enemy.favored_direction = .RIGHT;
+                case .ALL_LEFT;
+                    enemy.favored_direction = .LEFT;
+            }
+
+            if do_vfx enemy.vfx_modifiers |= .SPAWNING;
+            
+            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+            assert(in_bounds);
+            assert(collision[index] == 0);
+
+            collision[index] = enemy.eid;
+        }
     }
 
     return true;
@@ -1624,6 +1778,10 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
                 else      it.desired_vfx_modifiers = 0;
             }
         }
+
+        for * _Enemy_Spawner {
+            it.desired_spawn = true;
+        }
     } else {
         for * _Enemy {
             if is_colliding_below(level, it.position) {
@@ -1640,50 +1798,9 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
 
     assert(use_desired(level, do_vfx));
     
-    // :PlayerStates Properly kill the player if an enemy spawns underneath the player!
+    // Update enemy spawners to use the right direction.
     if !just_do_falls {
-        // Now that Enemies have moved, we can run enemy spawner code.
         for * _Enemy_Spawner {
-            in_bounds, index := get_3d_index(it.position, level_position, level_size);
-            assert(in_bounds);
-            
-            should_spawn_enemy := false;
-
-            if collision[index] == 0 {
-                should_spawn_enemy = true;
-            } else {
-                e := get_entity(level, collision[index]);
-                if e.type == .Enemy {
-                    enemy_in_bounds, enemy_index := get_3d_index(e.position, level_position, level_size);
-                    assert(enemy_in_bounds);
-                    collision[enemy_index] = 0;
-                    delete_entity(level, e.eid);
-                    append_no_resize(*mutual_annihilations, .{position = it.position});
-                } else if e.type != .Block {
-                    should_spawn_enemy = true;
-                }
-            }
-
-            if should_spawn_enemy {
-                e := make_entity(level, Enemy);
-                e.position = it.position;
-                if do_vfx e.vfx_modifiers |= .SPAWNING;
-
-                if it.enemy_spawner_type == {
-                    case .ALTERNATING;
-                        e.favored_direction = it.alternating_direction;
-                    case .ALL_RIGHT;
-                        e.favored_direction = .RIGHT;
-                    case .ALL_LEFT;
-                        e.favored_direction = .LEFT;
-                }
-
-                e.facing = it.facing;
-                assert(collision[index] == 0);
-                collision[index] = e.eid;
-            }
-
-
             if it.enemy_spawner_type == .ALTERNATING {
                 // Flip the direction every tick
                 if it.alternating_direction == .LEFT {
@@ -2017,6 +2134,10 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 play_positional_sound(level, player.position, footstep);
             }
 
+
+        case .DEAD;
+            // The player can't move if they're dead.
+
         case .STUCK_INSIDE_A_BLOCK;
             in_bounds, index := get_3d_index(player.position, level_position, level_size);
             assert(in_bounds);
@@ -2030,6 +2151,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 player.position = new_player_position;
                 play_positional_sound(level, player.position, footstep);
             }
+
     }
 }
 
