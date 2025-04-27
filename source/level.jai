@@ -427,20 +427,6 @@ View_State :: enum_flags u8 { // @Volatile :ViewState
 }
 
 
-Desired_Enemy_Move :: enum u8 {
-    EMPTY;
-    WILL_BE_FILLED;
-    MUTUAL_ANNIHILATION;
-    // we may move it somewhere else in the future.
-}
-
-
-Enemy_Move_Result :: enum u8 {
-    NOTHING;
-    MUTUAL_ANNIHILATION_HAPPENED;
-}
-
-
 Mutual_Annihilation :: struct {
     position: Vector3i;
     interp: float;
@@ -1288,7 +1274,7 @@ set_default_desired :: (using level: *Level) {
 
 
 // This takes in all the entities that have a "desired_...", and tries to apply them.
-use_desired :: (using level: *Level, do_vfx: bool) -> bool {
+use_desired :: (using level: *Level, do_vfx: bool) {
     using context.game_context;
 
     player := *_Player[0];
@@ -1328,9 +1314,8 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
         for :iterate_vector3i block.size {
             if !block.filled[it_index] continue;
             in_bounds, index := get_3d_index(it + offset, level_size);
-            if !in_bounds return false;
-            if result_collision[index] != 0 return false;
-
+            assert(in_bounds);
+            assert(result_collision[index] == 0);
             result_collision[index] = block.eid;
         }
     }
@@ -1340,12 +1325,8 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
         in_bounds, index := get_3d_index(it.desired_position, level_position, level_size);
         
         if !in_bounds {
-            if it.desired_position.y < level_position.y {
-                it.result_collision_state = .OUT_OF_BOUNDS;
-                continue;
-            } else {
-                return false;
-            }
+            it.result_collision_state = .OUT_OF_BOUNDS;
+            continue;
         }
 
         eid := result_collision[index];
@@ -1365,7 +1346,7 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
                 other_enemy.result_collision_state = .PRIMARY_ANNIHILATOR;
                 it.result_collision_state = .SECONDARY_ANNIHILATOR;
             case .Block;
-                return false;
+                assert(false);
         }
     }
 
@@ -1438,7 +1419,7 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
                                     enemy.result_collision_state = .PRIMARY_ANNIHILATOR;
                                     player.result_collision_state = .SECONDARY_ANNIHILATOR;
                                 case .Block;
-                                    return false;
+                                    assert(false);
                             }
                         } else {
                             result_collision[index] = player.eid;
@@ -1682,8 +1663,6 @@ use_desired :: (using level: *Level, do_vfx: bool) -> bool {
             collision[index] = enemy.eid;
         }
     }
-
-    return true;
 }
 
 
@@ -1806,7 +1785,7 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
         }
     }
 
-    assert(use_desired(level, do_vfx));
+    use_desired(level, do_vfx);
     
     // Update enemy spawners to use the right direction.
     if !just_do_falls {
@@ -1834,6 +1813,13 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if event.key == #char "=" && event.state == .DOWN {
         if dt_modifier < 16 dt_modifier *= 2;
+        return;
+    }
+
+    if event.key == #char "U" && event.state == .DOWN && keys_down[Key.SHIFT] {
+        for * _Overworld_Entrance {
+            it.activated = true;
+        }
         return;
     }
 
@@ -1888,7 +1874,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             type = .TOGGLE_DEBUG_MOVEMENT,
         };
 
-        assert(use_desired(level, do_vfx=true));
+        use_desired(level, do_vfx=true);
 
         return;
     }
@@ -1934,7 +1920,19 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 break;
             }
         }
-        
+
+        if !found return;
+
+
+        in_bounds, index := get_3d_index(desired_position, level_position, level_size);
+        assert(in_bounds);
+
+        eid := collision[index];
+        if eid {
+            e := get_entity(level, eid);
+            if e.type == .Block return;
+        }
+
 
         set_default_desired(level);
 
@@ -1943,16 +1941,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             move.position = desired_position,
         };
 
-        if !use_desired(level, do_vfx=true) {
-            in_bounds, index := get_3d_index(desired_position, level_position, level_size);
-            assert(in_bounds);
-            eid := collision[index];
-            assert(eid != 0);
-            e := get_entity(level, eid);
-            assert(e.type == .Block);
-        }
-        
-        return;
+        use_desired(level, do_vfx=true);
     }
 
     if event.key == #char "O" && event.state == .DOWN {
@@ -2133,9 +2122,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 move.position = new_player_position,
             };
 
-            if use_desired(level, do_vfx=true) {
-                play_positional_sound(level, player.position, footstep);
-            }
+            use_desired(level, do_vfx=true);
+
+            play_positional_sound(level, player.position, footstep);
 
 
         case .DEAD;
