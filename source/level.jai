@@ -2042,56 +2042,49 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if #complete player.state == {
         case .NORMAL;
-            pushed_in_bounds, pushed_index := get_3d_index(new_player_position, level_position, level_size);
-            if !pushed_in_bounds return;
 
-            pushed_block: *Block;
-            pushed_eid := collision[pushed_index];
-            if pushed_eid {
-                pushed_entity := get_entity(level, pushed_eid);
-                maybe_pushed_block := as(pushed_entity, Block);
-                if maybe_pushed_block {
-                    if !maybe_pushed_block.moveable return;
-                    pushed_block = maybe_pushed_block;
+
+            moved_blocks: [..] *Block;
+            
+            // Are we pushing a moveable block?
+            {
+                in_bounds, index := get_3d_index(new_player_position, level_position, level_size);
+                if !in_bounds return;
+                if collision[index] {
+                    e := get_entity(level, collision[index]);
+                    block := as(e, Block);
+                    if block {
+                        if !block.moveable return;
+                        append(*moved_blocks, frame_arena).* = block;
+                    }
                 }
             }
-
-            pulled_block: *Block;
+                
+            // Are we pulling a moveable block?
             if flags & .PULLING {
-                pulled_in_bounds, pulled_index := get_3d_index(player.position - push_direction, level_position, level_size);
-                if pulled_in_bounds {
-                    pulled_eid := collision[pulled_index];
-                    if pulled_eid {
-                        pulled_entity := get_entity(level, pulled_eid);
-                        maybe_pulled_block := as(pulled_entity, Block);
-                        if maybe_pulled_block && maybe_pulled_block.moveable {
-                            pulled_block = maybe_pulled_block;
+                in_bounds, index := get_3d_index(player.position - push_direction, level_position, level_size);
+                if in_bounds {
+                    eid := collision[index];
+                    if eid {
+                        e := get_entity(level, eid);
+                        block := as(e, Block);
+                        if block && block.moveable {
+                            if !contains(*moved_blocks, block) append(*moved_blocks, frame_arena).* = block;
                         }
                     }
                 }
             }
 
-            if pushed_block && pushed_block == pulled_block {
-                pulled_block = null;
-            }
-
 
             set_default_desired(level);
 
-            for * _Block {
-                if it == pushed_block || it == pulled_block {
-                    assert(it.moveable);
-                    it.moveable_desired_position = it.position + push_direction;
-                }
-            }
 
-            push_enemies :: (block: *Block) -> bool #expand {
+            for block: moved_blocks {
+                assert(block.moveable);
+                block.moveable_desired_position = block.position + push_direction;
+
                 offset := block.position - level_position;
                 
-                // @CompilerBug It's not letting be return from within the for_expansion...
-                // Maybe returning things from inside of for_expansions in macroes is bugged.
-                succeeded := true;
-
                 for :iterate_vector3i block.size {
                     if !block.filled[it_index] continue;
 
@@ -2101,10 +2094,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                     if in_bounds && block.filled[index] continue;
 
                     in_bounds, index = get_3d_index(next + offset, level_size);
-                    if !in_bounds {
-                        succeeded = false;
-                        break;
-                    }
+                    if !in_bounds return;
 
                     eid := collision[index];
                     if eid {
@@ -2114,25 +2104,28 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                                 enemy := as(e, Enemy);
                                 enemy.desired_position += push_direction;
                                 enemy.desired_vfx_modifiers = 0;
+                                
+                                in_bounds, index := get_3d_index(enemy.position + push_direction, level_position, level_size);
+                                if !in_bounds return;
+
+                                eid := collision[index];
+                                if eid {
+                                    e := get_entity(level, eid);
+                                    block := as(e, Block);
+                                    if block {
+                                        if !contains(*moved_blocks, block) return;
+                                    }
+                                }
+
                             case .Block;
-                                assert(e != block);
-                                succeeded = false;
-                                break;
-                                // This will have to change if we add multipush
-                            case .Player; // Don't do anything. We've already moved the player.
-                            case; assert(false);
+                                return;
+
+                            case .Player; // Don't do anything. We set the desired movement for the player below.
+
+                            case; assert(false); // Uhhh, other things should not be in the collision map.
                         }
                     }
                 }
-                return succeeded;
-            }
-
-            if pushed_block {
-                if !push_enemies(pushed_block) return;
-            }
-
-            if pulled_block {
-                if !push_enemies(pulled_block) return;
             }
 
             player.desired = .{
@@ -2230,12 +2223,14 @@ gameplay_update :: (using level: *Level, dt: float) {
                 set_state(level, .PLAYING);
                 set_checkpoint(level);
             }
+
         case .FADE_IN_CHECKPOINT;
             using fade_in_checkpoint;
             interp += dt / FADE_TIME;
             if interp >= 1 {
                 set_state(level, .PLAYING);
             }
+
         case .PLAYING; 
             if enemy_tick_in_gameplay_state == {
                 case .NONE;
@@ -2245,71 +2240,23 @@ gameplay_update :: (using level: *Level, dt: float) {
                     gameplay_enemy_tick(level, just_do_falls=false, do_vfx=true);
             }
 
-
             for * mutual_annihilations {
                 TIME :: 0.15;
                 it.interp += dt / TIME;
                 if it.interp > 1 remove it;
             }
-            
-            PLAYER_FALLING_TIME :: 0.2;
-            /*
-            if #complete player.state == {
-                case .SPAWNING;
-                    player.spawning.interp += dt / PLAYERLIKE_SPAWNING_TIME;
-                    if player.spawning.interp >= 1 {
-                        if is_colliding_below(level, player.position) {
-                            set_state(player, .GROUND);
-                        } else {
-                            // This one should never happen
-                            set_state(player, .FALLING); 
-                        }
-                    }
 
-                case .GROUND;
-                    player.ground.landing_interp = min(1.0, player.ground.landing_interp + dt / PLAYER_FALLING_TIME);
-
-                case .FALLING;
-                    assert(!(flags & .DEBUG_MOVEMENT));
-                    player.falling.interp += dt / PLAYER_FALLING_TIME;
-                    while player.falling.interp >= 1 {
-                        player.falling.interp -= 1;
-                        new_position := player.position;
-                        new_position.y -= 1;
-                       
-                        if new_position.y < level_position.y {
-                            set_state(player, .DEAD);
-                            break;
-                        }
-
-                        player.position = new_position;
-
-                        if is_colliding_below(level, player.position) {
-                            set_state(player, .GROUND);
-                            break;
-                        }
-                    }
-
-                case .DEAD;
-                    DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
-                    player.dead.interp = min(1.0, player.dead.interp + dt / DEAD_TIME);
-                    // The "min" is to prevent a tiny player from drawing
-                    // in the FADE_OUT_CHECKPOINT state, because we base
-                    // the player scale off of the interp.
-                    if player.dead.interp == 1 {
-                        set_state(level, .FADE_OUT_CHECKPOINT);
-                    }
-            }
-            */
         case .FADE_OUT_ENTRANCE;
             using fade_out_entrance;
             interp += dt / FADE_TIME;
+
         case .FADE_OUT_CHECKPOINT;
             using fade_out_checkpoint;
             interp += dt / FADE_TIME;
             if interp >= 1 {
                 restore_checkpoint(level);
             }
+
         case .FADE_OUT_EXIT;
             using fade_out_exit;
             interp += dt / FADE_TIME;
