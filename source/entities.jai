@@ -109,7 +109,7 @@ delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = nu
     assert(eid != 0);
     
     // @TODO: If we delete the entity with the highest eid, it still gets appended here.
-    // That _might_ not be a problem, except for 
+    // It doesn't matter right now, so I'm ignoring it.
     if arena append(*unused_eids, eid, arena);
     else append_no_resize(*unused_eids, eid);
 

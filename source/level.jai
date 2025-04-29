@@ -75,7 +75,7 @@ Level :: struct {
         camera_yaw_old: float64;
         camera_yaw_interp := 1.0;
         
-        enemy_timer: float;
+        move_timer: float;
         dt_modifier := 1.0;
         
         doors: [] Entity_Id; // Only Door entities should be put in here.
@@ -188,8 +188,27 @@ Player_State :: enum u8 {
 Player :: struct {
     using #as e: Entity;
     state: Player_State; @NoSerialize
+    last_floor_y: s32; @NoSerialize
     collision_resolution: Collision_Resolution; @NoSerialize
+    using vars: union {
+        dead: struct {
+            interp: float; 
+        }
+    } @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
+}
+
+
+set_state :: (player: *Player, state: Player_State) {
+    if #complete state == {
+        case .ALIVE;
+        case .DEAD;
+            player.dead.interp = 0;
+        case .STUCK_INSIDE_A_BLOCK;
+        case .DEBUG_MOVEMENT;
+    }
+
+    player.state = state;
 }
 
 
@@ -336,8 +355,8 @@ Enemy :: struct {
 
 LEFT_ENEMY_COLOR :: Vector4.{0, 68.0 / 255.0, 166.0 / 255.0, 1};
 RIGHT_ENEMY_COLOR :: Vector4.{1, 0, 0, 1};
-ENEMY_TICK_TIME :: 0.8;
-FALLS_PER_ENEMY_TICK :: 3;
+MOVE_TICK_TIME :: 0.8;
+FALLS_PER_MOVE_TICK :: 3;
 
 ENEMY_MOVING_VFX_TIME :: 0.1;
 ENEMY_FALLING_VFX_TIME :: 0.05;
@@ -628,7 +647,7 @@ get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientat
         // ladders are in the game.
 
         y = position.y;
-        
+
         /*
         if #complete player.state == {
             case .GROUND;
@@ -897,9 +916,9 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
     
     for 0..enemy_pre_warm_ticks-1 {
-        gameplay_enemy_tick(level, just_do_falls=false, do_vfx=false);
-        for 1..FALLS_PER_ENEMY_TICK-1 {
-            gameplay_enemy_tick(level, just_do_falls=true, do_vfx=false);
+        gameplay_move_tick(level, just_do_falls=false, do_vfx=false);
+        for 1..FALLS_PER_MOVE_TICK-1 {
+            gameplay_move_tick(level, just_do_falls=true, do_vfx=false);
         }
         // @TODO: Detect when enemies walk into the player, issue an error!
     }
@@ -998,20 +1017,20 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     // so code that changes the matrix position should go first.
 
     if enemy.vfx_modifiers & .MOVING {
-        weight := level.enemy_timer / ENEMY_MOVING_VFX_TIME;
+        weight := level.move_timer / ENEMY_MOVING_VFX_TIME;
         weight = weight * weight;
         position := (to_vector3(enemy.position) - enemy.vfx_moving_from) * (1 - weight);
         matrix = make_translation_matrix4(-position);
     }
 
     if enemy.vfx_modifiers & .FALLING {
-        weight := 1 - fmod_cycling(level.enemy_timer, ENEMY_TICK_TIME / FALLS_PER_ENEMY_TICK) / ENEMY_FALLING_VFX_TIME;
+        weight := 1 - fmod_cycling(level.move_timer, MOVE_TICK_TIME / FALLS_PER_MOVE_TICK) / ENEMY_FALLING_VFX_TIME;
         weight = weight * weight;
         matrix = make_translation_matrix4(.{0, weight, 0}) * matrix;
     }
 
     if enemy.vfx_modifiers & .SPAWNING {
-        weight := level.enemy_timer / PLAYERLIKE_SPAWNING_TIME;
+        weight := level.move_timer / PLAYERLIKE_SPAWNING_TIME;
         matrix = make_scale_matrix4(.{weight, weight, weight}) * matrix;
     }
 
@@ -1277,18 +1296,40 @@ get_enemy_next_position :: (using level: *Level, enemy: *Enemy) -> moved: bool, 
 }
 
 
-gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
+gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
     if !just_do_falls {
-        for * _Enemy {
-            if is_colliding_below(level, it.position) {
-                can_move_to :: (using level: *Level, position: Vector3i) -> bool {
-                    if !is_colliding_below(level, position) return false;
+        for * _Enemy_Despawner {
+            in_bounds, index := get_3d_index(it.position, level_position, level_size);
+            assert(in_bounds);
+            eid := collision[index];
+            if !eid continue;
+            enemy := as(get_entity(level, eid), Enemy);
+            if !enemy continue;
+            delete_entity(level, eid);
+            collision[index] = 0;
+        }
+    }
+
+    for * _Enemy {
+        if is_colliding_below(level, it.position) {
+            if !just_do_falls {
+
+                continue_if_valid :: () #expand {
+                    position := it.position + desired_direction;
+
+                    if !is_colliding_below(level, position) return;
                     in_bounds, index := get_3d_index(position, level_position, level_size);
                     assert(in_bounds);
                     eid := collision[index];
-                    if eid == 0 return true;
-                    if get_entity(level, eid).type == .Block return false;
-                    return true;
+                    if eid && get_entity(level, eid).type == .Block return;
+                    
+                    if do_vfx {
+                        it.vfx_moving_from = to_vector3(it.position);
+                        it.vfx_modifiers |= .MOVING;
+                    }
+                    it.position = position;
+                    it.facing = new_facing;
+                    continue;
                 }
 
 
@@ -1296,11 +1337,7 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
                 new_facing := it.facing;
                 desired_direction := facing_to_vector3i(it.facing);
 
-                if can_move_to(level, it.position + desired_direction) {
-                    it.position += desired_direction;
-                    it.facing = new_facing;
-                    continue;
-                }
+                continue_if_valid();
 
                 if #complete it.favored_direction == {
                     case .LEFT;
@@ -1311,12 +1348,7 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
 
                 desired_direction = facing_to_vector3i(new_facing);
 
-                if can_move_to(level, it.position + desired_direction) {
-                    it.position += desired_direction;
-                    it.facing = new_facing;
-                    continue;
-                }
-
+                continue_if_valid();
 
                 if #complete it.favored_direction == {
                     case .LEFT;
@@ -1325,31 +1357,28 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
                         new_facing = facing_left(it.facing);
                 }
 
-                if can_move_to(level, it.position + desired_direction) {
-                    it.position += desired_direction;
-                    it.facing = new_facing;
-                    continue;
-                }
+                continue_if_valid();
 
                 new_facing = facing_opposite(it.facing);
                 desired_direction = facing_to_vector3i(new_facing);
 
-                if can_move_to(level, it.position + desired_direction) {
-                    it.position += desired_direction;
-                    it.facing = new_facing;
-                    continue;
-                }
+                continue_if_valid();
 
-            } else {
-                it.position.y -= 1;
             }
+        } else {
+            it.position.y -= 1;
+            if do_vfx it.vfx_modifiers |= .FALLING;
         }
+    }
 
+    if !just_do_falls {
         for * _Enemy_Spawner {
             enemy := make_entity(level, Enemy);
             
             enemy.position = it.position;
             enemy.facing = it.facing;
+            if do_vfx enemy.vfx_modifiers = .SPAWNING;
+
             if #complete it.enemy_spawner_type == {
                 case .ALTERNATING;
                     enemy.favored_direction = it.alternating_direction;
@@ -1363,25 +1392,14 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
                     enemy.favored_direction = .RIGHT;
             }
         }
+    }
 
-    } else {
-        for * _Enemy {
-            if !is_colliding_below(level, it.position) it.position.y -= 1;
-        }
+    player := *_Player[0];
+    if player.state == .ALIVE && !is_colliding_below(level, player.position) {
+        player.position.y -= 1;
     }
 
     collision_resolution(level, make_mutual_annihilations=do_vfx);
-
-    for * _Enemy_Despawner {
-        in_bounds, index := get_3d_index(it.position, level_position, level_size);
-        assert(in_bounds);
-        eid := collision[index];
-        if !eid continue;
-        enemy := as(get_entity(level, eid), Enemy);
-        if !enemy continue;
-        delete_entity(level, eid);
-        collision[index] = 0;
-    }
 } 
 
 
@@ -1404,7 +1422,12 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 
     for * _Enemy {
         in_bounds, index := get_3d_index(it.position, level_position, level_size);
-        assert(in_bounds); // @TODO: Handle annihilating out-of-bounds enemies
+        if !in_bounds {
+            delete_entity(level, it.eid);
+            append_no_resize(*mutual_annihilations).* = .{position = it.position};
+            it_index -= 1; // :DeleteEntityInLoop
+            continue;
+        }
 
         eid := new_collision[index];
         if eid {
@@ -1426,23 +1449,35 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 
     player := *_Player[0]; 
     if player.state == .ALIVE {
-        // @Copypasta from above
-
         in_bounds, index := get_3d_index(player.position, level_position, level_size);
-        assert(in_bounds); // @TODO: Handle killing the player when they get out-of-bounds
+        if !in_bounds {
+            // @Hack
+            // The only time the player should be going out of bounds is when they fall out
+            // of the bottom of a level. We want to show them dying inside the level.
 
-        eid := new_collision[index];
-        if eid {
-             e := get_entity(level, eid);
+            assert(level_position.x <= player.position.x);
+            assert(level_position.z <= player.position.z);
+            assert(player.position.x < level_position.x + level_size.x);
+            assert(player.position.z < level_position.z + level_size.z);
+            assert(player.position.y == level_position.y - 1);
 
-             enemy := as(e, Enemy);
-             assert(enemy != null);
-
-            enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
-            player.collision_resolution = .SECONDARY_ANNIHILATOR;
+            player.position.y = level_position.y; 
+            set_state(player, .DEAD);
         } else {
-            new_collision[index] = player.eid;
-            player.collision_resolution = .IN_COLLISION;
+            // @Copypasta from above
+            eid := new_collision[index];
+            if eid {
+                 e := get_entity(level, eid);
+
+                 enemy := as(e, Enemy);
+                 assert(enemy != null);
+
+                enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
+                player.collision_resolution = .SECONDARY_ANNIHILATOR;
+            } else {
+                new_collision[index] = player.eid;
+                player.collision_resolution = .IN_COLLISION;
+            }
         }
     }
     
@@ -1462,8 +1497,7 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
                 assert(in_bounds);
                 assert(new_collision[index] == it.eid);
                 new_collision[index] = 0;
-                delete_entity(level, it.eid);
-                it_index -= 1; // :DeleteEntityInLoop
+                #through;
             case .SECONDARY_ANNIHILATOR;
                 delete_entity(level, it.eid);
                 it_index -= 1; // :DeleteEntityInLoop
@@ -1478,14 +1512,26 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
                 assert(in_bounds);
                 assert(new_collision[index] == player.eid);
                 new_collision[index] = 0;
-                player.state = .DEAD;
+                set_state(player, .DEAD);
             case .SECONDARY_ANNIHILATOR;
-                player.state = .DEAD;
+                set_state(player, .DEAD);
         }
     }
 
     assert(new_collision.count == collision.count);
     memcpy(collision.data, new_collision.data, byte_count(new_collision));
+    
+    if player.state == {
+        case .ALIVE;
+            if is_colliding_below(level, player.position) {
+                player.last_floor_y = player.position.y;
+            }
+        case .DEAD; #through;
+        case .STUCK_INSIDE_A_BLOCK; #through;
+        case .DEBUG_MOVEMENT;
+            player.last_floor_y = player.position.y;
+
+    }
 }
 
 
@@ -1558,7 +1604,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             case .ALIVE; #through;
             case .DEAD; #through;
             case .STUCK_INSIDE_A_BLOCK;
-                player.state = .DEBUG_MOVEMENT;
+                set_state(player, .DEBUG_MOVEMENT);
 
             case .DEBUG_MOVEMENT;
                 in_bounds, index := get_3d_index(player.position, level_position, level_size);
@@ -1567,12 +1613,12 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 if eid {
                     e := get_entity(level, eid);
                     if e.type == .Block {
-                        player.state = .STUCK_INSIDE_A_BLOCK;
+                        set_state(player, .STUCK_INSIDE_A_BLOCK);
                         return;
                     }
                 }
 
-                player.state = .ALIVE;
+                set_state(player, .ALIVE);
 
                 collision_resolution(level, true);
         }
@@ -1723,6 +1769,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if #complete player.state == {
         case .ALIVE;
+            if !is_colliding_below(level, player.position) return;
 
             //
             // Gather the blocks we are pushing
@@ -1882,9 +1929,9 @@ gameplay_update :: (using level: *Level, dt: float) {
         camera_focus_z_interp = min(camera_focus_z_interp + dt / CAMERA_FOCUS_TIME, 1);
     }
 
-    old_enemy_timer := enemy_timer;
-    enemy_timer += dt / ENEMY_TICK_TIME;
-    new_enemy_timer := enemy_timer;
+    old_move_timer := move_timer;
+    move_timer += dt / MOVE_TICK_TIME;
+    new_move_timer := move_timer;
    
 
 
@@ -1892,17 +1939,17 @@ gameplay_update :: (using level: *Level, dt: float) {
     // I wanted to do fmod_cycling on the enemy timer no matter what state we are in so I 
     // pulled this stuff out of the .GAMEPLAY state update.
 
-    enemy_tick_in_gameplay_state: enum {
+    mvoe_tick_in_gameplay_state: enum {
         NONE;
         FALLING;
         ALL;
     }
 
-    if enemy_timer >= ENEMY_TICK_TIME {
-        enemy_timer = fmod_cycling(enemy_timer, ENEMY_TICK_TIME);
-        enemy_tick_in_gameplay_state = .ALL;
-    } else if floor(old_enemy_timer / ENEMY_TICK_TIME * FALLS_PER_ENEMY_TICK) < floor(enemy_timer / ENEMY_TICK_TIME * FALLS_PER_ENEMY_TICK) {
-        enemy_tick_in_gameplay_state = .FALLING;
+    if move_timer >= MOVE_TICK_TIME {
+        move_timer = fmod_cycling(move_timer, MOVE_TICK_TIME);
+        mvoe_tick_in_gameplay_state = .ALL;
+    } else if floor(old_move_timer / MOVE_TICK_TIME * FALLS_PER_MOVE_TICK) < floor(move_timer / MOVE_TICK_TIME * FALLS_PER_MOVE_TICK) {
+        mvoe_tick_in_gameplay_state = .FALLING;
     }
 
 
@@ -1926,18 +1973,32 @@ gameplay_update :: (using level: *Level, dt: float) {
             }
 
         case .PLAYING; 
-            if enemy_tick_in_gameplay_state == {
+            if mvoe_tick_in_gameplay_state == {
                 case .NONE;
+
                 case .FALLING;
-                    gameplay_enemy_tick(level, just_do_falls=true, do_vfx=true);
+                    gameplay_move_tick(level, just_do_falls=true, do_vfx=true);
+
                 case .ALL;
-                    gameplay_enemy_tick(level, just_do_falls=false, do_vfx=true);
+                    gameplay_move_tick(level, just_do_falls=false, do_vfx=true);
             }
 
             for * mutual_annihilations {
                 TIME :: 0.15;
                 it.interp += dt / TIME;
                 if it.interp > 1 remove it;
+            }
+            
+            if #complete player.state == {
+                case .ALIVE;
+                case .DEAD; 
+                    DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
+                    player.dead.interp += dt / DEAD_TIME;
+                    if player.dead.interp >= 1 {
+                        set_state(level, .FADE_OUT_CHECKPOINT);
+                    }
+                case .STUCK_INSIDE_A_BLOCK;
+                case .DEBUG_MOVEMENT;
             }
 
         case .FADE_OUT_ENTRANCE;
@@ -1957,8 +2018,8 @@ gameplay_update :: (using level: *Level, dt: float) {
     }
 
     
-    old_fall_timer := fmod_cycling(old_enemy_timer, ENEMY_TICK_TIME / FALLS_PER_ENEMY_TICK);
-    new_fall_timer := old_fall_timer + new_enemy_timer - old_enemy_timer;
+    old_fall_timer := fmod_cycling(old_move_timer, MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
+    new_fall_timer := old_fall_timer + new_move_timer - old_move_timer;
 
     if old_fall_timer < ENEMY_FALLING_VFX_TIME && ENEMY_FALLING_VFX_TIME <= new_fall_timer {
         for * _Enemy {
@@ -1968,7 +2029,7 @@ gameplay_update :: (using level: *Level, dt: float) {
         }
     }
 
-    if old_enemy_timer < ENEMY_MOVING_VFX_TIME && ENEMY_MOVING_VFX_TIME <= new_enemy_timer {
+    if old_move_timer < ENEMY_MOVING_VFX_TIME && ENEMY_MOVING_VFX_TIME <= new_move_timer {
         for * _Enemy {
             if it.vfx_modifiers & .MOVING {
                 it.vfx_modifiers &= ~.MOVING;
@@ -1976,7 +2037,7 @@ gameplay_update :: (using level: *Level, dt: float) {
         }
     }
 
-    if old_enemy_timer < PLAYERLIKE_SPAWNING_TIME && PLAYERLIKE_SPAWNING_TIME <= new_enemy_timer {
+    if old_move_timer < PLAYERLIKE_SPAWNING_TIME && PLAYERLIKE_SPAWNING_TIME <= new_move_timer {
         for * _Enemy {
             if it.vfx_modifiers & .SPAWNING {
                 it.vfx_modifiers &= ~.SPAWNING;
