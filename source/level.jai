@@ -173,7 +173,7 @@ Gameplay_State :: enum {
 
 
 Player_State :: enum u8 {
-    NORMAL;
+    ALIVE;
         // The player is inside of the collision array
     DEAD;
         // The player is not in the collision array.
@@ -1278,11 +1278,114 @@ get_enemy_next_position :: (using level: *Level, enemy: *Enemy) -> moved: bool, 
 
 
 gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
-    // :NewMovementSystem fill this in
+    if !just_do_falls {
+        for * _Enemy {
+            if is_colliding_below(level, it.position) {
+                can_move_to :: (using level: *Level, position: Vector3i) -> bool {
+                    if !is_colliding_below(level, position) return false;
+                    in_bounds, index := get_3d_index(position, level_position, level_size);
+                    assert(in_bounds);
+                    eid := collision[index];
+                    if eid == 0 return true;
+                    if get_entity(level, eid).type == .Block return false;
+                    return true;
+                }
+
+
+                moved := true;
+                new_facing := it.facing;
+                desired_direction := facing_to_vector3i(it.facing);
+
+                if can_move_to(level, it.position + desired_direction) {
+                    it.position += desired_direction;
+                    it.facing = new_facing;
+                    continue;
+                }
+
+                if #complete it.favored_direction == {
+                    case .LEFT;
+                        new_facing = facing_left(it.facing);
+                    case .RIGHT;    
+                        new_facing = facing_right(it.facing);
+                }
+
+                desired_direction = facing_to_vector3i(new_facing);
+
+                if can_move_to(level, it.position + desired_direction) {
+                    it.position += desired_direction;
+                    it.facing = new_facing;
+                    continue;
+                }
+
+
+                if #complete it.favored_direction == {
+                    case .LEFT;
+                        new_facing = facing_right(it.facing);
+                    case .RIGHT;
+                        new_facing = facing_left(it.facing);
+                }
+
+                if can_move_to(level, it.position + desired_direction) {
+                    it.position += desired_direction;
+                    it.facing = new_facing;
+                    continue;
+                }
+
+                new_facing = facing_opposite(it.facing);
+                desired_direction = facing_to_vector3i(new_facing);
+
+                if can_move_to(level, it.position + desired_direction) {
+                    it.position += desired_direction;
+                    it.facing = new_facing;
+                    continue;
+                }
+
+            } else {
+                it.position.y -= 1;
+            }
+        }
+
+        for * _Enemy_Spawner {
+            enemy := make_entity(level, Enemy);
+            
+            enemy.position = it.position;
+            enemy.facing = it.facing;
+            if #complete it.enemy_spawner_type == {
+                case .ALTERNATING;
+                    enemy.favored_direction = it.alternating_direction;
+                    if #complete it.alternating_direction == {
+                        case .LEFT;     it.alternating_direction = .RIGHT;
+                        case .RIGHT;    it.alternating_direction = .LEFT;
+                    }
+                case .ALL_LEFT; 
+                    enemy.favored_direction = .LEFT;
+                case .ALL_RIGHT;
+                    enemy.favored_direction = .RIGHT;
+            }
+        }
+
+    } else {
+        for * _Enemy {
+            if !is_colliding_below(level, it.position) it.position.y -= 1;
+        }
+    }
+
+    collision_resolution(level, make_mutual_annihilations=do_vfx);
+
+    for * _Enemy_Despawner {
+        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+        assert(in_bounds);
+        eid := collision[index];
+        if !eid continue;
+        enemy := as(get_entity(level, eid), Enemy);
+        if !enemy continue;
+        delete_entity(level, eid);
+        collision[index] = 0;
+    }
 } 
 
 
-collision_resolution :: (using level: *Level) {
+collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
     using context.game_context;
     
     size_1d := level_size.x * level_size.y * level_size.z;
@@ -1322,7 +1425,7 @@ collision_resolution :: (using level: *Level) {
     }
 
     player := *_Player[0]; 
-    {
+    if player.state == .ALIVE {
         // @Copypasta from above
 
         in_bounds, index := get_3d_index(player.position, level_position, level_size);
@@ -1351,7 +1454,10 @@ collision_resolution :: (using level: *Level) {
         if it.collision_resolution == {
             case .IN_COLLISION;
             case .PRIMARY_ANNIHILATOR;
-                // @TODO: Make a Mutual_Annihilation for this.
+                if make_mutual_annihilations {
+                    append_no_resize(*mutual_annihilations).* = .{position = it.position};
+                }
+
                 in_bounds, index := get_3d_index(it.position, level_position, level_size);
                 assert(in_bounds);
                 assert(new_collision[index] == it.eid);
@@ -1364,7 +1470,7 @@ collision_resolution :: (using level: *Level) {
         }
     }
 
-    if player.state == .NORMAL {
+    if player.state == .ALIVE {
         if player.collision_resolution == {
             case .IN_COLLISION;
             case .PRIMARY_ANNIHILATOR;
@@ -1448,7 +1554,28 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     if event.key == #char "M" && event.state == .DOWN {
         player := *_Player[0];
 
-        // :NewMovementSystem fill this in
+        if #complete player.state == {
+            case .ALIVE; #through;
+            case .DEAD; #through;
+            case .STUCK_INSIDE_A_BLOCK;
+                player.state = .DEBUG_MOVEMENT;
+
+            case .DEBUG_MOVEMENT;
+                in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                assert(in_bounds);
+                eid := collision[index];
+                if eid {
+                    e := get_entity(level, eid);
+                    if e.type == .Block {
+                        player.state = .STUCK_INSIDE_A_BLOCK;
+                        return;
+                    }
+                }
+
+                player.state = .ALIVE;
+
+                collision_resolution(level, true);
+        }
 
         return;
     }
@@ -1467,7 +1594,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     if event.key == #char "H" && event.state == .DOWN {
         player := *_Player[0];
 
-        if player.state != .NORMAL return;
+        if player.state != .ALIVE return;
 
         // So movement feels nice and snappy, I'm going to experiment with having NO
         // player procedural animation when teleporting the player. This might feel
@@ -1595,7 +1722,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     new_player_position := player.position + push_direction;
 
     if #complete player.state == {
-        case .NORMAL;
+        case .ALIVE;
 
             //
             // Gather the blocks we are pushing
@@ -1655,27 +1782,19 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
                     if e.type == {
                         case .Enemy;
-                            enemy := as(e, Enemy);
+                            append(*moved_enemies, frame_arena).* = as(e, Enemy);
                             in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
                             if !in_bounds return;
                             eid := collision[index];
                             if !eid continue;
                             next_e := get_entity(level, eid);
                             if next_e.type == {
-                                case .Player; #through;
+                                case .Player;
                                 case .Enemy;
-                                    append(*moved_enemies, frame_arena).* = enemy;
+                                    // An annihilation will happen
 
                                 case .Block;
-                                    next_block := as(e, Block);
-                                    found := false;
-                                    for moved_blocks {
-                                        if it.eid == next_block.eid {
-                                            found = true;
-                                            break;
-                                        }
-                                    }
-                                    if !found return;
+                                    if !contains(*moved_blocks, as(next_e, Block)) return;
                                     // The block you pushed pushed an enemy into another block. This move is invalid
                                     // for now, maybe we want it to be valid in the future.
 
@@ -1684,15 +1803,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                             }
 
                         case .Block;
-                            next_block := as(e, Block);
-                            found := false;
-                            for moved_blocks {
-                                if it.eid == next_block.eid {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if !found return;
+                            if !contains(*moved_blocks, as(e, Block)) return;
 
                         case .Player;
 
@@ -1717,66 +1828,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             player.position = new_player_position;
 
-            collision_resolution(level);
-
-            /*
-            set_default_desired(level);
-
-             
-            for block: moved_blocks {
-                assert(block.moveable);
-                block.moveable_desired_position = block.position + push_direction;
-
-                offset := block.position - level_position;
-                
-                for :iterate_vector3i block.size {
-                    if !block.filled[it_index] continue;
-
-                    next := it + push_direction;
-
-                    in_bounds, index := get_3d_index(next, block.size);
-                    if in_bounds && block.filled[index] continue;
-
-                    in_bounds, index = get_3d_index(next + offset, level_size);
-                    if !in_bounds return;
-
-                    eid := collision[index];
-                    if eid {
-                        e := get_entity(level, eid);
-                        if e.type == {
-                            case .Enemy;
-                                enemy := as(e, Enemy);
-                                enemy.desired_position += push_direction;
-                                enemy.desired_vfx_modifiers = 0;
-                                
-                                in_bounds, index := get_3d_index(enemy.position + push_direction, level_position, level_size);
-                                if !in_bounds return;
-
-                                eid := collision[index];
-                                if eid {
-                                    e := get_entity(level, eid);
-                                    block := as(e, Block);
-                                    if block {
-                                        if !contains(*moved_blocks, block) return;
-                                    }
-                                }
-
-                            case .Block;
-                                return;
-
-                            case .Player; // Don't do anything. We set the desired movement for the player below.
-
-                            case; assert(false); // Uhhh, other things should not be in the collision map.
-                        }
-                    }
-                }
-            }
-            */
-
-            // :NewMovementSystem fill this in
+            collision_resolution(level, true);
 
             play_positional_sound(level, player.position, footstep);
-
 
         case .DEAD;
             // The player can't move if they're dead.
