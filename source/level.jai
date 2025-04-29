@@ -173,7 +173,9 @@ Gameplay_State :: enum {
 
 
 Player_State :: enum u8 {
-    ALIVE;
+    GROUND;
+        // The player is inside of the collision array
+    FALLING;
         // The player is inside of the collision array
     DEAD;
         // The player is not in the collision array.
@@ -201,7 +203,8 @@ Player :: struct {
 
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
-        case .ALIVE;
+        case .GROUND;
+        case .FALLING;
         case .DEAD;
             player.dead.interp = 0;
         case .STUCK_INSIDE_A_BLOCK;
@@ -1395,7 +1398,7 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
     }
 
     player := *_Player[0];
-    if player.state == .ALIVE && !is_colliding_below(level, player.position) {
+    if player.state == .FALLING {
         player.position.y -= 1;
     }
 
@@ -1420,6 +1423,25 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
         }
     }
 
+    resolve_entity :: (e: *$T/Entity, index: int) #expand {
+        eid := new_collision[index];
+        if eid {
+             enemy := as(get_entity(level, eid), Enemy);
+             assert(enemy != null);
+             // Anything else there (like a Block) is not good.
+             // Technically a Player could also be there but we add the Player to the new collision map after this
+             // so we don't need to worry about that.
+
+            enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
+            e.collision_resolution = .SECONDARY_ANNIHILATOR;
+        } else {
+            new_collision[index] = e.eid;
+            e.collision_resolution = .IN_COLLISION;
+        }
+        
+    }
+
+
     for * _Enemy {
         in_bounds, index := get_3d_index(it.position, level_position, level_size);
         if !in_bounds {
@@ -1429,58 +1451,38 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
             continue;
         }
 
-        eid := new_collision[index];
-        if eid {
-             e := get_entity(level, eid);
-
-             enemy := as(e, Enemy);
-             assert(enemy != null);
-             // Anything else there (like a Block) is not good.
-             // Technically a Player could also be there but we add the Player to the new collision map after this
-             // so we don't need to worry about that.
-
-            enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
-            it.collision_resolution = .SECONDARY_ANNIHILATOR;
-        } else {
-            new_collision[index] = it.eid;
-            it.collision_resolution = .IN_COLLISION;
-        }
+        resolve_entity(it, index);
     }
 
     player := *_Player[0]; 
-    if player.state == .ALIVE {
-        in_bounds, index := get_3d_index(player.position, level_position, level_size);
-        if !in_bounds {
-            // @Hack
-            // The only time the player should be going out of bounds is when they fall out
-            // of the bottom of a level. We want to show them dying inside the level.
-
-            assert(level_position.x <= player.position.x);
-            assert(level_position.z <= player.position.z);
-            assert(player.position.x < level_position.x + level_size.x);
-            assert(player.position.z < level_position.z + level_size.z);
-            assert(player.position.y == level_position.y - 1);
-
-            player.position.y = level_position.y; 
-            set_state(player, .DEAD);
-        } else {
+    if player.state == {
+        case .GROUND;
             // @Copypasta from above
-            eid := new_collision[index];
-            if eid {
-                 e := get_entity(level, eid);
+            in_bounds, index := get_3d_index(player.position, level_position, level_size);
+            assert(in_bounds);
 
-                 enemy := as(e, Enemy);
-                 assert(enemy != null);
+            resolve_entity(player, index);
+        case .FALLING;
+            in_bounds, index := get_3d_index(player.position, level_position, level_size);
+            if !in_bounds {
+                // @Hack
+                // The only time the player should be going out of bounds is when they fall out
+                // of the bottom of a level. We want to show them dying inside the level.
 
-                enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
-                player.collision_resolution = .SECONDARY_ANNIHILATOR;
+                assert(level_position.x <= player.position.x);
+                assert(level_position.z <= player.position.z);
+                assert(player.position.x < level_position.x + level_size.x);
+                assert(player.position.z < level_position.z + level_size.z);
+                assert(player.position.y == level_position.y - 1);
+
+                player.position.y = level_position.y; 
+                set_state(player, .DEAD);
             } else {
-                new_collision[index] = player.eid;
-                player.collision_resolution = .IN_COLLISION;
+                resolve_entity(player, index);
             }
-        }
     }
-    
+
+
     //
     // The new_collision array is now set up. Delete everything that needs to be deleted.
     //
@@ -1504,7 +1506,7 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
         }
     }
 
-    if player.state == .ALIVE {
+    if player.state == .GROUND || player.state == .FALLING {
         if player.collision_resolution == {
             case .IN_COLLISION;
             case .PRIMARY_ANNIHILATOR;
@@ -1522,10 +1524,10 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
     memcpy(collision.data, new_collision.data, byte_count(new_collision));
     
     if player.state == {
-        case .ALIVE;
-            if is_colliding_below(level, player.position) {
-                player.last_floor_y = player.position.y;
-            }
+        case .GROUND;
+            if !is_colliding_below(level, player.position) set_state(player, .FALLING);
+        case .FALLING;
+            if is_colliding_below(level, player.position) set_state(player, .GROUND);
         case .DEAD; #through;
         case .STUCK_INSIDE_A_BLOCK; #through;
         case .DEBUG_MOVEMENT;
@@ -1601,7 +1603,13 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         player := *_Player[0];
 
         if #complete player.state == {
-            case .ALIVE; #through;
+            case .GROUND; #through;
+            case .FALLING;
+                set_state(player, .DEBUG_MOVEMENT);
+                // All we need to do is remove the player eid from the collision array.
+                // However, I am calling this just for good form.
+                collision_resolution(level, true);
+            
             case .DEAD; #through;
             case .STUCK_INSIDE_A_BLOCK;
                 set_state(player, .DEBUG_MOVEMENT);
@@ -1618,7 +1626,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                     }
                 }
 
-                set_state(player, .ALIVE);
+                set_state(player, .GROUND);
 
                 collision_resolution(level, true);
         }
@@ -1640,7 +1648,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     if event.key == #char "H" && event.state == .DOWN {
         player := *_Player[0];
 
-        if player.state != .ALIVE return;
+        if player.state != .GROUND return;
 
         // So movement feels nice and snappy, I'm going to experiment with having NO
         // player procedural animation when teleporting the player. This might feel
@@ -1768,9 +1776,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     new_player_position := player.position + push_direction;
 
     if #complete player.state == {
-        case .ALIVE;
-            if !is_colliding_below(level, player.position) return;
-
+        case .GROUND;
             //
             // Gather the blocks we are pushing
             //
@@ -1879,10 +1885,12 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             play_positional_sound(level, player.position, footstep);
 
+        case .FALLING;
         case .DEAD;
             // The player can't move if they're dead.
 
         case .STUCK_INSIDE_A_BLOCK;
+            // Make sure we are in fact still inside a block
             in_bounds, index := get_3d_index(player.position, level_position, level_size);
             assert(in_bounds);
             eid := collision[index];
@@ -1990,7 +1998,8 @@ gameplay_update :: (using level: *Level, dt: float) {
             }
             
             if #complete player.state == {
-                case .ALIVE;
+                case .GROUND;
+                case .FALLING;
                 case .DEAD; 
                     DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
                     player.dead.interp += dt / DEAD_TIME;
