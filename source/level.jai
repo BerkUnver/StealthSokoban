@@ -188,6 +188,7 @@ Player_State :: enum u8 {
 Player :: struct {
     using #as e: Entity;
     state: Player_State; @NoSerialize
+    collision_resolution: Collision_Resolution; @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
 }
 
@@ -309,6 +310,17 @@ Enemy_Vfx_Modifiers :: enum_flags u8 {
 }
 
 
+Collision_Resolution :: enum u8 {
+    IN_COLLISION;
+        // The entity this is on is in the collision map.
+    PRIMARY_ANNIHILATOR;
+        // The entity this is on is in the collision map but should be destroyed once the collisions are done.
+    SECONDARY_ANNIHILATOR;
+        // The entity this is on is not on the collision map because another entity was there. That entity's 
+        // collision_resolution member got set to .PRIMARY_ANNIHILATOR.
+}
+
+
 Enemy :: struct {
     using #as e: Entity;
     
@@ -317,6 +329,8 @@ Enemy :: struct {
 
     vfx_modifiers: Enemy_Vfx_Modifiers; @NoSerialize
     vfx_moving_from: Vector3; @NoSerialize
+
+    collision_resolution: Collision_Resolution; @NoSerialize
 }
 
 
@@ -363,8 +377,6 @@ Block :: struct {
     color: Vector4; @Color
     moveable: bool;
     mesh: Mesh; @NoSerialize
-
-    moveable_desired_position: Vector3i; @NoSerialize
 }
 
 
@@ -1270,6 +1282,107 @@ gameplay_enemy_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) 
 } 
 
 
+collision_resolution :: (using level: *Level) {
+    using context.game_context;
+    
+    size_1d := level_size.x * level_size.y * level_size.z;
+    new_collision := alloc_view(frame_arena, size_1d, Entity_Id);
+    
+    for * block: _Block {
+        offset := block.position - level_position;
+        for :iterate_vector3i block.size {
+            if !block.filled[it_index] continue;
+            in_bounds, index := get_3d_index(offset + it, level_size);
+            assert(in_bounds);
+            assert(new_collision[index] == 0);
+            new_collision[index] = block.eid;
+        }
+    }
+
+    for * _Enemy {
+        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+        assert(in_bounds); // @TODO: Handle annihilating out-of-bounds enemies
+
+        eid := new_collision[index];
+        if eid {
+             e := get_entity(level, eid);
+
+             enemy := as(e, Enemy);
+             assert(enemy != null);
+             // Anything else there (like a Block) is not good.
+             // Technically a Player could also be there but we add the Player to the new collision map after this
+             // so we don't need to worry about that.
+
+            enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
+            it.collision_resolution = .SECONDARY_ANNIHILATOR;
+        } else {
+            new_collision[index] = it.eid;
+            it.collision_resolution = .IN_COLLISION;
+        }
+    }
+
+    player := *_Player[0]; 
+    {
+        // @Copypasta from above
+
+        in_bounds, index := get_3d_index(player.position, level_position, level_size);
+        assert(in_bounds); // @TODO: Handle killing the player when they get out-of-bounds
+
+        eid := new_collision[index];
+        if eid {
+             e := get_entity(level, eid);
+
+             enemy := as(e, Enemy);
+             assert(enemy != null);
+
+            enemy.collision_resolution = .PRIMARY_ANNIHILATOR;
+            player.collision_resolution = .SECONDARY_ANNIHILATOR;
+        } else {
+            new_collision[index] = player.eid;
+            player.collision_resolution = .IN_COLLISION;
+        }
+    }
+    
+    //
+    // The new_collision array is now set up. Delete everything that needs to be deleted.
+    //
+    
+    for * _Enemy {
+        if it.collision_resolution == {
+            case .IN_COLLISION;
+            case .PRIMARY_ANNIHILATOR;
+                // @TODO: Make a Mutual_Annihilation for this.
+                in_bounds, index := get_3d_index(it.position, level_position, level_size);
+                assert(in_bounds);
+                assert(new_collision[index] == it.eid);
+                new_collision[index] = 0;
+                delete_entity(level, it.eid);
+                it_index -= 1; // :DeleteEntityInLoop
+            case .SECONDARY_ANNIHILATOR;
+                delete_entity(level, it.eid);
+                it_index -= 1; // :DeleteEntityInLoop
+        }
+    }
+
+    if player.state == .NORMAL {
+        if player.collision_resolution == {
+            case .IN_COLLISION;
+            case .PRIMARY_ANNIHILATOR;
+                in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                assert(in_bounds);
+                assert(new_collision[index] == player.eid);
+                new_collision[index] = 0;
+                player.state = .DEAD;
+            case .SECONDARY_ANNIHILATOR;
+                player.state = .DEAD;
+        }
+    }
+
+    assert(new_collision.count == collision.count);
+    memcpy(collision.data, new_collision.data, byte_count(new_collision));
+}
+
+
 gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
     using context.game_context;
     
@@ -1484,6 +1597,11 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     if #complete player.state == {
         case .NORMAL;
 
+            //
+            // Gather the blocks we are pushing
+            //
+
+            scope_mark(frame_arena);
 
             moved_blocks: [..] *Block;
             
@@ -1516,6 +1634,90 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 }
             }
 
+
+            //
+            // Figure out if the move is legal
+            //
+
+            moved_enemies: [..] *Enemy;
+
+            for block: moved_blocks {
+                offset := block.position - level_position;
+                for :iterate_vector3i block.size {
+                    if !block.filled[it_index] continue;
+
+                    in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
+                    if !in_bounds return;
+
+                    eid := collision[index];
+                    if !eid continue;
+                    e := get_entity(level, eid);
+
+                    if e.type == {
+                        case .Enemy;
+                            enemy := as(e, Enemy);
+                            in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
+                            if !in_bounds return;
+                            eid := collision[index];
+                            if !eid continue;
+                            next_e := get_entity(level, eid);
+                            if next_e.type == {
+                                case .Player; #through;
+                                case .Enemy;
+                                    append(*moved_enemies, frame_arena).* = enemy;
+
+                                case .Block;
+                                    next_block := as(e, Block);
+                                    found := false;
+                                    for moved_blocks {
+                                        if it.eid == next_block.eid {
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if !found return;
+                                    // The block you pushed pushed an enemy into another block. This move is invalid
+                                    // for now, maybe we want it to be valid in the future.
+
+                                case;
+                                    assert(false);
+                            }
+
+                        case .Block;
+                            next_block := as(e, Block);
+                            found := false;
+                            for moved_blocks {
+                                if it.eid == next_block.eid {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if !found return;
+
+                        case .Player;
+
+                        case;
+                            assert(false);
+                    }
+                }
+            }
+
+
+            // We know the move is valid. Update everything.
+
+
+            for moved_blocks {
+                assert(it.moveable);
+                it.position += push_direction;
+            }
+
+            for moved_enemies {
+                it.position += push_direction;
+            }
+
+            player.position = new_player_position;
+
+            collision_resolution(level);
 
             /*
             set_default_desired(level);

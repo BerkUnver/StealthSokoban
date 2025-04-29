@@ -5109,7 +5109,7 @@ DSSCL_PRIORITY      :: 0x2;
 
 
 
-// @Copypaste from the modules/Sound_Player stuff.
+// @Copypasta from the modules/Sound_Player stuff.
 
 
 

@@ -19,6 +19,7 @@
 - Undo / Redo
 - An actual dragging widget
 - Bulk selection
+- Splitting and merging Block entities
 - Entity instantiation popup where you type the name of the entity you want
 - Level goto popup where you type the name of the level you want to go to
 

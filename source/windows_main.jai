@@ -1,7 +1,11 @@
+// @BeforeDemo Prevent windows from resizing when the computer goes to sleep
+// then is woken up.
+// @BeforeDemo Toggleable fullscreen
+
 // @TODO: Find out how to disable Runtime_Support
 // @TODO: Switch to the wide character version of everything.
 // @TODO: Handle switching monitors. Right now the window might become
-// weirldy stretched and unresponsive.
+// weirdly stretched and unresponsive.
 
 #load "shared.jai";
 #load "windows_winapi.jai";
