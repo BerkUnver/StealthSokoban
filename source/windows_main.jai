@@ -1,6 +1,7 @@
 // @BeforeDemo Prevent windows from resizing when the computer goes to sleep
 // then is woken up.
 // @BeforeDemo Toggleable fullscreen
+// @BeforeDemo Handle alt and f10 freezing the game until another key is pressed
 
 // @TODO: Find out how to disable Runtime_Support
 // @TODO: Switch to the wide character version of everything.
@@ -74,6 +75,7 @@ main :: () {
                         case VK_OEM_PERIOD; key = #char ".";
                         case VK_TAB;        key = .TAB;    
                         case VK_RETURN;     key = .ENTER;
+                        case VK_ESCAPE;     key = .ESCAPE;
                             // @TODO: Properly handle left and right alts, shifts, and ctrls.
                         case VK_SHIFT;      key = .SHIFT;
                         case VK_CONTROL;    key = .CTRL;
@@ -81,7 +83,7 @@ main :: () {
                         case VK_END;        key = .END;
                         case;
                             return;
-                            // @TODO: Handle alt (It is special on windows, and isn't recieved via WM_KEY... messages.
+                            // @TODO: Handle alt, f10 (they is special on windows, and isn't recieved via WM_KEY... messages).
                     }
                     append_input_event(.{key=key, state=state});
                 }

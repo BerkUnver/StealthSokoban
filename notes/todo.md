@@ -71,7 +71,7 @@ Now, let's sort these by priority.
 - ~~Level entrance and exit~~
 - Pause menu with options to exit the current level, reset the demo.
 - ~~Overworld exits only activate once you have completed the corresponding level~~
-- Enemy pre-warming
+~~- Enemy pre-warming~~
 - Pulling from all directions of a block.
 - Store the overworld state for when you return
 - Make a release mode where all the developer hotkeys are disabled.
@@ -83,6 +83,7 @@ Now, let's sort these by priority.
 - Some explanation of basic movement. Input hinting in the game?
 - Some visual indication of when the pulling button has been pressed.
 - Playtesting!
+- Mouse camera controls
 
 # WE SHOULD HAVE
 - More introductory levels

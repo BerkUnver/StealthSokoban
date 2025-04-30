@@ -129,6 +129,7 @@ Key :: enum {
     TILDE;
     TAB;
     ENTER;
+    ESCAPE;
     HOME;
     END;
     COUNT;

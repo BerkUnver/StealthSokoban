@@ -166,7 +166,7 @@ Active_Widget_Data :: struct {
 label :: (text: string, position: Vector2, size: Vector2) -> used_length: float {
     using context.game_context;
 
-    font := *consolas;
+    font := *consolas_32pt;
 
     margin := font.ascender * 0.2;
     text_position := round(Vector2.{
@@ -187,7 +187,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc
     
     scope_widget(loc, id);
 
-    font := *consolas;
+    font := *consolas_32pt;
     margin := font.ascender * 0.2;
     
     outline_outer_width := font.ascender * 1.5;
@@ -220,7 +220,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc
     }
     
     
-    set_shader(imm_color_shader, .{flags = 0});
+    set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
 
     imm_quad(round(outline_outer_position), round(outline_outer_size), color);
@@ -295,7 +295,7 @@ slider :: (value: *float, position: Vector2, size: Vector2, strictly_less_than_1
         size.y
     };
     
-    set_shader(imm_color_shader, .{flags = 0});
+    set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
     imm_quad(bar_position, bar_size, HIGHLIGHT_COLOR);
     imm_flush();
@@ -308,7 +308,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     scope_widget(loc, id);
 
-    font := *consolas;
+    font := *consolas_32pt;
     margin := font.ascender * 0.2;
 
     head := position;
@@ -355,7 +355,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     // the y value.
 
     // @TODO: Draw a little alpha checkerboard texture underneath this.
-    set_shader(imm_color_shader, .{flags = 0});
+    set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
     alpha_x0 := alpha_position.x;
     alpha_y0 := alpha_position.y;
@@ -371,7 +371,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     slider(*color.w, alpha_position, alpha_size, loc=loc, id=0);
     
-    set_shader(imm_hue_shader, .{flags = 0});
+    set_shader(imm_hue_shader, .{});
     set_uniform("projection", ui_to_camera);
     imm_vertex(.{hue_x0, hue_y0, 0}, .{0, 0});
     imm_vertex(.{hue_x1, hue_y0, 0}, .{1, 0});
@@ -461,7 +461,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     };
 
     
-    set_shader(imm_saturation_value_shader, .{flags = 0});
+    set_shader(imm_saturation_value_shader, .{});
     set_uniform("projection", ui_to_camera);
     set_uniform("hue", hue);
     imm_vertex(.{sv_x0, sv_y0, 0}, .{0, 1});
@@ -472,7 +472,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
     imm_vertex(.{sv_x0, sv_y1, 0}, .{0, 0});
     imm_flush();
     
-    set_shader(imm_color_shader, .{flags = 0});
+    set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
     imm_quad(sample_position, sample_size, color.*);
     imm_quad(sv_cursor_hbar_position, sv_cursor_hbar_size, HIGHLIGHT_COLOR);
@@ -508,7 +508,7 @@ enum_selector :: (
 
     scope_widget(loc, id);
 
-    font := *consolas;
+    font := *consolas_32pt;
     
     margin := font.ascender * 0.2;
     button_height := size.y - margin * 2;
@@ -599,11 +599,11 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     }
     
 
-    font := *consolas;
+    font := *consolas_32pt;
 
     width := floor(font.ascender * 0.05);
     
-    set_shader(imm_color_shader, .{flags = 0});
+    set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
     imm_quad(position, size, color);
     
@@ -637,7 +637,7 @@ string_entry :: (
 
     scope_widget(loc, id);
 
-    font := *consolas;
+    font := *consolas_32pt;
     margin := font.ascender * 0.2;
 
     inner_height := font.ascender * 1.5;
@@ -806,7 +806,7 @@ string_entry :: (
     }
 
     
-    set_shader(imm_color_shader, .{flags = 0});
+    set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
     imm_quad(outer_position, outer_size, color);
     imm_quad(inner_position, inner_size, BACKGROUND_COLOR);
@@ -901,7 +901,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
     using context.game_context;
     scope_widget(loc, id);
 
-    font := *consolas;
+    font := *consolas_32pt;
     margin := font.ascender * 0.2;
     indent := font.ascender * 2;
 

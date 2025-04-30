@@ -935,7 +935,7 @@ Pipeline :: struct {
         DEPTH_TEST;
         CULL_FACE;
         STENCIL_TEST;
-    } = .DEPTH_TEST | .CULL_FACE;
+    }
     polygon_mode: enum u8 {
         FILL;
         LINE;
@@ -948,7 +948,7 @@ Pipeline :: struct {
 }
 
 
-set_shader :: (shader: Shader, using pipeline := Pipeline.{}) {
+set_shader :: (shader: Shader, using pipeline := Pipeline.{flags = .DEPTH_TEST | .CULL_FACE}) {
     using context.game_context;
     glUseProgram(shader.program);
 

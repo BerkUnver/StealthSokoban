@@ -19,7 +19,7 @@ VALID_ASCII_START :: 33;
 VALID_ASCII_END :: 126;
 
 
-load_font :: (file_name: string) -> Font {
+load_font :: (file_name: string, height: int) -> Font {
     using context.game_context;
     
     
@@ -39,8 +39,7 @@ load_font :: (file_name: string) -> Font {
     defer FT_Done_Face(face);
 
 
-    FONT_HEIGHT :: 32;
-    FT_Set_Pixel_Sizes(face, 0, FONT_HEIGHT);
+    FT_Set_Pixel_Sizes(face, 0, xx height);
 
     font: Font;
     font.ascender = cast(float, face.size.metrics.ascender) / 64;
@@ -61,24 +60,19 @@ load_font :: (file_name: string) -> Font {
 
     bitmap_data := alloc(frame_arena, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT);
 
-    // :BottomToTopText
-    // FreeType wants you to use a y-down coordinate system. I don't know if I want to do this.
-    // I've put some special code to fix this for now, though it may turn out we want it to be
-    // top-to-bottom.
-    //      -berk, 2025 - 3 - 7
-
+    
     for VALID_ASCII_START..VALID_ASCII_END {
         assert(FT_Load_Char(face, xx it, FT_LOAD_RENDER) == 0);
         
         glyph_width := face.glyph.bitmap.width;
         glyph_height := face.glyph.bitmap.rows;
 
-        assert(glyph_height <= FONT_HEIGHT);
+        assert(glyph_height <= height);
         assert(glyph_width <= FONT_BITMAP_WIDTH);
         if x + glyph_width > FONT_BITMAP_WIDTH {
             x = 0;
-            y += FONT_HEIGHT;
-            assert(y + FONT_HEIGHT < FONT_BITMAP_HEIGHT);
+            y += height;
+            assert(y + height < FONT_BITMAP_HEIGHT);
         }
 
         // @TODO @Speed @Memory: Is there a way to give FreeType a pointer

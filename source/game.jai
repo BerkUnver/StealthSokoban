@@ -68,8 +68,8 @@ Game_Context :: struct {
     item_and_bitmap_shader: Shader;
     occlusion_shader: Shader;
 
-
-    consolas: Font;
+    consolas_32pt: Font;
+    consolas_64pt: Font;
 
     footstep: *Sound;
     gridlike_bitmap: *Bitmap;
@@ -219,7 +219,8 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         item_and_bitmap_shader = load_shader("shaders/item_and_bitmap.gl");
         occlusion_shader = load_shader("shaders/occlusion.gl");
 
-        consolas = load_font("consolas.ttf");
+        consolas_32pt = load_font("consolas.ttf", 32);
+        consolas_64pt = load_font("consolas.ttf", 64);
 
         footstep                    = load_asset(Sound, *asset_table, "sounds/footstep.wav");
         gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
@@ -543,52 +544,55 @@ game_update : Game_Update : (
             case .GAMEPLAY;
                 using gameplay_level;
                 gameplay_update(gameplay_level, dt);
-                if state == {
-                    case .FADE_OUT_ENTRANCE;
-                        using fade_out_entrance;
-                        if interp >= 1 {
-                            assert(eid != 0);
+                if flags & .PAUSED {
+                } else {
+                    if state == {
+                        case .FADE_OUT_ENTRANCE;
+                            using fade_out_entrance;
+                            if interp >= 1 {
+                                assert(eid != 0);
 
-                            e := get_entity(gameplay_level, eid);
-                            entrance := as(e, Overworld_Entrance);
-                            assert(entrance != null);
-                            
-                            assert(entrance.level_name != "");
-                            scope_mark(frame_arena);
-                            // We need to copy the string because it is going to be freed when we free the old level.
-                            level_name := copy_string(frame_arena, entrance.level_name);
-                            free_level(gameplay_level, gameplay_arena);
+                                e := get_entity(gameplay_level, eid);
+                                entrance := as(e, Overworld_Entrance);
+                                assert(entrance != null);
+                                
+                                assert(entrance.level_name != "");
+                                scope_mark(frame_arena);
+                                // We need to copy the string because it is going to be freed when we free the old level.
+                                level_name := copy_string(frame_arena, entrance.level_name);
+                                free_level(gameplay_level, gameplay_arena);
 
-                            gameplay_level = load_level_part_1_deserialize(level_name, gameplay_arena);
-                            assert(gameplay_level != null);
-                            assert(load_level_part_2_gameplay(level_name, gameplay_level, gameplay_arena));
-                        }
-                    case .FADE_OUT_EXIT;
-                        using fade_out_exit;
-                        if interp >= 1 {
-                            scope_mark(frame_arena);
-                            level_name := copy_string(frame_arena, name);
-                            free_level(gameplay_level, gameplay_arena);
+                                gameplay_level = load_level_part_1_deserialize(level_name, gameplay_arena);
+                                assert(gameplay_level != null);
+                                assert(load_level_part_2_gameplay(level_name, gameplay_level, gameplay_arena));
+                            }
+                        case .FADE_OUT_EXIT;
+                            using fade_out_exit;
+                            if interp >= 1 {
+                                scope_mark(frame_arena);
+                                level_name := copy_string(frame_arena, name);
+                                free_level(gameplay_level, gameplay_arena);
 
-                            gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
-                            assert(gameplay_level != null);
-                            assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
-                            
-                            for * _Overworld_Exit {
-                                entrance := get_entrance_for_overworld_exit(gameplay_level, it);
-                                if entrance && entrance.level_name == level_name {
-                                    entrance.activated = true;
+                                gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
+                                assert(gameplay_level != null);
+                                assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
+                                
+                                for * _Overworld_Exit {
+                                    entrance := get_entrance_for_overworld_exit(gameplay_level, it);
+                                    if entrance && entrance.level_name == level_name {
+                                        entrance.activated = true;
 
-                                    player := *_Player[0];
-                                    player.position = it.position;
+                                        player := *_Player[0];
+                                        player.position = it.position;
 
-                                    // @Hack keep the camera focused on the player because otherwise it will fly
-                                    // from wherever the player entity was placed in the level to where we want
-                                    // the player to spawn.
-                                    reset_camera_focus(gameplay_level);
+                                        // @Hack keep the camera focused on the player because otherwise it will fly
+                                        // from wherever the player entity was placed in the level to where we want
+                                        // the player to spawn.
+                                        reset_camera_focus(gameplay_level);
+                                    }
                                 }
                             }
-                        }
+                    }
                 }
                 draw(gameplay_level, .GAMEPLAY);
         }
@@ -634,7 +638,7 @@ editor_draw_imgui :: (using level: *Level, arena: *Memory_Arena) -> new_level_na
     imm_quad(IMGUI_POSITION, IMGUI_SIZE, .{0, 0, 0, 1});
     imm_flush();
 
-    font := *consolas;
+    font := *consolas_32pt;
     item_height := font.ascender * 2;
 
     item_size := Vector2.{IMGUI_SIZE.x, item_height};
@@ -1022,6 +1026,39 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     using fade_out_exit;
                     draw_fade(interp);
             }
+
+
+            if flags & .PAUSED {
+                h := cast(float, INNER_WINDOW_H / 1.5);
+                y := cast(float, INNER_WINDOW_H / 2 - h / 2);
+
+                x := INNER_WINDOW_W / 2 - h / 2;
+                w := h;
+
+                set_shader(imm_color_shader, .{flags = .BLEND});
+                set_uniform("projection", ui_to_camera);
+                imm_quad(.{0, 0}, .{INNER_WINDOW_W, INNER_WINDOW_H}, .{0, 0, 0, 0.5});
+                imm_quad(.{x, y}, .{w, h}, .{0, 0, 0, 1});
+                imm_flush();
+
+                
+                font := *consolas_64pt;
+
+                OPTIONS :: string.[
+                    "Return to Level Selection",
+                    "Credits",
+                    "Reset Demo"
+                ];
+                
+                head := y + w / 2 - (OPTIONS.count - 1) * font.ascender;
+
+                for OPTIONS {
+                    length := text_length(it, font);
+                    text_position := round(Vector2.{x + w / 2 - length / 2, head});
+                    draw_text(it, text_position, font, .{1, 1, 1, 1});
+                    head += font.ascender * 2;
+                }
+            }
         case .EDITOR;
             {
                 scope_mark(frame_arena);
@@ -1073,7 +1110,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 mesh := entity_mesh(e);
                 mesh_to_world := entity_mesh_to_world_matrix(level, e);
                 
-                set_shader(wireframe_shader, .{polygon_mode = .LINE});
+                set_shader(wireframe_shader, .{flags = .DEPTH_TEST | .CULL_FACE, polygon_mode = .LINE});
                 set_uniform("projection", world_to_camera * mesh_to_world);
                 set_uniform("color", color);
 
