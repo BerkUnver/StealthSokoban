@@ -65,6 +65,7 @@ Level :: struct {
         camera_focus_x_interp := 1.0;
         camera_focus_z_interp := 1.0;
 
+
         camera_landing_interp: float;
 
         camera_pitch_index: s8 = 1;
@@ -152,7 +153,7 @@ CAMERA_PITCH_VALUES :: float.[
 
 CAMERA_YAW_TICK_COUNT :: 12;
 
-PLAYERLIKE_SPAWNING_TIME :: 0.2;
+SPAWNING_TIME :: 0.2;
 
 Camera_Mode :: enum {
     NEAR;
@@ -190,9 +191,15 @@ Player_State :: enum u8 {
 Player :: struct {
     using #as e: Entity;
     state: Player_State; @NoSerialize
-    last_floor_y: s32; @NoSerialize
     collision_resolution: Collision_Resolution; @NoSerialize
+
     using vars: union {
+        ground: struct {
+            landing_interp: float;
+        }
+        falling: struct {
+            last_floor_y: s32;
+        }
         dead: struct {
             interp: float; 
         }
@@ -204,6 +211,8 @@ Player :: struct {
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
         case .GROUND;
+            if player.state == .FALLING player.ground.landing_interp = 0;
+            else                        player.ground.landing_interp = 1;
         case .FALLING;
         case .DEAD;
             player.dead.interp = 0;
@@ -651,21 +660,22 @@ get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientat
 
         y = position.y;
 
-        /*
         if #complete player.state == {
             case .GROUND;
                 y = position.y + 1.0 - player.ground.landing_interp;
             case .FALLING;
-                if player.position.y <= player.falling.last_floor_y - 1 {
-                    y = position.y + 1.0 - player.falling.interp;
-                } else {
+                if player.position.y >= player.falling.last_floor_y {
                     y = xx player.falling.last_floor_y;
+                } else {
+                    fall_timer := fmod_cycling(move_timer, MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
+                    interp := fall_timer / (MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
+                    y = position.y + 1.0 - interp;
                 }
             case .DEAD; #through;
-            case .SPAWNING;
+            case .STUCK_INSIDE_A_BLOCK;
+            case .DEBUG_MOVEMENT;
                 y = position.y;
         }
-        */
 
         focus := Vector3.{x, y, z};
 
@@ -908,7 +918,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
         collision[index] = player.eid;
     }
-
+    player.ground.landing_interp = 1;
 
     camera_focus_x = player.position.x;
     camera_focus_z = player.position.z;
@@ -1033,7 +1043,7 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
     }
 
     if enemy.vfx_modifiers & .SPAWNING {
-        weight := level.move_timer / PLAYERLIKE_SPAWNING_TIME;
+        weight := level.move_timer / SPAWNING_TIME;
         matrix = make_scale_matrix4(.{weight, weight, weight}) * matrix;
     }
 
@@ -1531,7 +1541,6 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
         case .DEAD; #through;
         case .STUCK_INSIDE_A_BLOCK; #through;
         case .DEBUG_MOVEMENT;
-            player.last_floor_y = player.position.y;
 
     }
 }
@@ -1947,7 +1956,7 @@ gameplay_update :: (using level: *Level, dt: float) {
     // I wanted to do fmod_cycling on the enemy timer no matter what state we are in so I 
     // pulled this stuff out of the .GAMEPLAY state update.
 
-    mvoe_tick_in_gameplay_state: enum {
+    move_tick_in_gameplay_state: enum {
         NONE;
         FALLING;
         ALL;
@@ -1955,9 +1964,9 @@ gameplay_update :: (using level: *Level, dt: float) {
 
     if move_timer >= MOVE_TICK_TIME {
         move_timer = fmod_cycling(move_timer, MOVE_TICK_TIME);
-        mvoe_tick_in_gameplay_state = .ALL;
+        move_tick_in_gameplay_state = .ALL;
     } else if floor(old_move_timer / MOVE_TICK_TIME * FALLS_PER_MOVE_TICK) < floor(move_timer / MOVE_TICK_TIME * FALLS_PER_MOVE_TICK) {
-        mvoe_tick_in_gameplay_state = .FALLING;
+        move_tick_in_gameplay_state = .FALLING;
     }
 
 
@@ -1981,7 +1990,7 @@ gameplay_update :: (using level: *Level, dt: float) {
             }
 
         case .PLAYING; 
-            if mvoe_tick_in_gameplay_state == {
+            if move_tick_in_gameplay_state == {
                 case .NONE;
 
                 case .FALLING;
@@ -1998,14 +2007,19 @@ gameplay_update :: (using level: *Level, dt: float) {
             }
             
             if #complete player.state == {
-                case .GROUND;
+                case .GROUND;   
+                    player.ground.landing_interp += dt / (MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
+                    player.ground.landing_interp = min(player.ground.landing_interp, 1.0);
+
                 case .FALLING;
+                    
                 case .DEAD; 
-                    DEAD_TIME :: PLAYERLIKE_SPAWNING_TIME;
+                    DEAD_TIME :: SPAWNING_TIME;
                     player.dead.interp += dt / DEAD_TIME;
                     if player.dead.interp >= 1 {
                         set_state(level, .FADE_OUT_CHECKPOINT);
                     }
+
                 case .STUCK_INSIDE_A_BLOCK;
                 case .DEBUG_MOVEMENT;
             }
@@ -2046,7 +2060,7 @@ gameplay_update :: (using level: *Level, dt: float) {
         }
     }
 
-    if old_move_timer < PLAYERLIKE_SPAWNING_TIME && PLAYERLIKE_SPAWNING_TIME <= new_move_timer {
+    if old_move_timer < SPAWNING_TIME && SPAWNING_TIME <= new_move_timer {
         for * _Enemy {
             if it.vfx_modifiers & .SPAWNING {
                 it.vfx_modifiers &= ~.SPAWNING;
