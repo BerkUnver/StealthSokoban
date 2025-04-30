@@ -168,6 +168,8 @@ Gameplay_State :: enum {
 
 
 Player_State :: enum u8 {
+    SPAWNING;
+        // The player is not in the collision array.
     ALIVE;
         // The player is inside of the collision array
     DEAD;
@@ -186,6 +188,9 @@ Player :: struct {
     collision_resolution: Collision_Resolution; @NoSerialize
 
     using vars: union {
+        spawning: struct {
+            interp: float;
+        }
         dead: struct {
             interp: float; 
         }
@@ -196,6 +201,8 @@ Player :: struct {
 
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
+        case .SPAWNING; 
+            player.spawning.interp = 0;
         case .ALIVE;
         case .DEAD;
             player.dead.interp = 0;
@@ -825,6 +832,8 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
     collision = alloc_view(arena, size_1d, Entity_Id);
     mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
 
+    // Should adding this stuff to the collision array be done with collision_resolution?
+
     for * block: _Block {      
         offset := block.position - level_position;
 
@@ -877,30 +886,12 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
         return false;
     }
     
-    player := *_Player[0];
-    {
-        in_bounds, index := get_3d_index(player.position, level_position, level_size);
-        if !in_bounds {
-            log(.ERROR, "The Player is outside the level's bounding box.\n");
-            return false;
-        }
-
-        if collision[index] != 0 {
-            log(.ERROR, "There is an overlap beteween the Player entity and something else at (%, %, %)\n", player.position.x, player.position.y, player.position.z);
-            return false;
-        }
-
-        collision[index] = player.eid;
-    }
-    
     reset_camera_focus(level);
-
 
     // :Checkpoint
     self_ptr = .{arena.current, xx level};
     checkpoint = alloc_view(arena, self_ptr.count, u8, zero_init = false); 
 
-    
     for 0..enemy_pre_warm_ticks-1 {
         gameplay_move_tick(level, just_do_falls=false, do_vfx=false);
         for 1..FALLS_PER_MOVE_TICK-1 {
@@ -909,8 +900,16 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
         // @TODO: Detect when enemies walk into the player, issue an error!
     }
 
-    set_state(level, .PLAYING);
-    set_checkpoint(level);
+    player := *_Player[0];
+
+    if skip_intro {
+        set_state(player, .ALIVE);
+        set_state(level, .PLAYING);
+        set_checkpoint(level);
+    } else {
+        set_state(level, .FADE_IN_START);
+    }
+
     return true;
 }
 
@@ -1044,22 +1043,21 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
     scale = Matrix4_Identity;
     position = to_vector3(player.position);
     
-    /*
     if #complete player.state == {
-        case .GROUND; #through;
-        case .FALLING;
-            scale = Matrix4_Identity;
-            position = to_vector3(player.position);
         case .SPAWNING;
             weight := player.spawning.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});
+            position = to_vector3(player.position);
+        case .DEBUG_MOVEMENT;
+        case .STUCK_INSIDE_A_BLOCK;
+        case .ALIVE;
+            scale = Matrix4_Identity;
             position = to_vector3(player.position);
         case .DEAD;
             weight := 1 - player.dead.interp;
             scale = make_scale_matrix4(.{weight, weight, weight});
             position = to_vector3(player.position);
     }
-    */
 
     return make_translation_matrix4(to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5}) * scale;
 }
@@ -1179,8 +1177,7 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
     memcpy(self_ptr.data, checkpoint.data, checkpoint.count);
     assert(state == .PLAYING);
 
-    // player := *_Player[0];
-    // set_state(player, .SPAWNING);
+    player := *_Player[0];
     
     dt_modifier = old_dt_modifier;
 
@@ -1192,7 +1189,10 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
     camera_pitch_interp = 1;
     
     if !skip_intro {
+        set_state(player, .SPAWNING);
         set_state(level, .FADE_IN_START);
+    } else {
+        set_state(player, .ALIVE);
     }
 }
 
@@ -1543,6 +1543,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 // However, I am calling this just for good form.
                 collision_resolution(level, true);
             
+            case .SPAWNING; #through;
             case .DEAD; #through;
             case .STUCK_INSIDE_A_BLOCK;
                 set_state(player, .DEBUG_MOVEMENT);
@@ -1819,9 +1820,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             collision_resolution(level, true);
 
             play_positional_sound(level, player.position, footstep);
-
+        
+        case .SPAWNING;
         case .DEAD;
-            // The player can't move if they're dead.
 
         case .STUCK_INSIDE_A_BLOCK;
             // Make sure we are in fact still inside a block
@@ -1931,17 +1932,24 @@ gameplay_update :: (using level: *Level, dt: float) {
                 it.interp += dt / TIME;
                 if it.interp > 1 remove it;
             }
-            
+
             if #complete player.state == {
+                case .SPAWNING;
+                    player.spawning.interp += dt / SPAWNING_TIME;
+                    if player.spawning.interp >= 1 {
+                        set_state(player, .ALIVE);
+                    }
                 case .ALIVE;
-                    
-                case .DEAD; 
+                case .DEAD;
                     DEAD_TIME :: SPAWNING_TIME;
                     player.dead.interp += dt / DEAD_TIME;
                     if player.dead.interp >= 1 {
+                        player.dead.interp = 1;
+                        // Prevent a tiny upside down player from drawing if the interp goes
+                        // slightly past one
+
                         set_state(level, .FADE_OUT_CHECKPOINT);
                     }
-
                 case .STUCK_INSIDE_A_BLOCK;
                 case .DEBUG_MOVEMENT;
             }
