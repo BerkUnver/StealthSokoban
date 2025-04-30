@@ -55,18 +55,12 @@ Level :: struct {
         
         camera_mode: Camera_Mode;
 
-        // These members are only used by the NEAR and FAR camera states.
+        // These members are only used by the NEAR and FAR Camera_Mode.
         // Maybe they should be in the Player struct?
         
-        camera_focus_x: s32;
-        camera_focus_z: s32;
-        camera_focus_old_x: float;
-        camera_focus_old_z: float;
-        camera_focus_x_interp := 1.0;
-        camera_focus_z_interp := 1.0;
-
-
-        camera_landing_interp: float;
+        camera_focus: Vector3i;
+        camera_focus_old: Vector3;
+        camera_focus_interp: Vector3;
 
         camera_pitch_index: s8 = 1;
         camera_pitch_interp := 1.0;
@@ -194,12 +188,6 @@ Player :: struct {
     collision_resolution: Collision_Resolution; @NoSerialize
 
     using vars: union {
-        ground: struct {
-            landing_interp: float;
-        }
-        falling: struct {
-            last_floor_y: s32;
-        }
         dead: struct {
             interp: float; 
         }
@@ -211,8 +199,6 @@ Player :: struct {
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
         case .GROUND;
-            if player.state == .FALLING player.ground.landing_interp = 0;
-            else                        player.ground.landing_interp = 1;
         case .FALLING;
         case .DEAD;
             player.dead.interp = 0;
@@ -620,6 +606,15 @@ get_camera_yaw :: (using level: *Level) -> float {
 }
 
 
+reset_camera_focus :: (using level: *Level) {
+    player := *_Player[0];
+
+    camera_focus = player.position;
+    camera_focus_old = to_vector3(player.position);
+    camera_focus_interp = .{1, 1, 1};
+}
+
+
 
 // The quaternion rotates global coordinates into camera coordinates.
 get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientation: Quaternion {
@@ -629,16 +624,22 @@ get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientat
     // that made the camera logic rather confusing, and I want to be able to directly set
     // the player's position normally, so I am putting it here.
 
-    if player.position.x != camera_focus_x {
-        camera_focus_old_x = lerp(camera_focus_old_x, cast(float, camera_focus_x), camera_focus_x_interp);
-        camera_focus_x = player.position.x;
-        camera_focus_x_interp = 0;
+    if player.position.x != camera_focus.x {
+        camera_focus_old.x = lerp(camera_focus_old.x, cast(float, camera_focus.x), camera_focus_interp.x);
+        camera_focus.x = player.position.x;
+        camera_focus_interp.x = 0;
     }
 
-    if player.position.z != camera_focus_z {
-        camera_focus_old_z = lerp(camera_focus_old_z, cast(float, camera_focus_z), camera_focus_z_interp);
-        camera_focus_z = player.position.z;
-        camera_focus_z_interp = 0;
+    if player.position.y - camera_focus.y != 0 {
+        camera_focus_old.y = lerp(camera_focus_old.y, cast(float, camera_focus.y), camera_focus_interp.y);
+        camera_focus.y = player.position.y;
+        camera_focus_interp.y = 0;
+    }
+
+    if player.position.z != camera_focus.z {
+        camera_focus_old.z = lerp(camera_focus_old.z, cast(float, camera_focus.z), camera_focus_interp.z);
+        camera_focus.z = player.position.z;
+        camera_focus_interp.z = 0;
     }
 
 
@@ -649,34 +650,10 @@ get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientat
 
         position := to_vector3(player.position);
 
-        x, y, z: float;
-
-        x = lerp(camera_focus_old_x, position.x, camera_focus_x_interp);
-        z = lerp(camera_focus_old_z, position.z, camera_focus_z_interp);
+        x := lerp(camera_focus_old.x, xx camera_focus.x, camera_focus_interp.x);
+        y := lerp(camera_focus_old.y, xx camera_focus.y, camera_focus_interp.y);
+        z := lerp(camera_focus_old.z, xx camera_focus.z, camera_focus_interp.z);
         
-        // @TODO: We may want to have different code depending on whether the player
-        // is moving upwards or downwards on a ladder vs falling. Handle those once
-        // ladders are in the game.
-
-        y = position.y;
-
-        if #complete player.state == {
-            case .GROUND;
-                y = position.y + 1.0 - player.ground.landing_interp;
-            case .FALLING;
-                if player.position.y >= player.falling.last_floor_y {
-                    y = xx player.falling.last_floor_y;
-                } else {
-                    fall_timer := fmod_cycling(move_timer, MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
-                    interp := fall_timer / (MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
-                    y = position.y + 1.0 - interp;
-                }
-            case .DEAD; #through;
-            case .STUCK_INSIDE_A_BLOCK;
-            case .DEBUG_MOVEMENT;
-                y = position.y;
-        }
-
         focus := Vector3.{x, y, z};
 
         return focus + Vector3.{0.5, 0.5, 0.5};
@@ -918,10 +895,9 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
         collision[index] = player.eid;
     }
-    player.ground.landing_interp = 1;
+    
+    reset_camera_focus(level);
 
-    camera_focus_x = player.position.x;
-    camera_focus_z = player.position.z;
 
     // :Checkpoint
     self_ptr = .{arena.current, xx level};
@@ -1648,8 +1624,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         if camera_mode == {
             case .NEAR; #through;
             case .FAR;
-                camera_focus_x_interp = 1;
-                camera_focus_z_interp = 1;
+                reset_camera_focus(level);
         }
         return;
     }
@@ -1942,8 +1917,9 @@ gameplay_update :: (using level: *Level, dt: float) {
 
     CAMERA_FOCUS_TIME :: 1.0 / 8.0;
     if camera_mode == .NEAR || camera_mode == .FAR {
-        camera_focus_x_interp = min(camera_focus_x_interp + dt / CAMERA_FOCUS_TIME, 1);
-        camera_focus_z_interp = min(camera_focus_z_interp + dt / CAMERA_FOCUS_TIME, 1);
+        camera_focus_interp.x = min(camera_focus_interp.x + dt / CAMERA_FOCUS_TIME, 1);
+        camera_focus_interp.y = min(camera_focus_interp.y + dt / (MOVE_TICK_TIME / FALLS_PER_MOVE_TICK), 1);
+        camera_focus_interp.z = min(camera_focus_interp.z + dt / CAMERA_FOCUS_TIME, 1);
     }
 
     old_move_timer := move_timer;
@@ -2008,9 +1984,6 @@ gameplay_update :: (using level: *Level, dt: float) {
             
             if #complete player.state == {
                 case .GROUND;   
-                    player.ground.landing_interp += dt / (MOVE_TICK_TIME / FALLS_PER_MOVE_TICK);
-                    player.ground.landing_interp = min(player.ground.landing_interp, 1.0);
-
                 case .FALLING;
                     
                 case .DEAD; 

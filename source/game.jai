@@ -585,8 +585,7 @@ game_update : Game_Update : (
                                     // @Hack keep the camera focused on the player because otherwise it will fly
                                     // from wherever the player entity was placed in the level to where we want
                                     // the player to spawn.
-                                    camera_focus_x = player.position.x;
-                                    camera_focus_z = player.position.z;
+                                    reset_camera_focus(gameplay_level);
                                 }
                             }
                         }
