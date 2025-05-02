@@ -1045,6 +1045,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 font := *consolas_64pt;
 
                 OPTIONS :: string.[
+                    "Go to Previous Checkpoint",
                     "Return to Level Selection",
                     "Credits",
                     "Reset Demo"

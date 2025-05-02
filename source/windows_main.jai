@@ -1,12 +1,11 @@
-// @BeforeDemo Prevent windows from resizing when the computer goes to sleep
-// then is woken up.
+// @BeforeDemo Prevent windows from resizing when the computer goes to sleep then is woken up.
 // @BeforeDemo Toggleable fullscreen
 // @BeforeDemo Handle alt and f10 freezing the game until another key is pressed
 
 // @TODO: Find out how to disable Runtime_Support
 // @TODO: Switch to the wide character version of everything.
-// @TODO: Handle switching monitors. Right now the window might become
-// weirdly stretched and unresponsive.
+// @TODO: Handle switching monitors. Right now the window might become weirdly stretched and unresponsive.
+// @TODO: Detect keys that were pressed when you alt-tabbed away from this application, then alt-tabbed back.
 
 #load "shared.jai";
 #load "windows_winapi.jai";
