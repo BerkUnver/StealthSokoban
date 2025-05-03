@@ -69,9 +69,9 @@ Now, let's sort these by priority.
 # NEED OR THE GAME BREAKS
 - ~~Saving level state with checkpoints. When you die you go back to the last checkpoint. <--- DYNAMIC MEMORY ALLOCATION?~~
 - ~~Level entrance and exit~~
-- Pause menu with options to exit the current level, reset the demo.
+- ~~Pause menu with options to exit the current level, reset the demo.~~
 - ~~Overworld exits only activate once you have completed the corresponding level~~
-~~- Enemy pre-warming~~
+- ~~Enemy pre-warming~~
 - Pulling from all directions of a block.
 - Store the overworld state for when you return
 - Make a release mode where all the developer hotkeys are disabled.

@@ -1755,11 +1755,19 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     // @TODO Add pulling blocks next to you, not just in the opposite direction of where
     // you are moving (I'm pretty sure we want this)
 
-    new_player_position := player.position + push_direction;
-
     if #complete player.state == {
         case .ALIVE;
             if !is_colliding_below(level, player.position) return;
+
+            {
+                in_bounds, index := get_3d_index(player.position + push_direction, level_position, level_size);
+                assert(in_bounds);
+                eid := collision[index];
+                if eid {
+                    block := as(get_entity(level, eid), Block);
+                    if block && !block.moveable return;
+                }
+            }
 
             //
             // Gather the blocks we are pushing
@@ -1769,23 +1777,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             moved_blocks: [..] *Block;
             
-            // Are we pushing a moveable block?
-            {
-                in_bounds, index := get_3d_index(new_player_position, level_position, level_size);
-                if !in_bounds return;
-                if collision[index] {
-                    e := get_entity(level, collision[index]);
-                    block := as(e, Block);
-                    if block {
-                        if !block.moveable return;
-                        append(*moved_blocks, frame_arena).* = block;
-                    }
-                }
-            }
-                
-            // Are we pulling a moveable block?
-            if flags & .PULLING {
-                in_bounds, index := get_3d_index(player.position - push_direction, level_position, level_size);
+            push_block :: (dir: Vector3i) #expand {
+                in_bounds, index := get_3d_index(player.position + dir, level_position, level_size);
                 if in_bounds {
                     eid := collision[index];
                     if eid {
@@ -1796,6 +1789,18 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                         }
                     }
                 }
+            }
+                
+            // Are we pulling a moveable block?
+            if flags & .PULLING {
+                push_block(.{1,  0,  0});
+                push_block(.{-1, 0,  0});
+                push_block(.{0,  1,  0});
+                push_block(.{0, -1,  0});
+                push_block(.{0,  0,  1});
+                push_block(.{0,  0, -1});
+            } else {
+                push_block(push_direction);
             }
 
 
@@ -1863,7 +1868,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 it.position += push_direction;
             }
 
-            player.position = new_player_position;
+            player.position = player.position + push_direction;
 
             collision_resolution(level, true);
 
@@ -1882,8 +1887,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             assert(e.type == .Block);
 
         case .DEBUG_MOVEMENT;
-            if inside_bounding_box(new_player_position, level_position, level_size) {
-                player.position = new_player_position;
+            if inside_bounding_box(player.position + push_direction, level_position, level_size) {
+                player.position = player.position + push_direction;
                 play_positional_sound(level, player.position, footstep);
             }
     } 
