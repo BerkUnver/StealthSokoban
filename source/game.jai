@@ -425,21 +425,89 @@ game_update : Game_Update : (
                 case .GAMEPLAY;
                     using gameplay_level;
 
-                    if it.key == #char "R" && it.state == .DOWN {
-                        scope_mark(frame_arena);
-
-                        level_name := string.{name.count, alloc(frame_arena, name.count, zero_init = true)};
-                        // We need the name to persist freeing the old level for when we load the new level.
-                        memcpy(level_name.data, name.data, level_name.count);
-                        free_level(gameplay_level, gameplay_arena);
-
-                        gameplay_level = load_level_part_1_deserialize(level_name, gameplay_arena);
-                        assert(gameplay_level != null);
-                        assert(load_level_part_2_gameplay(level_name, gameplay_level, gameplay_arena, skip_intro=true));
+                    if it.key == #char "-" && it.state == .DOWN {
+                        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
                         continue;
                     }
 
-                    gameplay_handle_input(gameplay_level, it);
+                    if it.key == #char "=" && it.state == .DOWN {
+                        if dt_modifier < 16 dt_modifier *= 2;
+                        continue;
+                    }
+
+                    if it.key == #char "U" && it.state == .DOWN && keys_down[Key.SHIFT] {
+                        for * _Overworld_Entrance {
+                            it.activated = true;
+                        }
+                        continue;
+                    }
+
+                    if flags & .PAUSED {
+                        if it.key == .ESCAPE && it.state == .DOWN {
+                            flags &= ~.PAUSED;
+                            continue;
+                        }
+
+                        // Should we have an illustration or something that clarifies which inputs
+                        // are which in the pause menu?
+                        
+                        // @Sfx
+                        if it.key == #char "W" && it.state == .DOWN {
+                            if flags & .OVERWORLD {
+                                paused.overworld.selected = (paused.overworld.selected - 1 + .COUNT) % .COUNT;
+                            } else {
+                                paused.other.selected = (paused.other.selected - 1 + .COUNT) % .COUNT;
+                            }
+                            continue;
+                        }
+
+                        // @Sfx
+                        if it.key == #char "S" && it.state == .DOWN {
+                            if flags & .OVERWORLD {
+                                paused.overworld.selected = (paused.overworld.selected + 1) % .COUNT;
+                            } else {
+                                paused.other.selected = (paused.other.selected + 1) % .COUNT;
+                            }
+                            continue;
+                        }
+
+                        if it.key == #char " " && it.state == .DOWN {   
+                            
+                            // This is probably how we want to reset the demo.
+                            reset_demo :: () #expand {
+                                free_level(gameplay_level, gameplay_arena);
+                                gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena); assert(gameplay_level != null);
+                                assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
+                            }
+
+                            if flags & .OVERWORLD {
+                                if paused.overworld.selected == {
+                                    case .RESUME;
+                                        flags &= ~.PAUSED;
+                                    case .RESET_DEMO;   
+                                        reset_demo();
+                                }
+                            } else {
+                                if paused.other.selected == {
+                                    case .RESUME;
+                                        flags &= ~.PAUSED;
+                                    case .PREVIOUS_CHECKPOINT;
+                                        restore_checkpoint(gameplay_level, do_fade=false);
+                                        flags &= ~.PAUSED;
+                                    case .OVERWORLD;
+                                        free_level(gameplay_level, gameplay_arena);
+                                        gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
+                                        assert(gameplay_level != null);
+                                        assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
+                                    case .RESET_DEMO;
+                                        reset_demo();
+                                }
+                            }
+                            continue;
+                        }
+                    } else {
+                        gameplay_handle_input(gameplay_level, it);
+                    }
 
                 case .EDITOR;
                     using editor_level;
@@ -544,8 +612,7 @@ game_update : Game_Update : (
             case .GAMEPLAY;
                 using gameplay_level;
                 gameplay_update(gameplay_level, dt);
-                if flags & .PAUSED {
-                } else {
+                if !(flags & .PAUSED) {
                     if state == {
                         case .FADE_OUT_ENTRANCE;
                             using fade_out_entrance;
@@ -1044,20 +1111,51 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 
                 font := *consolas_64pt;
 
-                OPTIONS :: string.[
-                    "Go to Previous Checkpoint",
-                    "Return to Level Selection",
-                    "Credits",
-                    "Reset Demo"
-                ];
-                
-                head := y + w / 2 - (OPTIONS.count - 1) * font.ascender;
 
-                for OPTIONS {
-                    length := text_length(it, font);
-                    text_position := round(Vector2.{x + w / 2 - length / 2, head});
-                    draw_text(it, text_position, font, .{1, 1, 1, 1});
-                    head += font.ascender * 2;
+                draw_pause_menu :: (selected: $T) #expand {
+                    head := y + w / 2 - (T.COUNT - 1) * font.ascender;
+
+                    for 0..T.COUNT-1 {
+                        SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
+                        UNSELECTED_COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
+
+                        color: Vector4;
+                        if it == selected {
+                            color = SELECTED_COLOR;
+                        } else {
+                            color = UNSELECTED_COLOR;
+                        }
+
+
+                        text: string;
+                        #if T == Paused_Overworld_Selection {
+                            if it == {
+                                case .RESUME;               text = "Resume Playing";
+                                case .RESET_DEMO;           text = "Reset Demo";
+                            }
+                        } else #if T == Paused_Other_Selection {
+                            if it == {
+                                case .RESUME;               text = "Resume Playing";
+                                case .PREVIOUS_CHECKPOINT;  text = "Go to Previous Checkpoint";
+                                case .OVERWORLD;            text = "Return to Overworld";
+                                case .RESET_DEMO;           text = "Reset Demo";
+                            }
+                        } else {
+                            #assert false;
+                        }
+
+
+                        length := text_length(text, font);
+                        text_position := round(Vector2.{x + w / 2 - length / 2, head});
+                        draw_text(text, text_position, font, color);
+                        head += font.ascender * 2;
+                    }
+                }
+
+                if flags & .OVERWORLD {
+                    draw_pause_menu(paused.overworld.selected);
+                } else {
+                    draw_pause_menu(paused.other.selected);
                 }
             }
         case .EDITOR;

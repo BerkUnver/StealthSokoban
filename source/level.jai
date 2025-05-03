@@ -3,7 +3,11 @@ Level :: struct {
 
     enemy_pre_warm_ticks: int;
    
-    name: string; @NoSerialize // The file name
+    name: string; @NoSerialize // The file name.
+    // DO NOT CHECK AGAINST THIS TO SEE IF WE'RE IN THE OVERWORLD.
+    // Use the gameplay flags instead.
+
+
     entities: Table(Entity_Id, *Entity); @NoSerialize
     unused_eids: [..] Entity_Id; @NoSerialize
     view_texture: View_Texture; @NoSerialize
@@ -20,14 +24,25 @@ Level :: struct {
 
         mutual_annihilations: [..] Mutual_Annihilation;
         
-        flags: enum_flags {
-            // Should these be on the player struct?
+        flags: enum_flags u8 {
             PULLING;
             CHECKPOINT_EXISTS;
             PAUSED;
+            OVERWORLD;
         }
 
-        state: Gameplay_State;
+        state: Level_Gameplay_State;
+
+        paused: struct {
+            union {
+                overworld: struct {
+                    selected: Paused_Overworld_Selection;
+                }
+                other: struct {
+                    selected: Paused_Other_Selection;
+                }
+            }
+        }
         
         union {
             fade_in_start: struct {
@@ -135,6 +150,21 @@ Level :: struct {
 }
 
 
+Paused_Other_Selection :: enum {
+    RESUME;
+    PREVIOUS_CHECKPOINT;
+    OVERWORLD;
+    RESET_DEMO;
+    COUNT;
+}
+
+Paused_Overworld_Selection :: enum {
+    RESUME;
+    RESET_DEMO;
+    COUNT;
+}
+
+
 CAMERA_PITCH_VALUES :: float.[
     -PI / 2,
     -PI / 2 + 0.12 * PI,
@@ -145,11 +175,12 @@ CAMERA_PITCH_VALUES :: float.[
     PI / 2,
 ];
 
+
 CAMERA_YAW_TICK_COUNT :: 12;
 
 SPAWNING_TIME :: 0.2;
 
-Camera_Mode :: enum {
+Camera_Mode :: enum u8 {
     NEAR;
     FAR;
     LEVEL;
@@ -157,7 +188,7 @@ Camera_Mode :: enum {
 }
 
 
-Gameplay_State :: enum {
+Level_Gameplay_State :: enum u8 {
     FADE_IN_START;
     FADE_IN_CHECKPOINT;
     PLAYING;
@@ -776,6 +807,9 @@ load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Me
         it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
     }
 
+    if level_name == OVERWORLD {
+        flags |= .OVERWORLD;
+    }
 }
 
 
@@ -1112,7 +1146,7 @@ play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav:
 }
 
 
-set_state :: (using level: *Level, new_state: Gameplay_State) {
+set_state :: (using level: *Level, new_state: Level_Gameplay_State) {
     if #complete new_state == {
         case .FADE_IN_START;
             fade_in_start = .{interp = 0};
@@ -1138,7 +1172,8 @@ set_checkpoint :: (using level: *Level) {
 }
 
 
-restore_checkpoint :: (using level: *Level, skip_intro := false) {
+// @Sfx
+restore_checkpoint :: (using level: *Level, do_fade := true) {
     // :Checkpoint
     // This is how checkpoints work right now. It is very simple, but I'm not
     // sure how "scalable" it is. Because we store the entire level in a 
@@ -1171,6 +1206,7 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
     //`         -berk, 2025 - 4 - 15.
     assert((flags & .CHECKPOINT_EXISTS) != 0);
 
+    old_flags := flags;
     old_camera_mode := camera_mode;
     old_dt_modifier := dt_modifier;
 
@@ -1178,7 +1214,8 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
     assert(state == .PLAYING);
 
     player := *_Player[0];
-    
+
+    flags = old_flags;
     dt_modifier = old_dt_modifier;
 
     camera_mode = old_camera_mode;
@@ -1188,11 +1225,11 @@ restore_checkpoint :: (using level: *Level, skip_intro := false) {
     camera_pitch_index = 1;
     camera_pitch_interp = 1;
     
-    if !skip_intro {
-        set_state(player, .SPAWNING);
-        set_state(level, .FADE_IN_START);
+    set_state(player, .SPAWNING);
+    if do_fade {
+        set_state(level, .FADE_IN_CHECKPOINT);
     } else {
-        set_state(player, .ALIVE);
+        set_state(level, .PLAYING);
     }
 }
 
@@ -1489,385 +1526,366 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 }
 
 
-gameplay_handle_input :: (using level: *Level, event: Input_Event) { 
+gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     using context.game_context;
-
-    if event.key == #char "-" && event.state == .DOWN {
-        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
-        return;
-    }
-
-    if event.key == #char "=" && event.state == .DOWN {
-        if dt_modifier < 16 dt_modifier *= 2;
-        return;
-    }
-
-    if event.key == #char "U" && event.state == .DOWN && keys_down[Key.SHIFT] {
-        for * _Overworld_Entrance {
-            it.activated = true;
-        }
-        return;
-    }
+    assert(!flags & .PAUSED);
      
-    if flags & .PAUSED {
-        if event.key == .ESCAPE && event.state == .DOWN {
-            flags &= ~.PAUSED;
-            return;
-        }
-    } else {
-        if event.key == .ESCAPE && event.state == .DOWN {
-            flags |= .PAUSED;
-            return;
-        }
-        
-        if event.key == #char "K" && event.state == .DOWN {
-            camera_pitch_old = get_camera_pitch(level);
-            camera_pitch_index = max(camera_pitch_index - 1, 0);
-            camera_pitch_interp = 0;
-            return;
-        }
+    // We need there to be a checkpoint because there is a "Go to Previous Checkpoint" option in the menu.
+    if (flags & .CHECKPOINT_EXISTS) && event.key == .ESCAPE && event.state == .DOWN {
+        flags |= .PAUSED;
+        return;
+    }
+    
+    if event.key == #char "K" && event.state == .DOWN {
+        camera_pitch_old = get_camera_pitch(level);
+        camera_pitch_index = max(camera_pitch_index - 1, 0);
+        camera_pitch_interp = 0;
+        return;
+    }
 
-        if event.key == #char "I" && event.state == .DOWN {
-            camera_pitch_old = get_camera_pitch(level);
-            camera_pitch_index = min(camera_pitch_index + 1, CAMERA_PITCH_VALUES.count-1);
-            camera_pitch_interp = 0;
-            return;
-        } 
-        
-        if event.key == #char "L" && event.state == .DOWN {
-            camera_yaw_old = get_camera_yaw(level);
-            camera_yaw_interp = 0;
-            camera_yaw_target -= TAU / 12;
-            return;
-        }
-       
-        if event.key == #char "J" && event.state == .DOWN {
-            camera_yaw_old = get_camera_yaw(level);
-            camera_yaw_interp = 0;
-            camera_yaw_target += TAU / 12;
-            return;
-        } 
+    if event.key == #char "I" && event.state == .DOWN {
+        camera_pitch_old = get_camera_pitch(level);
+        camera_pitch_index = min(camera_pitch_index + 1, CAMERA_PITCH_VALUES.count-1);
+        camera_pitch_interp = 0;
+        return;
+    } 
+    
+    if event.key == #char "L" && event.state == .DOWN {
+        camera_yaw_old = get_camera_yaw(level);
+        camera_yaw_interp = 0;
+        camera_yaw_target -= TAU / 12;
+        return;
+    }
+   
+    if event.key == #char "J" && event.state == .DOWN {
+        camera_yaw_old = get_camera_yaw(level);
+        camera_yaw_interp = 0;
+        camera_yaw_target += TAU / 12;
+        return;
+    } 
 
 
-        if state != .PLAYING return;
+    if state != .PLAYING return;
 
-        if event.key == #char "C" && event.state == .DOWN {
-            restore_checkpoint(level, skip_intro=true);
-            return;
-        }
+    if event.key == #char "C" && event.state == .DOWN {
+        restore_checkpoint(level, do_fade=true);
+        return;
+    }
 
-        if event.key == #char " " {
-            if event.state == .DOWN flags |= .PULLING;
-            else                    flags &= ~.PULLING;
-            return;
-        }
+    if event.key == #char " " {
+        if event.state == .DOWN flags |= .PULLING;
+        else                    flags &= ~.PULLING;
+        return;
+    }
 
-        if event.key == #char "M" && event.state == .DOWN {
-            player := *_Player[0];
-
-            if #complete player.state == {
-                case .ALIVE;
-                    set_state(player, .DEBUG_MOVEMENT);
-                    // All we need to do is remove the player eid from the collision array.
-                    // However, I am calling this just for good form.
-                    collision_resolution(level, true);
-                
-                case .SPAWNING; #through;
-                case .DEAD; #through;
-                case .STUCK_INSIDE_A_BLOCK;
-                    set_state(player, .DEBUG_MOVEMENT);
-
-                case .DEBUG_MOVEMENT;
-                    in_bounds, index := get_3d_index(player.position, level_position, level_size);
-                    assert(in_bounds);
-                    eid := collision[index];
-                    if eid {
-                        e := get_entity(level, eid);
-                        if e.type == .Block {
-                            set_state(player, .STUCK_INSIDE_A_BLOCK);
-                            return;
-                        }
-                    }
-
-                    set_state(player, .ALIVE);
-
-                    collision_resolution(level, true);
-            }
-
-            return;
-        }
-
-        if event.key == #char "U" && event.state == .DOWN {
-           camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
-            if camera_mode == {
-                case .NEAR; #through;
-                case .FAR;
-                    reset_camera_focus(level);
-            }
-            return;
-        }
-
-        if event.key == #char "H" && event.state == .DOWN {
-            player := *_Player[0];
-
-            if player.state != .ALIVE return;
-            if !is_colliding_below(level, player.position) return;
-
-            // So movement feels nice and snappy, I'm going to experiment with having NO
-            // player procedural animation when teleporting the player. This might feel
-            // TOO snappy / rewarding, however.
-            
-            found := false;
-            desired_position: Vector3i;
-
-            for * _Overworld_Exit {
-                entrance := get_entrance_for_overworld_exit(level, it);
-                if !entrance || !entrance.activated continue;
-
-                if it.position == player.position {
-                    desired_position = entrance.position;
-                    found = true;
-                    break;
-                }
-
-                if entrance.position == player.position {
-                    desired_position = it.position;
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found return;
-
-
-            in_bounds, index := get_3d_index(desired_position, level_position, level_size);
-            assert(in_bounds);
-
-            eid := collision[index];
-            if eid {
-                e := get_entity(level, eid);
-                if e.type == .Block return;
-            }
-
-
-            // :NewMovementSystem Fill this in
-        }
-
-        if event.key == #char "O" && event.state == .DOWN {
-            player := *_Player[0];
-            
-            // @Speed Once ladders and stuff are a thing maybe we should store the entrance positions
-            // in the collision data structure so we can easily look it up.
-
-            entrance: *Overworld_Entrance;
-            for * _Overworld_Entrance {
-                if it.position == player.position {
-                    entrance = it;
-                    break;
-                }
-            }
-            
-            if !entrance {
-                for * _Overworld_Exit {
-                    if it.position != player.position continue;
-                    if !it.entrance continue;
-
-                    maybe_entrance := get_entrance_for_overworld_exit(level, it);
-                    if maybe_entrance && maybe_entrance.activated {
-                       entrance = maybe_entrance;
-                       break;
-                    }
-                }
-            }
-
-            if entrance {
-                if entrance.level_name {
-                    set_state(level, .FADE_OUT_ENTRANCE);
-                    play_positional_sound(level, entrance.position, overworld_entrance_sound);
-                    fade_out_entrance.eid = entrance.eid;
-                } else {
-                    log(.ERROR, "The Overworld_Entrance with eid % does not have a level name assigned to it.\n", entrance.eid);
-                }
-                return;
-            }
-
-            
-            for * _Checkpoint {
-                if it.position == player.position {
-                    for * _Checkpoint {
-                        if it.state == .CURRENT it.state = .USED;
-                    }
-                    it.state = .CURRENT;
-                    set_checkpoint(level);
-                    return;
-                }
-            }
-
-
-            for * _Exit {
-                if it.position == player.position {
-                    set_state(level, .FADE_OUT_EXIT);
-                    return;
-                }
-            }
-        }
-
-
-        if event.state != .DOWN return;
-
-        //
-        // Player movement code
-        //
-
+    if event.key == #char "M" && event.state == .DOWN {
         player := *_Player[0];
-
-        push_direction: Vector3i;
-        
-        if event.key == {
-            case xx #char "W"; push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
-            case xx #char "A"; push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
-            case xx #char "S"; push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
-            case xx #char "D"; push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
-            case xx #char "Q"; if player.state == .DEBUG_MOVEMENT push_direction.y += 1; else return;
-            case xx #char "E"; if player.state == .DEBUG_MOVEMENT push_direction.y -= 1; else return;
-            case; return;
-        }
-     
-        // @TODO Add pulling blocks next to you, not just in the opposite direction of where
-        // you are moving (I'm pretty sure we want this)
-
-        new_player_position := player.position + push_direction;
 
         if #complete player.state == {
             case .ALIVE;
-                if !is_colliding_below(level, player.position) return;
-
-                //
-                // Gather the blocks we are pushing
-                //
-
-                scope_mark(frame_arena);
-
-                moved_blocks: [..] *Block;
-                
-                // Are we pushing a moveable block?
-                {
-                    in_bounds, index := get_3d_index(new_player_position, level_position, level_size);
-                    if !in_bounds return;
-                    if collision[index] {
-                        e := get_entity(level, collision[index]);
-                        block := as(e, Block);
-                        if block {
-                            if !block.moveable return;
-                            append(*moved_blocks, frame_arena).* = block;
-                        }
-                    }
-                }
-                    
-                // Are we pulling a moveable block?
-                if flags & .PULLING {
-                    in_bounds, index := get_3d_index(player.position - push_direction, level_position, level_size);
-                    if in_bounds {
-                        eid := collision[index];
-                        if eid {
-                            e := get_entity(level, eid);
-                            block := as(e, Block);
-                            if block && block.moveable {
-                                if !contains(*moved_blocks, block) append(*moved_blocks, frame_arena).* = block;
-                            }
-                        }
-                    }
-                }
-
-
-                //
-                // Figure out if the move is legal
-                //
-
-                moved_enemies: [..] *Enemy;
-
-                for block: moved_blocks {
-                    offset := block.position - level_position;
-                    for :iterate_vector3i block.size {
-                        if !block.filled[it_index] continue;
-
-                        in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
-                        if !in_bounds return;
-
-                        eid := collision[index];
-                        if !eid continue;
-                        e := get_entity(level, eid);
-
-                        if e.type == {
-                            case .Enemy;
-                                append(*moved_enemies, frame_arena).* = as(e, Enemy);
-                                in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
-                                if !in_bounds return;
-                                eid := collision[index];
-                                if !eid continue;
-                                next_e := get_entity(level, eid);
-                                if next_e.type == {
-                                    case .Player;
-                                    case .Enemy;
-                                        // An annihilation will happen
-
-                                    case .Block;
-                                        if !contains(*moved_blocks, as(next_e, Block)) return;
-                                        // The block you pushed pushed an enemy into another block. This move is invalid
-                                        // for now, maybe we want it to be valid in the future.
-
-                                    case;
-                                        assert(false);
-                                }
-
-                            case .Block;
-                                if !contains(*moved_blocks, as(e, Block)) return;
-
-                            case .Player;
-
-                            case;
-                                assert(false);
-                        }
-                    }
-                }
-
-
-                // We know the move is valid. Update everything.
-
-
-                for moved_blocks {
-                    assert(it.moveable);
-                    it.position += push_direction;
-                }
-
-                for moved_enemies {
-                    it.position += push_direction;
-                }
-
-                player.position = new_player_position;
-
+                set_state(player, .DEBUG_MOVEMENT);
+                // All we need to do is remove the player eid from the collision array.
+                // However, I am calling this just for good form.
                 collision_resolution(level, true);
-
-                play_positional_sound(level, player.position, footstep);
             
-            case .SPAWNING;
-            case .DEAD;
-
+            case .SPAWNING; #through;
+            case .DEAD; #through;
             case .STUCK_INSIDE_A_BLOCK;
-                // Make sure we are in fact still inside a block
+                set_state(player, .DEBUG_MOVEMENT);
+
+            case .DEBUG_MOVEMENT;
                 in_bounds, index := get_3d_index(player.position, level_position, level_size);
                 assert(in_bounds);
                 eid := collision[index];
-                assert(eid != 0);
-                e := get_entity(level, eid);
-                assert(e.type == .Block);
-
-            case .DEBUG_MOVEMENT;
-                if inside_bounding_box(new_player_position, level_position, level_size) {
-                    player.position = new_player_position;
-                    play_positional_sound(level, player.position, footstep);
+                if eid {
+                    e := get_entity(level, eid);
+                    if e.type == .Block {
+                        set_state(player, .STUCK_INSIDE_A_BLOCK);
+                        return;
+                    }
                 }
+
+                set_state(player, .ALIVE);
+
+                collision_resolution(level, true);
         }
+
+        return;
+    }
+
+    if event.key == #char "U" && event.state == .DOWN {
+       camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
+        if camera_mode == {
+            case .NEAR; #through;
+            case .FAR;
+                reset_camera_focus(level);
+        }
+        return;
+    }
+
+    if event.key == #char "H" && event.state == .DOWN {
+        player := *_Player[0];
+
+        if player.state != .ALIVE return;
+        if !is_colliding_below(level, player.position) return;
+
+        // So movement feels nice and snappy, I'm going to experiment with having NO
+        // player procedural animation when teleporting the player. This might feel
+        // TOO snappy / rewarding, however.
+        
+        found := false;
+        desired_position: Vector3i;
+
+        for * _Overworld_Exit {
+            entrance := get_entrance_for_overworld_exit(level, it);
+            if !entrance || !entrance.activated continue;
+
+            if it.position == player.position {
+                desired_position = entrance.position;
+                found = true;
+                break;
+            }
+
+            if entrance.position == player.position {
+                desired_position = it.position;
+                found = true;
+                break;
+            }
+        }
+
+        if !found return;
+
+
+        in_bounds, index := get_3d_index(desired_position, level_position, level_size);
+        assert(in_bounds);
+
+        eid := collision[index];
+        if eid {
+            e := get_entity(level, eid);
+            if e.type == .Block return;
+        }
+        
+        player.position = desired_position;
+
+        collision_resolution(level, true);
+        return;
+    }
+
+
+    if event.key == #char "O" && event.state == .DOWN {
+        player := *_Player[0];
+        
+        // @Speed Once ladders and stuff are a thing maybe we should store the entrance positions
+        // in the collision data structure so we can easily look it up.
+
+        entrance: *Overworld_Entrance;
+        for * _Overworld_Entrance {
+            if it.position == player.position {
+                entrance = it;
+                break;
+            }
+        }
+        
+        if !entrance {
+            for * _Overworld_Exit {
+                if it.position != player.position continue;
+                if !it.entrance continue;
+
+                maybe_entrance := get_entrance_for_overworld_exit(level, it);
+                if maybe_entrance && maybe_entrance.activated {
+                   entrance = maybe_entrance;
+                   break;
+                }
+            }
+        }
+
+        if entrance {
+            if entrance.level_name {
+                set_state(level, .FADE_OUT_ENTRANCE);
+                play_positional_sound(level, entrance.position, overworld_entrance_sound);
+                fade_out_entrance.eid = entrance.eid;
+            } else {
+                log(.ERROR, "The Overworld_Entrance with eid % does not have a level name assigned to it.\n", entrance.eid);
+            }
+            return;
+        }
+
+        
+        for * _Checkpoint {
+            if it.position == player.position {
+                for * _Checkpoint {
+                    if it.state == .CURRENT it.state = .USED;
+                }
+                it.state = .CURRENT;
+                set_checkpoint(level);
+                return;
+            }
+        }
+
+
+        for * _Exit {
+            if it.position == player.position {
+                set_state(level, .FADE_OUT_EXIT);
+                return;
+            }
+        }
+    }
+
+
+    if event.state != .DOWN return;
+
+    //
+    // Player movement code
+    //
+
+    player := *_Player[0];
+
+    push_direction: Vector3i;
+    
+    if event.key == {
+        case xx #char "W"; push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
+        case xx #char "A"; push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
+        case xx #char "S"; push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
+        case xx #char "D"; push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
+        case xx #char "Q"; if player.state == .DEBUG_MOVEMENT push_direction.y += 1; else return;
+        case xx #char "E"; if player.state == .DEBUG_MOVEMENT push_direction.y -= 1; else return;
+        case; return;
+    }
+ 
+    // @TODO Add pulling blocks next to you, not just in the opposite direction of where
+    // you are moving (I'm pretty sure we want this)
+
+    new_player_position := player.position + push_direction;
+
+    if #complete player.state == {
+        case .ALIVE;
+            if !is_colliding_below(level, player.position) return;
+
+            //
+            // Gather the blocks we are pushing
+            //
+
+            scope_mark(frame_arena);
+
+            moved_blocks: [..] *Block;
+            
+            // Are we pushing a moveable block?
+            {
+                in_bounds, index := get_3d_index(new_player_position, level_position, level_size);
+                if !in_bounds return;
+                if collision[index] {
+                    e := get_entity(level, collision[index]);
+                    block := as(e, Block);
+                    if block {
+                        if !block.moveable return;
+                        append(*moved_blocks, frame_arena).* = block;
+                    }
+                }
+            }
+                
+            // Are we pulling a moveable block?
+            if flags & .PULLING {
+                in_bounds, index := get_3d_index(player.position - push_direction, level_position, level_size);
+                if in_bounds {
+                    eid := collision[index];
+                    if eid {
+                        e := get_entity(level, eid);
+                        block := as(e, Block);
+                        if block && block.moveable {
+                            if !contains(*moved_blocks, block) append(*moved_blocks, frame_arena).* = block;
+                        }
+                    }
+                }
+            }
+
+
+            //
+            // Figure out if the move is legal
+            //
+
+            moved_enemies: [..] *Enemy;
+
+            for block: moved_blocks {
+                offset := block.position - level_position;
+                for :iterate_vector3i block.size {
+                    if !block.filled[it_index] continue;
+
+                    in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
+                    if !in_bounds return;
+
+                    eid := collision[index];
+                    if !eid continue;
+                    e := get_entity(level, eid);
+
+                    if e.type == {
+                        case .Enemy;
+                            append(*moved_enemies, frame_arena).* = as(e, Enemy);
+                            in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
+                            if !in_bounds return;
+                            eid := collision[index];
+                            if !eid continue;
+                            next_e := get_entity(level, eid);
+                            if next_e.type == {
+                                case .Player;
+                                case .Enemy;
+                                    // An annihilation will happen
+
+                                case .Block;
+                                    if !contains(*moved_blocks, as(next_e, Block)) return;
+                                    // The block you pushed pushed an enemy into another block. This move is invalid
+                                    // for now, maybe we want it to be valid in the future.
+
+                                case;
+                                    assert(false);
+                            }
+
+                        case .Block;
+                            if !contains(*moved_blocks, as(e, Block)) return;
+
+                        case .Player;
+
+                        case;
+                            assert(false);
+                    }
+                }
+            }
+
+
+            // We know the move is valid. Update everything.
+
+
+            for moved_blocks {
+                assert(it.moveable);
+                it.position += push_direction;
+            }
+
+            for moved_enemies {
+                it.position += push_direction;
+            }
+
+            player.position = new_player_position;
+
+            collision_resolution(level, true);
+
+            play_positional_sound(level, player.position, footstep);
+        
+        case .SPAWNING;
+        case .DEAD;
+
+        case .STUCK_INSIDE_A_BLOCK;
+            // Make sure we are in fact still inside a block
+            in_bounds, index := get_3d_index(player.position, level_position, level_size);
+            assert(in_bounds);
+            eid := collision[index];
+            assert(eid != 0);
+            e := get_entity(level, eid);
+            assert(e.type == .Block);
+
+        case .DEBUG_MOVEMENT;
+            if inside_bounding_box(new_player_position, level_position, level_size) {
+                player.position = new_player_position;
+                play_positional_sound(level, player.position, footstep);
+            }
     } 
 }
 
@@ -1993,7 +2011,7 @@ gameplay_update :: (using level: *Level, dt: float) {
             using fade_out_checkpoint;
             interp += dt / FADE_TIME;
             if interp >= 1 {
-                restore_checkpoint(level);
+                restore_checkpoint(level, do_fade=true);
             }
 
         case .FADE_OUT_EXIT;
