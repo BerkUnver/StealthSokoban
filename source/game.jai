@@ -439,11 +439,9 @@ game_update : Game_Update : (
                 restore_mark(frame_arena, data.mark);
             }
             
-            // @TODO Bring this back
-            /*
             if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay_level, gameplay.arena);
+                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay.level, gameplay.arena);
                     case .EDITOR;   load_next_level(false, .EDITOR,   *editor_level, editor_arena);
                 }
                 continue;
@@ -451,12 +449,11 @@ game_update : Game_Update : (
 
             if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay_level, gameplay.arena);
+                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay.level, gameplay.arena);
                     case .EDITOR;   load_next_level(true, .EDITOR,   *editor_level, editor_arena);
                 }
                 continue;
             }
-            */
 
 
             if #complete mode == {
@@ -867,6 +864,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
     world_to_camera: Matrix4;
     
     position, size: Vector3i;
+    
+    // @TODO: Detect when the camera is inside a block, and when it is draw a quad that covers
+    // the camera so we don't see geometry from the inside.
 
     if #complete mode == {
         case .GAMEPLAY;

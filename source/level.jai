@@ -10,7 +10,10 @@ Level :: struct {
 
     entities: Table(Entity_Id, *Entity); @NoSerialize
     unused_eids: [..] Entity_Id; @NoSerialize
-    view_texture: View_Texture; @NoSerialize
+
+    // These should probably be gameplay-only variables but we need them here.
+    view_texture: View_Texture; @NoSerialize    // Needed by shaders
+    move_timer: float; @NoSerialize             // Needed to draw enemies properly
 
     
     // These are gameplay-only variables. In the future, we might want to better-differentiate
@@ -41,11 +44,6 @@ Level :: struct {
             fade_out_entrance: struct {
                 interp: float;
                 eid: Entity_Id;
-                // Usually, I don't want to have these weird variables that say,
-                // "do this thing, but not now for xyz reason" because they invite
-                // bugs and complexity. However, there will eventually be an enter
-                // level interp effect, which by definition means we want to stash
-                // this and use it later.
             }
             fade_out_checkpoint: struct {
                 interp: float;
@@ -72,7 +70,6 @@ Level :: struct {
         camera_yaw_old: float64;
         camera_yaw_interp := 1.0;
         
-        move_timer: float;
         dt_modifier := 1.0;
         
         doors: [] Entity_Id; // Only Door entities should be put in here.
@@ -135,11 +132,6 @@ Level :: struct {
         camera_yaw: float;
     } @NoSerialize
 }
-
-
-Gameplay_Level :: #type,distinct Level;
-Editor_Level :: #type,distinct Level;
-
 
 
 CAMERA_PITCH_VALUES :: float.[
@@ -926,7 +918,10 @@ free_level :: (using level: *Level, arena: *Memory_Arena) {
         free(*it.mesh);
     }
     
+    assert(xx level == arena.data + arena_mark);
+
     restore_mark(arena, arena_mark);
+
 }
 
 
