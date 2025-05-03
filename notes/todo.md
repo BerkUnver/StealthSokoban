@@ -72,7 +72,7 @@ Now, let's sort these by priority.
 - ~~Pause menu with options to exit the current level, reset the demo.~~
 - ~~Overworld exits only activate once you have completed the corresponding level~~
 - ~~Enemy pre-warming~~
-- Pulling from all directions of a block.
+- ~~Pulling from all directions of a block.~~
 - Store the overworld state for when you return
 - Make a release mode where all the developer hotkeys are disabled.
 

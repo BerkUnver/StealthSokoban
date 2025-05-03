@@ -3,10 +3,10 @@ Level :: struct {
 
     enemy_pre_warm_ticks: int;
    
-    name: string; @NoSerialize // The file name.
-    // DO NOT CHECK AGAINST THIS TO SEE IF WE'RE IN THE OVERWORLD.
-    // Use the gameplay flags instead.
-
+    name: string; @NoSerialize
+    
+    arena_mark: s64; @NoSerialize;
+    // Where in the memory arena that this was allocated on does the allocation for this level start?
 
     entities: Table(Entity_Id, *Entity); @NoSerialize
     unused_eids: [..] Entity_Id; @NoSerialize
@@ -18,7 +18,7 @@ Level :: struct {
     // pure-data representation of the scene) and what is gameplay state. We could use
     // metaprogramming to do this but it seems like overkill right now.
 
-    using gameplay: struct {
+    using gameplay_vars: struct {
         level_position: Vector3i;
         level_size: Vector3i;
 
@@ -27,23 +27,10 @@ Level :: struct {
         flags: enum_flags u8 {
             PULLING;
             CHECKPOINT_EXISTS;
-            PAUSED;
-            OVERWORLD;
         }
 
         state: Level_Gameplay_State;
 
-        paused: struct {
-            union {
-                overworld: struct {
-                    selected: Paused_Overworld_Selection;
-                }
-                other: struct {
-                    selected: Paused_Other_Selection;
-                }
-            }
-        }
-        
         union {
             fade_in_start: struct {
                 interp: float;
@@ -104,8 +91,8 @@ Level :: struct {
         playing_sounds: [1024] Playing_Sound;
             
         // :Checkpoint
-        self_ptr: [] u8;
-        checkpoint: [] u8;
+        self_block: [] u8;
+        checkpoint_block: [] u8;
     } @NoSerialize
 
     editor: struct {
@@ -149,20 +136,6 @@ Level :: struct {
     } @NoSerialize
 }
 
-
-Paused_Other_Selection :: enum {
-    RESUME;
-    PREVIOUS_CHECKPOINT;
-    OVERWORLD;
-    RESET_DEMO;
-    COUNT;
-}
-
-Paused_Overworld_Selection :: enum {
-    RESUME;
-    RESET_DEMO;
-    COUNT;
-}
 
 
 CAMERA_PITCH_VALUES :: float.[
@@ -760,8 +733,6 @@ load_level_part_1_deserialize :: (level_name: string, arena: *Memory_Arena) -> *
 
 
 load_level_part_1_deserialize_mem :: (level_name: string, data: string, arena: *Memory_Arena) -> *Level {
-    assert(arena.current == 0);
-
     mark := get_mark(arena);
 
     level := alloc(arena, Level); 
@@ -785,6 +756,8 @@ serialize_level :: (using level: *Level) {
 
 
 load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
+    arena_mark = get_mark(arena);
+
     name = copy_string(arena, level_name);
     
     // Restore the type of each entity
@@ -805,10 +778,6 @@ load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Me
 
     for * _Door {
         it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
-    }
-
-    if level_name == OVERWORLD {
-        flags |= .OVERWORLD;
     }
 }
 
@@ -923,8 +892,8 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
     reset_camera_focus(level);
 
     // :Checkpoint
-    self_ptr = .{arena.current, xx level};
-    checkpoint = alloc_view(arena, self_ptr.count, u8, zero_init = false); 
+    self_block = .{arena.current, xx level};
+    checkpoint_block = alloc_view(arena, self_block.count, u8, zero_init = false); 
 
     for 0..enemy_pre_warm_ticks-1 {
         gameplay_move_tick(level, just_do_falls=false, do_vfx=false);
@@ -943,6 +912,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
         set_state(player, .SPAWNING);
         set_state(level, .FADE_IN_START);
     }
+
 
     return true;
 }
@@ -985,7 +955,7 @@ load_level_part_2_editor :: (level_name: string, using level: *Level, arena: *Me
 }
 
 
-free_level :: (using level: *Level, level_arena: *Memory_Arena) {   
+free_level :: (using level: *Level, arena: *Memory_Arena) {   
     // @TODO This is a far-in-the-future kind of thing.
     // We should wrap glGenBuffers, glDeleteBuffers, and similar allocating functions and make a memory debugger
     // that tells us what has leaked when we close the application, because as far as I can tell, there's no good
@@ -1000,8 +970,8 @@ free_level :: (using level: *Level, level_arena: *Memory_Arena) {
     for * _Door {
         free(*it.mesh);
     }
-
-    clear(level_arena);
+    
+    restore_mark(arena, arena_mark);
 }
 
 
@@ -1167,8 +1137,8 @@ set_state :: (using level: *Level, new_state: Level_Gameplay_State) {
 set_checkpoint :: (using level: *Level) {
     assert(state == .PLAYING);
     flags |= .CHECKPOINT_EXISTS;
-    assert(checkpoint.count == self_ptr.count);
-    memcpy(checkpoint.data, self_ptr.data, self_ptr.count);
+    assert(checkpoint_block.count == self_block.count);
+    memcpy(checkpoint_block.data, self_block.data, self_block.count);
 }
 
 
@@ -1210,7 +1180,7 @@ restore_checkpoint :: (using level: *Level, do_fade := true) {
     old_camera_mode := camera_mode;
     old_dt_modifier := dt_modifier;
 
-    memcpy(self_ptr.data, checkpoint.data, checkpoint.count);
+    memcpy(self_block.data, checkpoint_block.data, checkpoint_block.count);
     assert(state == .PLAYING);
 
     player := *_Player[0];
@@ -1528,14 +1498,24 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 
 gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     using context.game_context;
-    assert(!flags & .PAUSED);
      
-    // We need there to be a checkpoint because there is a "Go to Previous Checkpoint" option in the menu.
-    if (flags & .CHECKPOINT_EXISTS) && event.key == .ESCAPE && event.state == .DOWN {
-        flags |= .PAUSED;
+    if event.key == #char "-" && event.state == .DOWN {
+        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
         return;
     }
-    
+
+    if event.key == #char "=" && event.state == .DOWN {
+        if dt_modifier < 16 dt_modifier *= 2;
+        return;
+    }
+
+    if event.key == #char "U" && event.state == .DOWN && keys_down[Key.SHIFT] {
+        for * _Overworld_Entrance {
+            it.activated = true;
+        }
+        return;
+    }
+
     if event.key == #char "K" && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_index = max(camera_pitch_index - 1, 0);
@@ -1793,12 +1773,12 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 
             // Are we pulling a moveable block?
             if flags & .PULLING {
-                push_block(.{1,  0,  0});
-                push_block(.{-1, 0,  0});
-                push_block(.{0,  1,  0});
-                push_block(.{0, -1,  0});
-                push_block(.{0,  0,  1});
-                push_block(.{0,  0, -1});
+                push_block(.{ 1,  0,  0});
+                push_block(.{-1,  0,  0});
+                push_block(.{ 0,  1,  0});
+                push_block(.{ 0, -1,  0});
+                push_block(.{ 0,  0,  1});
+                push_block(.{ 0,  0, -1});
             } else {
                 push_block(push_direction);
             }
@@ -1907,8 +1887,6 @@ GAMEPLAY_FRUSTUM :: #run -> Matrix4 {
 
 gameplay_update :: (using level: *Level, dt: float) {
     using context.game_context;
-
-    if flags & .PAUSED return;
 
     player := *_Player[0];
 

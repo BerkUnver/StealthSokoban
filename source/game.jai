@@ -95,23 +95,74 @@ Game_Context :: struct {
 
 Game_Memory :: struct {
     game_context: Game_Context;
-    game: Game;
-}
 
-Game :: struct { 
     mode: Game_Mode;
-
-    gameplay_level: *Level; // Stored in the arena.
-    gameplay_arena: *Memory_Arena;
-
+    gameplay: Gameplay;
     editor_level: *Level;
     editor_arena: *Memory_Arena;
 }
+
 
 Game_Mode :: enum {
     GAMEPLAY;
     EDITOR;
 }
+
+
+Gameplay :: struct {
+    arena: *Memory_Arena;
+    
+    state: Gameplay_State;
+    overworld: *Level;
+    level: *Level;
+    level_exists: bool;
+
+    paused: union {
+        overworld: struct {
+            selected: Paused_Overworld_Selection;
+        }
+        level: struct {
+            selected: Paused_Other_Selection;
+        }
+    } 
+}
+
+
+Gameplay_State :: enum {
+    PLAYING;
+    PAUSED;
+}
+
+
+set_state :: (using gameplay: *Gameplay, new_state: Gameplay_State) {
+    if #complete new_state == {
+        case .PLAYING;
+           state = new_state; 
+        case .PAUSED;   
+            paused = .{};
+            state = new_state;
+    }
+}
+
+
+Paused_Other_Selection :: enum {
+    RESUME;
+    PREVIOUS_CHECKPOINT;
+    OVERWORLD;
+    RESET_DEMO;
+    COUNT;
+}
+
+
+Paused_Overworld_Selection :: enum {
+    RESUME;
+    RESET_DEMO;
+    COUNT;
+}
+
+
+
+
 
 #assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
 
@@ -247,19 +298,19 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         //
 
         using game_memory;
-        using game_memory.game;
 
         editor_arena = data.editor_arena;
-        gameplay_arena = data.gameplay_arena;
+        gameplay.arena = data.gameplay_arena;
         
         
         editor_level = load_level_part_1_deserialize(OVERWORLD, editor_arena);
         assert(editor_level != null);
         load_level_part_2_editor(OVERWORLD, editor_level, editor_arena);
 
-        gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
-        assert(gameplay_level != null);
-        assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
+        gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena);
+        assert(gameplay.level != null);
+        assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+        gameplay.level_exists = true;
 
         mode = .EDITOR;    
     }
@@ -301,7 +352,6 @@ game_update : Game_Update : (
         }
 
         using game_memory;
-        using game_memory.game;
         using game_memory.game_context;
 
         reload_assets(*asset_table, changed_file_names);
@@ -322,7 +372,6 @@ game_update : Game_Update : (
 
 
         screenshot_requested: bool;
-        level_select_popup_requested: bool;
         
         for input.events {
             if it.key == .TILDE && it.state == .DOWN {
@@ -337,12 +386,6 @@ game_update : Game_Update : (
                 screenshot_requested = true;
                 continue;
             }
-
-            if it.key == #char "L" && it.state == .DOWN && keys_down[Key.CTRL] {
-                level_select_popup_requested = true;
-                continue;
-            }
-
 
             load_next_level :: (ascending: bool, mode: Game_Mode, level: **Level, arena: *Memory_Arena) {
                 using context.game_context;
@@ -402,10 +445,12 @@ game_update : Game_Update : (
 
                 restore_mark(frame_arena, data.mark);
             }
-
+            
+            // @TODO Bring this back
+            /*
             if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay_level, gameplay_arena);
+                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay_level, gameplay.arena);
                     case .EDITOR;   load_next_level(false, .EDITOR,   *editor_level, editor_arena);
                 }
                 continue;
@@ -413,100 +458,80 @@ game_update : Game_Update : (
 
             if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay_level, gameplay_arena);
+                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay_level, gameplay.arena);
                     case .EDITOR;   load_next_level(true, .EDITOR,   *editor_level, editor_arena);
                 }
                 continue;
-
             }
+            */
 
 
             if #complete mode == {
                 case .GAMEPLAY;
-                    using gameplay_level;
-
-                    if it.key == #char "-" && it.state == .DOWN {
-                        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
-                        continue;
-                    }
-
-                    if it.key == #char "=" && it.state == .DOWN {
-                        if dt_modifier < 16 dt_modifier *= 2;
-                        continue;
-                    }
-
-                    if it.key == #char "U" && it.state == .DOWN && keys_down[Key.SHIFT] {
-                        for * _Overworld_Entrance {
-                            it.activated = true;
-                        }
-                        continue;
-                    }
-
-                    if flags & .PAUSED {
-                        if it.key == .ESCAPE && it.state == .DOWN {
-                            flags &= ~.PAUSED;
-                            continue;
-                        }
-
-                        // Should we have an illustration or something that clarifies which inputs
-                        // are which in the pause menu?
-                        
-                        // @Sfx
-                        if it.key == #char "W" && it.state == .DOWN {
-                            if flags & .OVERWORLD {
-                                paused.overworld.selected = (paused.overworld.selected - 1 + .COUNT) % .COUNT;
-                            } else {
-                                paused.other.selected = (paused.other.selected - 1 + .COUNT) % .COUNT;
+                    if #complete gameplay.state == {
+                        case .PLAYING; 
+                            if (gameplay.level.flags & .CHECKPOINT_EXISTS) && it.key == .ESCAPE && it.state == .DOWN {
+                                set_state(*gameplay, .PAUSED);
                             }
-                            continue;
-                        }
-
-                        // @Sfx
-                        if it.key == #char "S" && it.state == .DOWN {
-                            if flags & .OVERWORLD {
-                                paused.overworld.selected = (paused.overworld.selected + 1) % .COUNT;
-                            } else {
-                                paused.other.selected = (paused.other.selected + 1) % .COUNT;
+                            gameplay_handle_input(gameplay.level, it);
+                        case .PAUSED;
+                            if it.key == .ESCAPE && it.state == .DOWN {
+                                set_state(*gameplay, .PLAYING);
+                                continue;
                             }
-                            continue;
-                        }
 
-                        if it.key == #char " " && it.state == .DOWN {   
+                            // Should we have an illustration or something that clarifies which inputs
+                            // are which in the pause menu?
                             
-                            // This is probably how we want to reset the demo.
-                            reset_demo :: () #expand {
-                                free_level(gameplay_level, gameplay_arena);
-                                gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena); assert(gameplay_level != null);
-                                assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
+                            // @Sfx
+                            if it.key == #char "W" && it.state == .DOWN {
+                                if gameplay.level_exists {
+                                    gameplay.paused.level.selected = (gameplay.paused.level.selected - 1 + .COUNT) % .COUNT;
+                                } else {
+                                    gameplay.paused.overworld.selected = (gameplay.paused.overworld.selected - 1 + .COUNT) % .COUNT;
+                                }
+                                continue;
                             }
 
-                            if flags & .OVERWORLD {
-                                if paused.overworld.selected == {
-                                    case .RESUME;
-                                        flags &= ~.PAUSED;
-                                    case .RESET_DEMO;   
-                                        reset_demo();
-                                }
-                            } else {
-                                if paused.other.selected == {
-                                    case .RESUME;
-                                        flags &= ~.PAUSED;
-                                    case .PREVIOUS_CHECKPOINT;
-                                        restore_checkpoint(gameplay_level, do_fade=false);
-                                        flags &= ~.PAUSED;
-                                    case .OVERWORLD;
-                                        free_level(gameplay_level, gameplay_arena);
-                                        gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
-                                        assert(gameplay_level != null);
-                                        assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
-                                    case .RESET_DEMO;
-                                        reset_demo();
+                            // @Sfx
+                            if it.key == #char "S" && it.state == .DOWN {
+                                if gameplay.level_exists {
+                                    gameplay.paused.level.selected = (gameplay.paused.level.selected + 1) % .COUNT;
+                                } else {
+                                    gameplay.paused.overworld.selected = (gameplay.paused.overworld.selected + 1) % .COUNT;
                                 }
                             }
-                            continue;
-                        }
-                    } else {
-                        gameplay_handle_input(gameplay_level, it);
+
+                            if it.key == #char " " && it.state == .DOWN {   
+                                // This is probably how we want to reset the demo.
+                                reset_demo :: () #expand {
+                                    gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena); assert(gameplay.level != null);
+                                    assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+                                }
+
+                                if gameplay.level_exists {
+                                    if gameplay.paused.level.selected == {
+                                        case .RESUME;
+                                        case .PREVIOUS_CHECKPOINT;
+                                            restore_checkpoint(gameplay.level, do_fade=false);
+                                        case .OVERWORLD;
+                                            free_level(gameplay.level, gameplay.arena);
+                                            gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena);
+                                            assert(gameplay.level != null);
+                                            assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+                                        case .RESET_DEMO;
+                                            reset_demo();
+                                    }
+                                    set_state(*gameplay, .PLAYING);
+                                } else {
+                                    if gameplay.paused.overworld.selected == {
+                                        case .RESUME;
+                                        case .RESET_DEMO;   
+                                            reset_demo();
+                                    }
+                                    set_state(*gameplay, .PLAYING);
+                                }
+                            }
                     }
 
                 case .EDITOR;
@@ -610,59 +635,127 @@ game_update : Game_Update : (
                     }
                 }
             case .GAMEPLAY;
-                using gameplay_level;
-                gameplay_update(gameplay_level, dt);
-                if !(flags & .PAUSED) {
-                    if state == {
-                        case .FADE_OUT_ENTRANCE;
-                            using fade_out_entrance;
-                            if interp >= 1 {
-                                assert(eid != 0);
+                if #complete gameplay.state == {
+                    case .PLAYING;
+                        using gameplay.level;
+                        gameplay_update(gameplay.level, dt);
 
-                                e := get_entity(gameplay_level, eid);
-                                entrance := as(e, Overworld_Entrance);
-                                assert(entrance != null);
-                                
-                                assert(entrance.level_name != "");
-                                scope_mark(frame_arena);
-                                // We need to copy the string because it is going to be freed when we free the old level.
-                                level_name := copy_string(frame_arena, entrance.level_name);
-                                free_level(gameplay_level, gameplay_arena);
+                        if state == {
+                            case .FADE_OUT_ENTRANCE;
+                                using fade_out_entrance;
+                                if interp >= 1 {
+                                    assert(eid != 0);
 
-                                gameplay_level = load_level_part_1_deserialize(level_name, gameplay_arena);
-                                assert(gameplay_level != null);
-                                assert(load_level_part_2_gameplay(level_name, gameplay_level, gameplay_arena));
-                            }
-                        case .FADE_OUT_EXIT;
-                            using fade_out_exit;
-                            if interp >= 1 {
-                                scope_mark(frame_arena);
-                                level_name := copy_string(frame_arena, name);
-                                free_level(gameplay_level, gameplay_arena);
+                                    e := get_entity(gameplay.level, eid);
+                                    entrance := as(e, Overworld_Entrance);
+                                    assert(entrance != null);
+                                    
+                                    assert(entrance.level_name != "");
+                                    scope_mark(frame_arena);
+                                    // We need to copy the string because it is going to be freed when we free the old level.
+                                    level_name := copy_string(frame_arena, entrance.level_name);
+                                    free_level(gameplay.level, gameplay.arena);
 
-                                gameplay_level = load_level_part_1_deserialize(OVERWORLD, gameplay_arena);
-                                assert(gameplay_level != null);
-                                assert(load_level_part_2_gameplay(OVERWORLD, gameplay_level, gameplay_arena));
-                                
-                                for * _Overworld_Exit {
-                                    entrance := get_entrance_for_overworld_exit(gameplay_level, it);
-                                    if entrance && entrance.level_name == level_name {
-                                        entrance.activated = true;
+                                    gameplay.level = load_level_part_1_deserialize(level_name, gameplay.arena);
+                                    assert(gameplay.level != null);
+                                    assert(load_level_part_2_gameplay(level_name, gameplay.level, gameplay.arena));
+                                }
+                            case .FADE_OUT_EXIT;
+                                using fade_out_exit;
+                                if interp >= 1 {
+                                    scope_mark(frame_arena);
+                                    level_name := copy_string(frame_arena, name);
+                                    free_level(gameplay.level, gameplay.arena);
 
-                                        player := *_Player[0];
-                                        player.position = it.position;
+                                    gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena);
+                                    assert(gameplay.level != null);
+                                    assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+                                    
+                                    for * _Overworld_Exit {
+                                        entrance := get_entrance_for_overworld_exit(gameplay.level, it);
+                                        if entrance && entrance.level_name == level_name {
+                                            entrance.activated = true;
 
-                                        // @Hack keep the camera focused on the player because otherwise it will fly
-                                        // from wherever the player entity was placed in the level to where we want
-                                        // the player to spawn.
-                                        reset_camera_focus(gameplay_level);
+                                            player := *_Player[0];
+                                            player.position = it.position;
+
+                                            // @Hack keep the camera focused on the player because otherwise it will fly
+                                            // from wherever the player entity was placed in the level to where we want
+                                            // the player to spawn.
+                                            reset_camera_focus(gameplay.level);
+                                        }
                                     }
                                 }
+                         }
+                    case .PAUSED;
+                }
+                draw(gameplay.level, .GAMEPLAY);
+
+                if gameplay.state == .PAUSED {
+                    h := cast(float, INNER_WINDOW_H / 1.5);
+                    y := cast(float, INNER_WINDOW_H / 2 - h / 2);
+
+                    x := INNER_WINDOW_W / 2 - h / 2;
+                    w := h;
+
+                    set_shader(imm_color_shader, .{flags = .BLEND});
+                    set_uniform("projection", ui_to_camera);
+                    imm_quad(.{0, 0}, .{INNER_WINDOW_W, INNER_WINDOW_H}, .{0, 0, 0, 0.5});
+                    imm_quad(.{x, y}, .{w, h}, .{0, 0, 0, 1});
+                    imm_flush();
+
+                    
+                    font := *consolas_64pt;
+
+
+                    draw_pause_menu :: (selected: $T) #expand {
+                        head := y + w / 2 - (T.COUNT - 1) * font.ascender;
+
+                        for 0..T.COUNT-1 {
+                            SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
+                            UNSELECTED_COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
+
+                            color: Vector4;
+                            if it == selected {
+                                color = SELECTED_COLOR;
+                            } else {
+                                color = UNSELECTED_COLOR;
                             }
+
+
+                            text: string;
+                            #if T == Paused_Overworld_Selection {
+                                if it == {
+                                    case .RESUME;               text = "Resume Playing";
+                                    case .RESET_DEMO;           text = "Reset Demo";
+                                }
+                            } else #if T == Paused_Other_Selection {
+                                if it == {
+                                    case .RESUME;               text = "Resume Playing";
+                                    case .PREVIOUS_CHECKPOINT;  text = "Go to Previous Checkpoint";
+                                    case .OVERWORLD;            text = "Return to Overworld";
+                                    case .RESET_DEMO;           text = "Reset Demo";
+                                }
+                            } else {
+                                #assert false;
+                            }
+
+
+                            length := text_length(text, font);
+                            text_position := round(Vector2.{x + w / 2 - length / 2, head});
+                            draw_text(text, text_position, font, color);
+                            head += font.ascender * 2;
+                        }
+                    }
+
+                    if gameplay.level_exists {
+                        draw_pause_menu(gameplay.paused.level.selected);
+                    } else {
+                        draw_pause_menu(gameplay.paused.overworld.selected);
                     }
                 }
-                draw(gameplay_level, .GAMEPLAY);
         }
+
 
         if screenshot_requested {
             scope_mark(frame_arena);
@@ -1094,70 +1187,6 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     draw_fade(interp);
             }
 
-
-            if flags & .PAUSED {
-                h := cast(float, INNER_WINDOW_H / 1.5);
-                y := cast(float, INNER_WINDOW_H / 2 - h / 2);
-
-                x := INNER_WINDOW_W / 2 - h / 2;
-                w := h;
-
-                set_shader(imm_color_shader, .{flags = .BLEND});
-                set_uniform("projection", ui_to_camera);
-                imm_quad(.{0, 0}, .{INNER_WINDOW_W, INNER_WINDOW_H}, .{0, 0, 0, 0.5});
-                imm_quad(.{x, y}, .{w, h}, .{0, 0, 0, 1});
-                imm_flush();
-
-                
-                font := *consolas_64pt;
-
-
-                draw_pause_menu :: (selected: $T) #expand {
-                    head := y + w / 2 - (T.COUNT - 1) * font.ascender;
-
-                    for 0..T.COUNT-1 {
-                        SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
-                        UNSELECTED_COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
-
-                        color: Vector4;
-                        if it == selected {
-                            color = SELECTED_COLOR;
-                        } else {
-                            color = UNSELECTED_COLOR;
-                        }
-
-
-                        text: string;
-                        #if T == Paused_Overworld_Selection {
-                            if it == {
-                                case .RESUME;               text = "Resume Playing";
-                                case .RESET_DEMO;           text = "Reset Demo";
-                            }
-                        } else #if T == Paused_Other_Selection {
-                            if it == {
-                                case .RESUME;               text = "Resume Playing";
-                                case .PREVIOUS_CHECKPOINT;  text = "Go to Previous Checkpoint";
-                                case .OVERWORLD;            text = "Return to Overworld";
-                                case .RESET_DEMO;           text = "Reset Demo";
-                            }
-                        } else {
-                            #assert false;
-                        }
-
-
-                        length := text_length(text, font);
-                        text_position := round(Vector2.{x + w / 2 - length / 2, head});
-                        draw_text(text, text_position, font, color);
-                        head += font.ascender * 2;
-                    }
-                }
-
-                if flags & .OVERWORLD {
-                    draw_pause_menu(paused.overworld.selected);
-                } else {
-                    draw_pause_menu(paused.other.selected);
-                }
-            }
         case .EDITOR;
             {
                 scope_mark(frame_arena);
@@ -1409,15 +1438,17 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
     push_context {
         game_memory := cast(*Game_Memory, game_memory_void_ptr);
         context.game_context = *game_memory.game_context;
-        using context.game_context;
-        using game_memory.game;
+
+        using game_memory;
+        using game_memory.game_context;
+
         if mode != .GAMEPLAY return;
 
-        using gameplay_level;
+        using gameplay.level;
 
         player := *_Player[0];
         player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
-        camera_position, camera_quat := get_gameplay_camera_info(gameplay_level);
+        camera_position, camera_quat := get_gameplay_camera_info(gameplay.level);
         
         // @TODO: Accound for the player's current position when considering procedural animation
         // once procedural animation is added to the player.
