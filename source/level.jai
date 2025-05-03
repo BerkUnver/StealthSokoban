@@ -137,6 +137,10 @@ Level :: struct {
 }
 
 
+Gameplay_Level :: #type,distinct Level;
+Editor_Level :: #type,distinct Level;
+
+
 
 CAMERA_PITCH_VALUES :: float.[
     -PI / 2,
@@ -717,46 +721,24 @@ is_colliding_below :: (using level: *Level, position: Vector3i) -> bool {
 }
 
 
-load_level_part_1_deserialize :: (level_name: string, arena: *Memory_Arena) -> *Level {
+load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists := false) -> *Level {
     using context.game_context;
-    
+
     scope_mark(frame_arena);
 
     success, data := read_file(level_name, frame_arena);
-    if !success {
-        log(.ERROR, "Could not read the file \"%\"\n", level_name); 
-        return null;
-    } 
-    
-    return load_level_part_1_deserialize_mem(level_name, data, arena);
-}
+    assert(success || make_if_not_exists);
 
-
-load_level_part_1_deserialize_mem :: (level_name: string, data: string, arena: *Memory_Arena) -> *Level {
     mark := get_mark(arena);
+    using level := alloc(arena, Level);
+    level.arena_mark = mark;
 
-    level := alloc(arena, Level); 
-    err := deserialize(data, level, arena);
-    if !err.ok {
-        log(.ERROR, "Encountered an error while deserializing level \"%\" at byte %,%: %\n", level_name, err.loc.start, err.loc.count, err.message);
-        restore_mark(arena, mark);
-        return null;
+    if success {
+        err := deserialize(data, level, arena);
+        assert(err.ok);
+    } else {
+        level.* = .{};
     }
-
-    return level;
-}
-
-
-serialize_level :: (using level: *Level) {
-    using context.game_context;
-    buf: [100000] u8 = ---;
-    str := serialize(buf, level);
-    assert(write_file(level.name, str));
-}
-
-
-load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
-    arena_mark = get_mark(arena);
 
     name = copy_string(arena, level_name);
     
@@ -779,11 +761,21 @@ load_level_part_2_shared :: (level_name: string, using level: *Level, arena: *Me
     for * _Door {
         it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
     }
+
+    return level;
 }
 
 
-load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *Memory_Arena, skip_intro := false) -> bool #must {
-    load_level_part_2_shared(level_name, level, arena);
+serialize_level :: (using level: *Level) {
+    using context.game_context;
+    buf: [100000] u8 = ---;
+    str := serialize(buf, level);
+    assert(write_file(level.name, str));
+}
+
+
+load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := false) -> *Level {
+    using level := load_level_base(level_name, arena);
 
     level_position, level_size = get_block_extents(_Block);
     size_1d := level_size.x * level_size.y * level_size.z;
@@ -847,7 +839,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
             eid := collision[index];
             if eid {
                 log(.ERROR, "There was an overlap between Block entity % and another entity %\n", block.eid, eid);
-                return false;
+                return null;
             }
             collision[index] = block.eid;
         }
@@ -859,7 +851,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
             success, index := get_3d_index(it + offset, level_size);
             if !success {
                 log(.ERROR, "There was a Door entity outside of the level's bounding box.\n");
-                return false;
+                return null;
             }
             
             // We don't care about overlapping door entities right now.
@@ -873,12 +865,12 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
         if !in_bounds {
             log(.ERROR, "There was a Enemy entity outside of the level's bounding box.\n");
-            return false;
+            return null;
         }
         
         if collision[index] != 0 {
             log(.ERROR, "There is an overlap between an Enemy entity and something else at (%, %, %)\n", it.position.x, it.position.y, it.position.z);
-            return false;
+            return null;
         }
 
         collision[index] = it.eid;
@@ -886,7 +878,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
 
     if _Player.count != 1 {
         log(.ERROR, "There was no player entity in the serialized level \"%\".\n", level.name);
-        return false;
+        return null;
     }
     
     reset_camera_focus(level);
@@ -914,44 +906,7 @@ load_level_part_2_gameplay :: (level_name: string, using level: *Level, arena: *
     }
 
 
-    return true;
-}
-
-
-load_level_part_2_editor :: (level_name: string, using level: *Level, arena: *Memory_Arena) {
-    load_level_part_2_shared(level_name, level, arena);
-    
-    entities = make_table(arena, 0, Entity_Id, *Entity);
-    
-    highest_eid: Entity_Id = 0;
-    for :iterate_entities types {
-        add(*entities, it.eid, it, arena);
-        if it.eid > highest_eid highest_eid = it.eid; 
-    }
-    
-    for 1..highest_eid {
-        if !get(*entities, it) append(*unused_eids, it, arena);
-    }
-
-    editor.camera_yaw = 0;
-    editor.camera_pitch = -PI / 3;
-
-    position, size := get_block_extents(_Block);
-    if _Block.count != 0 {
-        // :LevelSizeInEditor
-        // It makes me slightly uncomfortable at how this code overlaps with the 
-        // gameplay code but we don't have access to the level size in the editor.
-
-        level_center := to_vector3(position) + to_vector3(size) / 2;
-        level_radius := cast(float, max(size.x, max(size.y, size.z)));
-
-        camera_distance := level_radius * 2;
-        camera_y := sin(PI / 3) * camera_distance;
-        camera_z := cos(PI / 3) * camera_distance;
-
-        editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
-    }
-    view_texture = make_view_texture(size);
+    return level;
 }
 
 
@@ -972,6 +927,45 @@ free_level :: (using level: *Level, arena: *Memory_Arena) {
     }
     
     restore_mark(arena, arena_mark);
+}
+
+
+load_level_editor :: (level_name: string, arena: *Memory_Arena, make_if_not_exists := false) -> *Level {
+    level := load_level_base(level_name, arena, make_if_not_exists);
+    using level;
+
+    entities = make_table(arena, 0, Entity_Id, *Entity);
+
+    highest_eid: Entity_Id = 0;
+    for :iterate_entities types {
+        add(*entities, it.eid, it, arena);
+        if it.eid > highest_eid highest_eid = it.eid;
+    }
+
+    for 1..highest_eid {
+        if !get(*entities, it) append(*unused_eids, it, arena);
+    }
+
+    editor.camera_yaw = 0;
+    editor.camera_pitch = -PI / 3;
+
+    position, size := get_block_extents(_Block);
+    if _Block.count != 0 {
+        // :LevelSizeInEditor
+        // It makes me slightly uncomfortable at how this code overlaps with the
+        // gameplay code but we don't have access to the level size in the editor.
+
+        level_center := to_vector3(position) + to_vector3(size) / 2;
+        level_radius := cast(float, max(size.x, max(size.y, size.z)));
+
+        camera_distance := level_radius * 2;
+        camera_y := sin(PI / 3) * camera_distance;
+        camera_z := cos(PI / 3) * camera_distance;
+
+        editor.camera_position = .{level_center.x, level_center.y + camera_y, level_center.z - camera_z};
+    }
+    view_texture = make_view_texture(size);
+    return level;
 }
 
 

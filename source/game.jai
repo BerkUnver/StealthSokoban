@@ -113,7 +113,6 @@ Gameplay :: struct {
     arena: *Memory_Arena;
     
     state: Gameplay_State;
-    overworld: *Level;
     level: *Level;
     level_exists: bool;
 
@@ -303,13 +302,9 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         gameplay.arena = data.gameplay_arena;
         
         
-        editor_level = load_level_part_1_deserialize(OVERWORLD, editor_arena);
-        assert(editor_level != null);
-        load_level_part_2_editor(OVERWORLD, editor_level, editor_arena);
+        editor_level = load_level_editor(OVERWORLD, editor_arena);
 
-        gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena);
-        assert(gameplay.level != null);
-        assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+        gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
         gameplay.level_exists = true;
 
         mode = .EDITOR;    
@@ -433,13 +428,11 @@ game_update : Game_Update : (
 
                 if data.closest_name {
                     free_level(level.*, arena);
-                    level.* = load_level_part_1_deserialize(data.closest_name, arena);
-                    assert(level.* != null);
                     if #complete mode == {
                         case .GAMEPLAY;
-                            assert(load_level_part_2_gameplay(data.closest_name, level.*, arena, skip_intro=true));
+                            level.* = load_level_gameplay(data.closest_name, arena, skip_intro=true);
                         case .EDITOR;
-                            load_level_part_2_editor(data.closest_name, level.*, arena);
+                            level.* = load_level_editor(data.closest_name, arena);
                     }
                 }
 
@@ -503,12 +496,6 @@ game_update : Game_Update : (
                             }
 
                             if it.key == #char " " && it.state == .DOWN {   
-                                // This is probably how we want to reset the demo.
-                                reset_demo :: () #expand {
-                                    gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena); assert(gameplay.level != null);
-                                    assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
-                                }
-
                                 if gameplay.level_exists {
                                     if gameplay.paused.level.selected == {
                                         case .RESUME;
@@ -516,18 +503,18 @@ game_update : Game_Update : (
                                             restore_checkpoint(gameplay.level, do_fade=false);
                                         case .OVERWORLD;
                                             free_level(gameplay.level, gameplay.arena);
-                                            gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena);
-                                            assert(gameplay.level != null);
-                                            assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+                                            gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
                                         case .RESET_DEMO;
-                                            reset_demo();
+                                            free_level(gameplay.level, gameplay.arena);
+                                            gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
                                     }
                                     set_state(*gameplay, .PLAYING);
                                 } else {
                                     if gameplay.paused.overworld.selected == {
                                         case .RESUME;
-                                        case .RESET_DEMO;   
-                                            reset_demo();
+                                        case .RESET_DEMO;
+                                            free_level(gameplay.level, gameplay.arena);
+                                            gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
                                     }
                                     set_state(*gameplay, .PLAYING);
                                 }
@@ -583,12 +570,8 @@ game_update : Game_Update : (
 
                             using data := cast(*Munge_Data, data_);
                             free_level(level_ptr.*, arena);
-                            level_ptr.* = load_level_part_1_deserialize(level_name, arena);
-                            level := level_ptr.*;
-                            assert(level != null);
-                            load_level_part_2_editor(level_name, level, arena);
-
-                            serialize_level(level);
+                            level_ptr.* = load_level_editor(level_name, arena);
+                            serialize_level(level_ptr.*);
                         }
 
                         assert(iterate_directory("levels", *munge_data, munge));
@@ -623,15 +606,7 @@ game_update : Game_Update : (
                     new_level_name := editor_draw_imgui(editor_level, editor_arena);
                     if new_level_name {
                         free_level(editor_level, editor_arena);
-                        success, data := read_file(new_level_name, frame_arena);
-                        if success {
-                            editor_level = load_level_part_1_deserialize_mem(new_level_name, data, editor_arena);
-                            assert(editor_level != null);
-                        } else {
-                            editor_level = alloc(editor_arena, Level, zero_init = false);
-                            editor_level.* = .{};
-                        }
-                        load_level_part_2_editor(new_level_name, editor_level, editor_arena);
+                        editor_level = load_level_editor(new_level_name, editor_arena, make_if_not_exists=true);
                     }
                 }
             case .GAMEPLAY;
@@ -654,22 +629,18 @@ game_update : Game_Update : (
                                     scope_mark(frame_arena);
                                     // We need to copy the string because it is going to be freed when we free the old level.
                                     level_name := copy_string(frame_arena, entrance.level_name);
-                                    free_level(gameplay.level, gameplay.arena);
 
-                                    gameplay.level = load_level_part_1_deserialize(level_name, gameplay.arena);
-                                    assert(gameplay.level != null);
-                                    assert(load_level_part_2_gameplay(level_name, gameplay.level, gameplay.arena));
+                                    free_level(gameplay.level, gameplay.arena);
+                                    gameplay.level = load_level_gameplay(level_name, gameplay.arena);
                                 }
                             case .FADE_OUT_EXIT;
                                 using fade_out_exit;
                                 if interp >= 1 {
                                     scope_mark(frame_arena);
                                     level_name := copy_string(frame_arena, name);
-                                    free_level(gameplay.level, gameplay.arena);
 
-                                    gameplay.level = load_level_part_1_deserialize(OVERWORLD, gameplay.arena);
-                                    assert(gameplay.level != null);
-                                    assert(load_level_part_2_gameplay(OVERWORLD, gameplay.level, gameplay.arena));
+                                    free_level(gameplay.level, gameplay.arena);
+                                    gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
                                     
                                     for * _Overworld_Exit {
                                         entrance := get_entrance_for_overworld_exit(gameplay.level, it);
