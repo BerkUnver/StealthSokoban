@@ -113,6 +113,7 @@ Gameplay :: struct {
     arena: *Memory_Arena;
     
     state: Gameplay_State;
+    overworld: *Level;
     level: *Level;
     level_exists: bool;
 
@@ -303,9 +304,8 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         
         editor_level = load_level_editor(OVERWORLD, editor_arena);
-
-        gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
-        gameplay.level_exists = true;
+        
+        gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
 
         mode = .EDITOR;    
     }
@@ -381,33 +381,30 @@ game_update : Game_Update : (
                 screenshot_requested = true;
                 continue;
             }
-
-            load_next_level :: (ascending: bool, mode: Game_Mode, level: **Level, arena: *Memory_Arena) {
+            
+            get_next_level_name :: (old_name: string, ascending: bool) -> string {
                 using context.game_context;
 
                 Find_Data :: struct {
-                    level: *Level;
+                    old_name: string;
                     closest_name: string;
                     furthest_name: string;
                     mark: s64;
                     ascending: bool;
                 }
-                
-                // right now, iterate_directory does not hit the frame_arena, so we can 
-                // just store the closest_name on top of the frame_arena.
 
                 find :: (data_: *void, level_name: string) {
                     using context.game_context;
                     using data := cast(*Find_Data, data_);
 
                     if !closest_name {
-                        comparison := strcmp(level_name, level.name);
+                        comparison := strcmp(level_name, old_name);
                         if (ascending && comparison > 0) || (!ascending && comparison < 0) {
                             closest_name = copy_string(frame_arena, level_name);
                         }
                     } else {    
                         closest_name_comparison := strcmp(level_name, closest_name);
-                        level_name_comparison := strcmp(level_name, level.name);
+                        level_name_comparison := strcmp(level_name, old_name);
 
                         if (ascending && level_name_comparison > 0 && closest_name_comparison < 0)
                         || (!ascending && closest_name_comparison > 0 && level_name_comparison < 0) {
@@ -418,7 +415,7 @@ game_update : Game_Update : (
                 }
 
                 data := Find_Data.{
-                    level = level.*,
+                    old_name = old_name,
                     mark = get_mark(frame_arena),
                     ascending = ascending
                 };
@@ -426,44 +423,68 @@ game_update : Game_Update : (
 
                 iterate_directory("levels", *data, find);
 
-                if data.closest_name {
-                    free_level(level.*, arena);
-                    if #complete mode == {
-                        case .GAMEPLAY;
-                            level.* = load_level_gameplay(data.closest_name, arena, skip_intro=true);
-                        case .EDITOR;
-                            level.* = load_level_editor(data.closest_name, arena);
-                    }
-                }
-
-                restore_mark(frame_arena, data.mark);
+                return data.closest_name;
             }
-            
+
+
+            load_next_level_gameplay :: (ascending: bool) #expand {
+                if gameplay.level_exists {
+                    scope_mark(frame_arena);
+                    closest_name := get_next_level_name(gameplay.level.name, ascending);
+                    if !closest_name return;
+                    free_level(gameplay.level, gameplay.arena);
+
+                    if closest_name == OVERWORLD {
+                        gameplay.level_exists = false;
+                    } else {
+                        gameplay.level = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+                    }
+                } else {    
+                    closest_name := get_next_level_name(gameplay.overworld.name, ascending);
+                    if !closest_name return;
+                    assert(closest_name != OVERWORLD);
+                    
+                    gameplay.level_exists = true;
+                    gameplay.level = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+                }
+            }
+
+
+            load_next_level_editor :: (ascending: bool) #expand {
+                closest_name := get_next_level_name(editor_level.name, ascending);
+                if !closest_name return;
+                free_level(editor_level, editor_arena);
+                editor_level = load_level_editor(closest_name, editor_arena);
+            }
+
+
             if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(false, .GAMEPLAY, *gameplay.level, gameplay.arena);
-                    case .EDITOR;   load_next_level(false, .EDITOR,   *editor_level, editor_arena);
+                    case .GAMEPLAY; load_next_level_gameplay(false);
+                    case .EDITOR;   load_next_level_editor(false);
                 }
                 continue;
             }
 
             if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
                 if #complete mode == {
-                    case .GAMEPLAY; load_next_level(true, .GAMEPLAY, *gameplay.level, gameplay.arena);
-                    case .EDITOR;   load_next_level(true, .EDITOR,   *editor_level, editor_arena);
+                    case .GAMEPLAY; load_next_level_gameplay(true);
+                    case .EDITOR;   load_next_level_editor(true);
                 }
                 continue;
             }
 
-
             if #complete mode == {
                 case .GAMEPLAY;
+                    level := ifx gameplay.level_exists then gameplay.level else gameplay.overworld;
+
                     if #complete gameplay.state == {
                         case .PLAYING; 
-                            if (gameplay.level.flags & .CHECKPOINT_EXISTS) && it.key == .ESCAPE && it.state == .DOWN {
+
+                            if (level.flags & .CHECKPOINT_EXISTS) && it.key == .ESCAPE && it.state == .DOWN {
                                 set_state(*gameplay, .PAUSED);
                             }
-                            gameplay_handle_input(gameplay.level, it);
+                            gameplay_handle_input(level, it);
                         case .PAUSED;
                             if it.key == .ESCAPE && it.state == .DOWN {
                                 set_state(*gameplay, .PLAYING);
@@ -492,26 +513,34 @@ game_update : Game_Update : (
                                 }
                             }
 
-                            if it.key == #char " " && it.state == .DOWN {   
+                            if it.key == #char " " && it.state == .DOWN {
                                 if gameplay.level_exists {
                                     if gameplay.paused.level.selected == {
                                         case .RESUME;
                                         case .PREVIOUS_CHECKPOINT;
-                                            restore_checkpoint(gameplay.level, do_fade=false);
+                                            restore_checkpoint(level, do_fade=false);
                                         case .OVERWORLD;
                                             free_level(gameplay.level, gameplay.arena);
-                                            gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
+                                            gameplay.level_exists = false;
+
+                                            // When we left the overworld, it was fading out, so we need to 
+                                            // set it to be playing again.
+                                            set_state(gameplay.overworld, .PLAYING);
                                         case .RESET_DEMO;
                                             free_level(gameplay.level, gameplay.arena);
-                                            gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
+                                            gameplay.level_exists = false;
+                                            free_level(gameplay.overworld, gameplay.arena);
+                                            assert(gameplay.arena.current == 0);
+                                            gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
                                     }
                                     set_state(*gameplay, .PLAYING);
                                 } else {
                                     if gameplay.paused.overworld.selected == {
                                         case .RESUME;
                                         case .RESET_DEMO;
-                                            free_level(gameplay.level, gameplay.arena);
-                                            gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
+                                            free_level(gameplay.overworld, gameplay.arena);
+                                            assert(gameplay.arena.current == 0);
+                                            gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
                                     }
                                     set_state(*gameplay, .PLAYING);
                                 }
@@ -607,57 +636,70 @@ game_update : Game_Update : (
                     }
                 }
             case .GAMEPLAY;
-                if #complete gameplay.state == {
-                    case .PLAYING;
-                        using gameplay.level;
-                        gameplay_update(gameplay.level, dt);
+                using gameplay;
+                if state == .PLAYING {
+                    if level_exists {
+                        gameplay_update(level, dt);
 
-                        if state == {
-                            case .FADE_OUT_ENTRANCE;
-                                using fade_out_entrance;
-                                if interp >= 1 {
-                                    assert(eid != 0);
+                        if level.state == .FADE_OUT_EXIT {
+                            if level.fade_out_exit.interp >= 1 {
 
-                                    e := get_entity(gameplay.level, eid);
-                                    entrance := as(e, Overworld_Entrance);
-                                    assert(entrance != null);
-                                    
-                                    assert(entrance.level_name != "");
-                                    scope_mark(frame_arena);
-                                    // We need to copy the string because it is going to be freed when we free the old level.
-                                    level_name := copy_string(frame_arena, entrance.level_name);
+                                // We need to copy this because the level is going to get freed
+                                // and this will be freed along with it.
+                                scope_mark(frame_arena);
+                                level_name := copy_string(frame_arena, level.name);
 
-                                    free_level(gameplay.level, gameplay.arena);
-                                    gameplay.level = load_level_gameplay(level_name, gameplay.arena);
-                                }
-                            case .FADE_OUT_EXIT;
-                                using fade_out_exit;
-                                if interp >= 1 {
-                                    scope_mark(frame_arena);
-                                    level_name := copy_string(frame_arena, name);
+                                free_level(level, arena);
+                                level_exists = false;
 
-                                    free_level(gameplay.level, gameplay.arena);
-                                    gameplay.level = load_level_gameplay(OVERWORLD, gameplay.arena);
-                                    
-                                    for * _Overworld_Exit {
-                                        entrance := get_entrance_for_overworld_exit(gameplay.level, it);
-                                        if entrance && entrance.level_name == level_name {
-                                            entrance.activated = true;
+                                found := false;
+                                
+                                for * overworld._Overworld_Exit {
+                                    entrance := get_entrance_for_overworld_exit(overworld, it);
+                                    if entrance && entrance.level_name == level_name {
+                                        entrance.activated = true;
 
-                                            player := *_Player[0];
-                                            player.position = it.position;
+                                        player := *overworld._Player[0];
+                                        player.position = it.position;
 
-                                            // @Hack keep the camera focused on the player because otherwise it will fly
-                                            // from wherever the player entity was placed in the level to where we want
-                                            // the player to spawn.
-                                            reset_camera_focus(gameplay.level);
-                                        }
+                                        // @Hack keep the camera focused on the player because otherwise it will fly
+                                        // from wherever the player entity was placed in the level to where we want
+                                        // the player to spawn.
+                                        reset_camera_focus(overworld);
+
+                                        found = true;
+                                        break;
                                     }
                                 }
-                         }
-                    case .PAUSED;
+
+                                if !found {
+                                    log(.ERROR, "There is no Overworld_Exit that corresponds to the level \"%\".\n", level_name);
+                                }
+                            }
+                        }
+                    } else {
+                        gameplay_update(overworld, dt);
+                        if overworld.state == .FADE_OUT_ENTRANCE {
+                            if overworld.fade_out_entrance.interp >= 1 {
+                                assert(overworld.fade_out_entrance.eid != 0);
+                                e := get_entity(overworld, overworld.fade_out_entrance.eid);
+                                entrance := as(e, Overworld_Entrance);
+                                assert(entrance != null);
+                                
+                                assert(entrance.level_name != "");
+
+                                level = load_level_gameplay(entrance.level_name, arena);
+                                level_exists = true;
+                            }
+                        }
+                    }
                 }
-                draw(gameplay.level, .GAMEPLAY);
+
+                if level_exists {
+                    draw(level, .GAMEPLAY);
+                } else {
+                    draw(overworld, .GAMEPLAY);
+                }
 
                 if gameplay.state == .PAUSED {
                     h := cast(float, INNER_WINDOW_H / 1.5);
@@ -1415,11 +1457,11 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
 
         if mode != .GAMEPLAY return;
 
-        using gameplay.level;
+        using level := ifx gameplay.level_exists then gameplay.level else gameplay.overworld;
 
         player := *_Player[0];
         player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
-        camera_position, camera_quat := get_gameplay_camera_info(gameplay.level);
+        camera_position, camera_quat := get_gameplay_camera_info(level);
         
         // @TODO: Accound for the player's current position when considering procedural animation
         // once procedural animation is added to the player.

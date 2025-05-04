@@ -723,7 +723,6 @@ load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists
 
     mark := get_mark(arena);
     using level := alloc(arena, Level);
-    level.arena_mark = mark;
 
     if success {
         err := deserialize(data, level, arena);
@@ -731,6 +730,8 @@ load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists
     } else {
         level.* = .{};
     }
+
+    arena_mark = mark;
 
     name = copy_string(arena, level_name);
     
