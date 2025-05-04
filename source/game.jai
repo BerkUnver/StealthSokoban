@@ -114,8 +114,8 @@ Gameplay :: struct {
     
     state: Gameplay_State;
     overworld: *Level;
-    level: *Level;
-    level_exists: bool;
+    sublevel: *Level;
+    sublevel_exists: bool;
 
     paused: union {
         overworld: struct {
@@ -428,24 +428,24 @@ game_update : Game_Update : (
 
 
             load_next_level_gameplay :: (ascending: bool) #expand {
-                if gameplay.level_exists {
+                if gameplay.sublevel_exists {
                     scope_mark(frame_arena);
-                    closest_name := get_next_level_name(gameplay.level.name, ascending);
+                    closest_name := get_next_level_name(gameplay.sublevel.name, ascending);
                     if !closest_name return;
-                    free_level(gameplay.level, gameplay.arena);
+                    free_level(gameplay.sublevel, gameplay.arena);
 
                     if closest_name == OVERWORLD {
-                        gameplay.level_exists = false;
+                        gameplay.sublevel_exists = false;
                     } else {
-                        gameplay.level = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+                        gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
                     }
                 } else {    
                     closest_name := get_next_level_name(gameplay.overworld.name, ascending);
                     if !closest_name return;
                     assert(closest_name != OVERWORLD);
                     
-                    gameplay.level_exists = true;
-                    gameplay.level = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+                    gameplay.sublevel_exists = true;
+                    gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
                 }
             }
 
@@ -476,9 +476,11 @@ game_update : Game_Update : (
 
             if #complete mode == {
                 case .GAMEPLAY;
-                    level := ifx gameplay.level_exists then gameplay.level else gameplay.overworld;
+                    using gameplay;
 
-                    if #complete gameplay.state == {
+                    level := ifx sublevel_exists then sublevel else overworld;
+
+                    if #complete state == {
                         case .PLAYING; 
 
                             if (level.flags & .CHECKPOINT_EXISTS) && it.key == .ESCAPE && it.state == .DOWN {
@@ -496,51 +498,47 @@ game_update : Game_Update : (
                             
                             // @Sfx
                             if it.key == #char "W" && it.state == .DOWN {
-                                if gameplay.level_exists {
-                                    gameplay.paused.level.selected = (gameplay.paused.level.selected - 1 + .COUNT) % .COUNT;
+                                if sublevel_exists {
+                                    paused.level.selected = (paused.level.selected - 1 + .COUNT) % .COUNT;
                                 } else {
-                                    gameplay.paused.overworld.selected = (gameplay.paused.overworld.selected - 1 + .COUNT) % .COUNT;
+                                    paused.overworld.selected = (paused.overworld.selected - 1 + .COUNT) % .COUNT;
                                 }
                                 continue;
                             }
 
                             // @Sfx
                             if it.key == #char "S" && it.state == .DOWN {
-                                if gameplay.level_exists {
-                                    gameplay.paused.level.selected = (gameplay.paused.level.selected + 1) % .COUNT;
+                                if sublevel_exists {
+                                    paused.level.selected = (paused.level.selected + 1) % .COUNT;
                                 } else {
-                                    gameplay.paused.overworld.selected = (gameplay.paused.overworld.selected + 1) % .COUNT;
+                                    paused.overworld.selected = (paused.overworld.selected + 1) % .COUNT;
                                 }
                             }
 
                             if it.key == #char " " && it.state == .DOWN {
-                                if gameplay.level_exists {
-                                    if gameplay.paused.level.selected == {
+                                if sublevel_exists {
+                                    if paused.level.selected == {
                                         case .RESUME;
                                         case .PREVIOUS_CHECKPOINT;
                                             restore_checkpoint(level, do_fade=false);
                                         case .OVERWORLD;
-                                            free_level(gameplay.level, gameplay.arena);
-                                            gameplay.level_exists = false;
-
-                                            // When we left the overworld, it was fading out, so we need to 
-                                            // set it to be playing again.
-                                            set_state(gameplay.overworld, .PLAYING);
+                                            free_level(level, arena);
+                                            sublevel_exists = false;
                                         case .RESET_DEMO;
-                                            free_level(gameplay.level, gameplay.arena);
-                                            gameplay.level_exists = false;
-                                            free_level(gameplay.overworld, gameplay.arena);
-                                            assert(gameplay.arena.current == 0);
-                                            gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
+                                            free_level(level, arena);
+                                            sublevel_exists = false;
+                                            free_level(overworld, arena);
+                                            assert(arena.current == 0);
+                                            overworld = load_level_gameplay(OVERWORLD, arena);
                                     }
                                     set_state(*gameplay, .PLAYING);
                                 } else {
-                                    if gameplay.paused.overworld.selected == {
+                                    if paused.overworld.selected == {
                                         case .RESUME;
                                         case .RESET_DEMO;
-                                            free_level(gameplay.overworld, gameplay.arena);
-                                            assert(gameplay.arena.current == 0);
-                                            gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
+                                            free_level(overworld, arena);
+                                            assert(arena.current == 0);
+                                            overworld = load_level_gameplay(OVERWORLD, arena);
                                     }
                                     set_state(*gameplay, .PLAYING);
                                 }
@@ -638,22 +636,22 @@ game_update : Game_Update : (
             case .GAMEPLAY;
                 using gameplay;
                 if state == .PLAYING {
-                    if level_exists {
-                        gameplay_update(level, dt);
+                    if sublevel_exists {
+                        gameplay_update(sublevel, dt);
 
-                        if level.state == .FADE_OUT_EXIT {
-                            if level.fade_out_exit.interp >= 1 {
+                        if sublevel.state == .FADE_OUT_EXIT {
+                            if sublevel.fade_out_exit.interp >= 1 {
 
                                 // We need to copy this because the level is going to get freed
                                 // and this will be freed along with it.
                                 scope_mark(frame_arena);
-                                level_name := copy_string(frame_arena, level.name);
+                                level_name := copy_string(frame_arena, sublevel.name);
 
-                                free_level(level, arena);
-                                level_exists = false;
+                                free_level(sublevel, arena);
+                                sublevel_exists = false;
 
                                 found := false;
-                                
+
                                 for * overworld._Overworld_Exit {
                                     entrance := get_entrance_for_overworld_exit(overworld, it);
                                     if entrance && entrance.level_name == level_name {
@@ -684,19 +682,24 @@ game_update : Game_Update : (
                                 assert(overworld.fade_out_entrance.eid != 0);
                                 e := get_entity(overworld, overworld.fade_out_entrance.eid);
                                 entrance := as(e, Overworld_Entrance);
-                                assert(entrance != null);
-                                
-                                assert(entrance.level_name != "");
 
-                                level = load_level_gameplay(entrance.level_name, arena);
-                                level_exists = true;
+                                assert(entrance != null);
+                                assert(entrance.level_name != "");
+                                
+                                // For when we return
+                                set_state(overworld, .FADE_IN);
+                                player := *overworld._Player[0];
+                                set_state(player, .SPAWNING);
+
+                                sublevel = load_level_gameplay(entrance.level_name, arena);
+                                sublevel_exists = true;
                             }
                         }
                     }
                 }
 
-                if level_exists {
-                    draw(level, .GAMEPLAY);
+                if sublevel_exists {
+                    draw(sublevel, .GAMEPLAY);
                 } else {
                     draw(overworld, .GAMEPLAY);
                 }
@@ -758,7 +761,7 @@ game_update : Game_Update : (
                         }
                     }
 
-                    if gameplay.level_exists {
+                    if gameplay.sublevel_exists {
                         draw_pause_menu(gameplay.paused.level.selected);
                     } else {
                         draw_pause_menu(gameplay.paused.overworld.selected);
@@ -1185,8 +1188,8 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 case .FADE_IN_START;
                     using fade_in_start;
                     draw_fade(1 - interp);
-                case .FADE_IN_CHECKPOINT;
-                    using fade_in_checkpoint;
+                case .FADE_IN;
+                    using fade_in;
                     draw_fade(1 - interp);
                 case .PLAYING;
                 case .FADE_OUT_ENTRANCE;
@@ -1457,7 +1460,7 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
 
         if mode != .GAMEPLAY return;
 
-        using level := ifx gameplay.level_exists then gameplay.level else gameplay.overworld;
+        using level := ifx gameplay.sublevel_exists then gameplay.sublevel else gameplay.overworld;
 
         player := *_Player[0];
         player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};

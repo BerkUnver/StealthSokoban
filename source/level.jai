@@ -38,7 +38,7 @@ Level :: struct {
             fade_in_start: struct {
                 interp: float;
             }
-            fade_in_checkpoint: struct {
+            fade_in: struct {
                 interp: float;
             }
             fade_out_entrance: struct {
@@ -159,7 +159,7 @@ Camera_Mode :: enum u8 {
 
 Level_Gameplay_State :: enum u8 {
     FADE_IN_START;
-    FADE_IN_CHECKPOINT;
+    FADE_IN;
     PLAYING;
     FADE_OUT_ENTRANCE;
     FADE_OUT_CHECKPOINT;
@@ -1110,8 +1110,8 @@ set_state :: (using level: *Level, new_state: Level_Gameplay_State) {
     if #complete new_state == {
         case .FADE_IN_START;
             fade_in_start = .{interp = 0};
-        case .FADE_IN_CHECKPOINT;
-            fade_in_checkpoint = .{interp = 0};
+        case .FADE_IN;
+            fade_in = .{interp = 0};
         case .PLAYING;
         case .FADE_OUT_CHECKPOINT;
             fade_out_checkpoint = .{interp = 0};
@@ -1187,7 +1187,7 @@ restore_checkpoint :: (using level: *Level, do_fade := true) {
     
     set_state(player, .SPAWNING);
     if do_fade {
-        set_state(level, .FADE_IN_CHECKPOINT);
+        set_state(level, .FADE_IN);
     } else {
         set_state(level, .PLAYING);
     }
@@ -1931,8 +1931,8 @@ gameplay_update :: (using level: *Level, dt: float) {
                 set_checkpoint(level);
             }
 
-        case .FADE_IN_CHECKPOINT;
-            using fade_in_checkpoint;
+        case .FADE_IN;
+            using fade_in;
             interp += dt / FADE_TIME;
             if interp >= 1 {
                 set_state(level, .PLAYING);
