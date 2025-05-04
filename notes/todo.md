@@ -73,7 +73,7 @@ Now, let's sort these by priority.
 - ~~Overworld exits only activate once you have completed the corresponding level~~
 - ~~Enemy pre-warming~~
 - ~~Pulling from all directions of a block.~~
-- Store the overworld state for when you return
+- ~~Store the overworld state for when you return~~
 - Make a release mode where all the developer hotkeys are disabled.
 
 # NEED OR THE GAME IS INCOMPREHENSIBLE

@@ -98,6 +98,7 @@ Game_Memory :: struct {
 
     mode: Game_Mode;
     gameplay: Gameplay;
+
     editor_level: *Level;
     editor_arena: *Memory_Arena;
 }
@@ -121,8 +122,8 @@ Gameplay :: struct {
         overworld: struct {
             selected: Paused_Overworld_Selection;
         }
-        level: struct {
-            selected: Paused_Other_Selection;
+        sublevel: struct {
+            selected: Paused_Sublevel_Selection;
         }
     } 
 }
@@ -145,7 +146,7 @@ set_state :: (using gameplay: *Gameplay, new_state: Gameplay_State) {
 }
 
 
-Paused_Other_Selection :: enum {
+Paused_Sublevel_Selection :: enum {
     RESUME;
     PREVIOUS_CHECKPOINT;
     OVERWORLD;
@@ -306,8 +307,8 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         editor_level = load_level_editor(OVERWORLD, editor_arena);
         
         gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
-
-        mode = .EDITOR;    
+        
+        mode = .GAMEPLAY;    
     }
 }
 
@@ -381,7 +382,7 @@ game_update : Game_Update : (
                 screenshot_requested = true;
                 continue;
             }
-            
+        
             get_next_level_name :: (old_name: string, ascending: bool) -> string {
                 using context.game_context;
 
@@ -499,7 +500,7 @@ game_update : Game_Update : (
                             // @Sfx
                             if it.key == #char "W" && it.state == .DOWN {
                                 if sublevel_exists {
-                                    paused.level.selected = (paused.level.selected - 1 + .COUNT) % .COUNT;
+                                    paused.sublevel.selected = (paused.sublevel.selected - 1 + .COUNT) % .COUNT;
                                 } else {
                                     paused.overworld.selected = (paused.overworld.selected - 1 + .COUNT) % .COUNT;
                                 }
@@ -509,7 +510,7 @@ game_update : Game_Update : (
                             // @Sfx
                             if it.key == #char "S" && it.state == .DOWN {
                                 if sublevel_exists {
-                                    paused.level.selected = (paused.level.selected + 1) % .COUNT;
+                                    paused.sublevel.selected = (paused.sublevel.selected + 1) % .COUNT;
                                 } else {
                                     paused.overworld.selected = (paused.overworld.selected + 1) % .COUNT;
                                 }
@@ -517,7 +518,7 @@ game_update : Game_Update : (
 
                             if it.key == #char " " && it.state == .DOWN {
                                 if sublevel_exists {
-                                    if paused.level.selected == {
+                                    if paused.sublevel.selected == {
                                         case .RESUME;
                                         case .PREVIOUS_CHECKPOINT;
                                             restore_checkpoint(level, do_fade=false);
@@ -742,7 +743,7 @@ game_update : Game_Update : (
                                     case .RESUME;               text = "Resume Playing";
                                     case .RESET_DEMO;           text = "Reset Demo";
                                 }
-                            } else #if T == Paused_Other_Selection {
+                            } else #if T == Paused_Sublevel_Selection {
                                 if it == {
                                     case .RESUME;               text = "Resume Playing";
                                     case .PREVIOUS_CHECKPOINT;  text = "Go to Previous Checkpoint";
@@ -762,7 +763,7 @@ game_update : Game_Update : (
                     }
 
                     if gameplay.sublevel_exists {
-                        draw_pause_menu(gameplay.paused.level.selected);
+                        draw_pause_menu(gameplay.paused.sublevel.selected);
                     } else {
                         draw_pause_menu(gameplay.paused.overworld.selected);
                     }
