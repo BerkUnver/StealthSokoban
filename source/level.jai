@@ -70,8 +70,6 @@ Level :: struct {
         camera_yaw_old: float64;
         camera_yaw_interp := 1.0;
         
-        dt_modifier := 1.0;
-        
         doors: [] Entity_Id; // Only Door entities should be put in here.
         collision: [] Entity_Id;
         viewed: [] View_State;
@@ -877,8 +875,9 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
     reset_camera_focus(level);
 
     // :Checkpoint
-    self_block = .{arena.current, xx level};
+    self_block = .{arena.current - arena_mark, xx level};
     checkpoint_block = alloc_view(arena, self_block.count, u8, zero_init = false); 
+    assert(self_block.data + self_block.count == checkpoint_block.data);
 
     for 0..enemy_pre_warm_ticks-1 {
         gameplay_move_tick(level, just_do_falls=false, do_vfx=false);
@@ -1168,15 +1167,13 @@ restore_checkpoint :: (using level: *Level, do_fade := true) {
 
     old_flags := flags;
     old_camera_mode := camera_mode;
-    old_dt_modifier := dt_modifier;
-
+    
+    assert(self_block.data + self_block.count == checkpoint_block.data);
     memcpy(self_block.data, checkpoint_block.data, checkpoint_block.count);
-    assert(state == .PLAYING);
 
     player := *_Player[0];
 
     flags = old_flags;
-    dt_modifier = old_dt_modifier;
 
     camera_mode = old_camera_mode;
     camera_yaw_target = 0;
@@ -1488,23 +1485,6 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 
 gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     using context.game_context;
-     
-    if event.key == #char "-" && event.state == .DOWN {
-        if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
-        return;
-    }
-
-    if event.key == #char "=" && event.state == .DOWN {
-        if dt_modifier < 16 dt_modifier *= 2;
-        return;
-    }
-
-    if event.key == #char "U" && event.state == .DOWN && keys_down[Key.SHIFT] {
-        for * _Overworld_Entrance {
-            it.activated = true;
-        }
-        return;
-    }
 
     if event.key == #char "K" && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
@@ -1880,8 +1860,6 @@ gameplay_update :: (using level: *Level, dt: float) {
 
     player := *_Player[0];
 
-    dt *= dt_modifier;
-    
     CAMERA_YAW_TIME :: 1.0 / 12.0;
     camera_yaw_interp = min(camera_yaw_interp + dt / CAMERA_YAW_TIME, 1);
 

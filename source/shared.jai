@@ -1,10 +1,6 @@
 // These are the type definitions shared between the os-specific main
 // and the game itself. Please keep the stuff in this file to a minimum.
 
-BACKGROUND_R :: 12;
-BACKGROUND_G :: 27;
-BACKGROUND_B :: 19;
-
 INNER_WINDOW_W :: 2560;
 INNER_WINDOW_H :: 1600;
 
@@ -14,11 +10,11 @@ INNER_WINDOW_H :: 1600;
 MAX_INPUT_EVENTS_PER_TICK :: 64;
 
 // @TODO: See how much of this memory is actually used!
-GAME_MEMORY_SIZE     :: 1 << 24; 
-EDITOR_ARENA_SIZE    :: 1 << 27;
-GAMEPLAY_ARENA_SIZE  :: 1 << 24;
-PERMANENT_ARENA_SIZE :: 1 << 22;
-FRAME_ARENA_SIZE     :: 1 << 24;
+MB :: 1024*1024;
+EDITOR_ARENA_SIZE    :: 128 * MB;
+GAMEPLAY_ARENA_SIZE  :: 16 * MB;
+PERMANENT_ARENA_SIZE :: 2 * MB; // Make this kinda big to handle asset hot reloads
+FRAME_ARENA_SIZE     :: 16 * MB;
 
 // GAMEPLAY_ARENA_SIZE < EDITOR_ARENA_SIZE because the way we make changes to allocations in the level
 // is just to append new allocations to the end of the arena. Once we stop storing mesh vertices on the CPU then
@@ -34,7 +30,6 @@ Sample :: struct {
 
 
 Game_Init_Data :: struct {
-    game_memory: *void;
     gl_extension_loader: (*u8) -> *void #c_call;
     keys_down: [] bool;
     gameplay_arena: *Memory_Arena;
@@ -57,7 +52,7 @@ Game_Init_Data :: struct {
 Game_Init_Proc :: #type (
     context_base: *Context_Base, // :ContextBase
     init: *Game_Init_Data
-) #no_context;
+) -> game_memory: *void #no_context;
 
 
 Game_Update :: #type (

@@ -1,5 +1,4 @@
 #import "Compiler";
-#load "shared.jai"; // For the String_Builder
 
 #run {
     set_build_options_dc(.{do_output=false}); 
@@ -7,8 +6,15 @@
     options := get_build_options();
     
     args := options.compile_time_command_line;
-
+    
     build_exe := false;
+    build_developer := false;
+
+    for args {
+        if it == "all"       build_exe = true;
+        if it == "developer" build_developer = true;
+    }
+
     if args.count == 1 && args[0] == "all" {
         build_exe = true;
     }
@@ -42,6 +48,12 @@
         o.output_path = "../assets";
         set_build_options(o, w);
         compiler_begin_intercept(w);
+
+        if build_developer {
+            add_build_string("DEVELOPER :: true;\n", w);
+        } else {
+            add_build_string("DEVELOPER :: false;\n", w);
+        }
         add_build_file("game.jai", w);
         
         while true {

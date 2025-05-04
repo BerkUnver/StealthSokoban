@@ -116,6 +116,7 @@ Gameplay :: struct {
     state: Gameplay_State;
     overworld: *Level;
     sublevel: *Level;
+    dt_modifier: float;
     sublevel_exists: bool;
 
     paused: union {
@@ -163,10 +164,6 @@ Paused_Overworld_Selection :: enum {
 
 
 
-
-
-#assert GAME_MEMORY_SIZE >= size_of(Game_Memory);
-
 NEAR_PLANE :: 0.1;
 FAR_PLANE :: 1000.0;
 
@@ -176,9 +173,10 @@ IMGUI_SIZE :: Vector2.{700, INNER_WINDOW_H};
 OVERWORLD :: "levels/overworld.level";
 
 #program_export "game_init"
-game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data) #no_context {
-    game_memory := cast(*Game_Memory, data.game_memory);
+game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data) -> *void #no_context {
     push_context {
+        game_memory := alloc(data.permanent_arena, Game_Memory); // This should already be zero-initted, right?
+
         context.base = context_base.*;
         context.game_context = *game_memory.game_context;
         
@@ -306,9 +304,12 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         editor_level = load_level_editor(OVERWORLD, editor_arena);
         
+        gameplay.dt_modifier = 1;
         gameplay.overworld = load_level_gameplay(OVERWORLD, gameplay.arena);
         
-        mode = .GAMEPLAY;    
+        mode = .GAMEPLAY;
+
+        return game_memory;
     }
 }
 
@@ -370,109 +371,112 @@ game_update : Game_Update : (
         screenshot_requested: bool;
         
         for input.events {
-            if it.key == .TILDE && it.state == .DOWN {
-                if #complete mode == {
-                    case .GAMEPLAY; mode = .EDITOR;
-                    case .EDITOR;   mode = .GAMEPLAY;
-                }
-                continue;
-            }
-
-            if it.key == #char "C" && it.state == .DOWN && keys_down[Key.CTRL] {
-                screenshot_requested = true;
-                continue;
-            }
-        
-            get_next_level_name :: (old_name: string, ascending: bool) -> string {
-                using context.game_context;
-
-                Find_Data :: struct {
-                    old_name: string;
-                    closest_name: string;
-                    furthest_name: string;
-                    mark: s64;
-                    ascending: bool;
+            
+            #if DEVELOPER {
+                if it.key == .TILDE && it.state == .DOWN {
+                    if #complete mode == {
+                        case .GAMEPLAY; mode = .EDITOR;
+                        case .EDITOR;   mode = .GAMEPLAY;
+                    }
+                    continue;
                 }
 
-                find :: (data_: *void, level_name: string) {
+                if it.key == #char "C" && it.state == .DOWN && keys_down[Key.CTRL] {
+                    screenshot_requested = true;
+                    continue;
+                }
+            
+                get_next_level_name :: (old_name: string, ascending: bool) -> string {
                     using context.game_context;
-                    using data := cast(*Find_Data, data_);
 
-                    if !closest_name {
-                        comparison := strcmp(level_name, old_name);
-                        if (ascending && comparison > 0) || (!ascending && comparison < 0) {
-                            closest_name = copy_string(frame_arena, level_name);
+                    Find_Data :: struct {
+                        old_name: string;
+                        closest_name: string;
+                        furthest_name: string;
+                        mark: s64;
+                        ascending: bool;
+                    }
+
+                    find :: (data_: *void, level_name: string) {
+                        using context.game_context;
+                        using data := cast(*Find_Data, data_);
+
+                        if !closest_name {
+                            comparison := strcmp(level_name, old_name);
+                            if (ascending && comparison > 0) || (!ascending && comparison < 0) {
+                                closest_name = copy_string(frame_arena, level_name);
+                            }
+                        } else {    
+                            closest_name_comparison := strcmp(level_name, closest_name);
+                            level_name_comparison := strcmp(level_name, old_name);
+
+                            if (ascending && level_name_comparison > 0 && closest_name_comparison < 0)
+                            || (!ascending && closest_name_comparison > 0 && level_name_comparison < 0) {
+                                restore_mark(frame_arena, mark);
+                                closest_name = copy_string(frame_arena, level_name);
+                            }
+                        }
+                    }
+
+                    data := Find_Data.{
+                        old_name = old_name,
+                        mark = get_mark(frame_arena),
+                        ascending = ascending
+                    };
+
+
+                    iterate_directory("levels", *data, find);
+
+                    return data.closest_name;
+                }
+
+
+                load_next_level_gameplay :: (ascending: bool) #expand {
+                    if gameplay.sublevel_exists {
+                        scope_mark(frame_arena);
+                        closest_name := get_next_level_name(gameplay.sublevel.name, ascending);
+                        if !closest_name return;
+                        free_level(gameplay.sublevel, gameplay.arena);
+
+                        if closest_name == OVERWORLD {
+                            gameplay.sublevel_exists = false;
+                        } else {
+                            gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
                         }
                     } else {    
-                        closest_name_comparison := strcmp(level_name, closest_name);
-                        level_name_comparison := strcmp(level_name, old_name);
-
-                        if (ascending && level_name_comparison > 0 && closest_name_comparison < 0)
-                        || (!ascending && closest_name_comparison > 0 && level_name_comparison < 0) {
-                            restore_mark(frame_arena, mark);
-                            closest_name = copy_string(frame_arena, level_name);
-                        }
-                    }
-                }
-
-                data := Find_Data.{
-                    old_name = old_name,
-                    mark = get_mark(frame_arena),
-                    ascending = ascending
-                };
-
-
-                iterate_directory("levels", *data, find);
-
-                return data.closest_name;
-            }
-
-
-            load_next_level_gameplay :: (ascending: bool) #expand {
-                if gameplay.sublevel_exists {
-                    scope_mark(frame_arena);
-                    closest_name := get_next_level_name(gameplay.sublevel.name, ascending);
-                    if !closest_name return;
-                    free_level(gameplay.sublevel, gameplay.arena);
-
-                    if closest_name == OVERWORLD {
-                        gameplay.sublevel_exists = false;
-                    } else {
+                        closest_name := get_next_level_name(gameplay.overworld.name, ascending);
+                        if !closest_name return;
+                        assert(closest_name != OVERWORLD);
+                        
+                        gameplay.sublevel_exists = true;
                         gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
                     }
-                } else {    
-                    closest_name := get_next_level_name(gameplay.overworld.name, ascending);
+                }
+
+
+                load_next_level_editor :: (ascending: bool) #expand {
+                    closest_name := get_next_level_name(editor_level.name, ascending);
                     if !closest_name return;
-                    assert(closest_name != OVERWORLD);
-                    
-                    gameplay.sublevel_exists = true;
-                    gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+                    free_level(editor_level, editor_arena);
+                    editor_level = load_level_editor(closest_name, editor_arena);
                 }
-            }
 
 
-            load_next_level_editor :: (ascending: bool) #expand {
-                closest_name := get_next_level_name(editor_level.name, ascending);
-                if !closest_name return;
-                free_level(editor_level, editor_arena);
-                editor_level = load_level_editor(closest_name, editor_arena);
-            }
-
-
-            if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
-                if #complete mode == {
-                    case .GAMEPLAY; load_next_level_gameplay(false);
-                    case .EDITOR;   load_next_level_editor(false);
+                if it.key == #char "[" && (it.state == .DOWN || it.state == .REPEAT) {
+                    if #complete mode == {
+                        case .GAMEPLAY; load_next_level_gameplay(false);
+                        case .EDITOR;   load_next_level_editor(false);
+                    }
+                    continue;
                 }
-                continue;
-            }
 
-            if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
-                if #complete mode == {
-                    case .GAMEPLAY; load_next_level_gameplay(true);
-                    case .EDITOR;   load_next_level_editor(true);
+                if it.key == #char "]" && (it.state == .DOWN || it.state == .REPEAT) {
+                    if #complete mode == {
+                        case .GAMEPLAY; load_next_level_gameplay(true);
+                        case .EDITOR;   load_next_level_editor(true);
+                    }
+                    continue;
                 }
-                continue;
             }
 
             if #complete mode == {
@@ -481,12 +485,33 @@ game_update : Game_Update : (
 
                     level := ifx sublevel_exists then sublevel else overworld;
 
+                    #if DEVELOPER {
+                        if it.key == #char "-" && it.state == .DOWN {
+                            if 1.0 / 16.0 < dt_modifier dt_modifier /= 2;
+                            continue;
+                        }
+
+                        if it.key == #char "=" && it.state == .DOWN {
+                            if dt_modifier < 16 dt_modifier *= 2;
+                            continue;
+                        }
+
+                        if it.key == #char "U" && it.state == .DOWN && keys_down[Key.SHIFT] {
+                            for * level._Overworld_Entrance {
+                                it.activated = true;
+                            }
+                            continue;
+                        }
+                    }
+
                     if #complete state == {
                         case .PLAYING; 
 
                             if (level.flags & .CHECKPOINT_EXISTS) && it.key == .ESCAPE && it.state == .DOWN {
                                 set_state(*gameplay, .PAUSED);
+                                continue;
                             }
+
                             gameplay_handle_input(level, it);
                         case .PAUSED;
                             if it.key == .ESCAPE && it.state == .DOWN {
@@ -637,8 +662,9 @@ game_update : Game_Update : (
             case .GAMEPLAY;
                 using gameplay;
                 if state == .PLAYING {
+                    dt_modified := dt * dt_modifier;
                     if sublevel_exists {
-                        gameplay_update(sublevel, dt);
+                        gameplay_update(sublevel, dt_modified);
 
                         if sublevel.state == .FADE_OUT_EXIT {
                             if sublevel.fade_out_exit.interp >= 1 {
@@ -677,7 +703,7 @@ game_update : Game_Update : (
                             }
                         }
                     } else {
-                        gameplay_update(overworld, dt);
+                        gameplay_update(overworld, dt_modified);
                         if overworld.state == .FADE_OUT_ENTRANCE {
                             if overworld.fade_out_entrance.interp >= 1 {
                                 assert(overworld.fade_out_entrance.eid != 0);
@@ -770,35 +796,36 @@ game_update : Game_Update : (
                 }
         }
 
+        #if DEVELOPER {
+            if screenshot_requested {
+                scope_mark(frame_arena);
+                data := alloc(frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
+                glReadPixels(0, 0, INNER_WINDOW_W, INNER_WINDOW_H, GL_RGB, GL_UNSIGNED_BYTE, data);
+                
+                write :: (ctx: *void, data: *void, size: s32) #c_call {
+                    push_context cast(*#Context, ctx) {
+                        assert(create_directory("../screenshots"));
 
-        if screenshot_requested {
-            scope_mark(frame_arena);
-            data := alloc(frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
-            glReadPixels(0, 0, INNER_WINDOW_W, INNER_WINDOW_H, GL_RGB, GL_UNSIGNED_BYTE, data);
-            
-            write :: (ctx: *void, data: *void, size: s32) #c_call {
-                push_context cast(*#Context, ctx) {
-                    assert(create_directory("../screenshots"));
+                        buf: [4096] u8 = ---;
+                        date := get_date();
+                        sb := make_string_builder(buf);
 
-                    buf: [4096] u8 = ---;
-                    date := get_date();
-                    sb := make_string_builder(buf);
+                        // @TODO: Pad with zeros for numbers that aren't long enough.
+                        print(*sb, "../screenshots/%-%-%_%-%-%-%.png",
+                            date.year, date.month, date.day,
+                            date.hour, date.minute, date.second, date.millisecond);
 
-                    // @TODO: Pad with zeros for numbers that aren't long enough.
-                    print(*sb, "../screenshots/%-%-%_%-%-%-%.png",
-                        date.year, date.month, date.day,
-                        date.hour, date.minute, date.second, date.millisecond);
-
-                    name := get_string(*sb);
-                    // It's very unlikely that we'll try to write two images within
-                    // the same millisecond but if so I'm okay with one overwriting
-                    // the other.
-                    assert(write_file(name, .{size, data}));
+                        name := get_string(*sb);
+                        // It's very unlikely that we'll try to write two images within
+                        // the same millisecond but if so I'm okay with one overwriting
+                        // the other.
+                        assert(write_file(name, .{size, data}));
+                    }
                 }
-            }
 
-            stbi_write_png_to_func(write, *context, INNER_WINDOW_W, INNER_WINDOW_H, 3, data, INNER_WINDOW_W * 3);
-            log(.OK, "Screenshot captured.\n");
+                stbi_write_png_to_func(write, *context, INNER_WINDOW_W, INNER_WINDOW_H, 3, data, INNER_WINDOW_W * 3);
+                log(.OK, "Screenshot captured.\n");
+            }
         }
     }
 }
@@ -921,14 +948,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
             position = level_position;
             size = level_size;
-        case .EDITOR;
-            world_to_camera = get_editor_camera_matrix(level);
-            position, size = get_block_extents(_Block); // :LevelSizeInEditor
-    }
 
-
-    if #complete mode == {
-        case .GAMEPLAY;
             set_shader(gameplay_gridlike_shader);
             set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
             set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
@@ -950,9 +970,10 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 set_uniform("projection", projection);
                 bind_and_draw(*it.mesh);
             }
-
-
         case .EDITOR;
+            world_to_camera = get_editor_camera_matrix(level);
+            position, size = get_block_extents(_Block); // :LevelSizeInEditor
+
             set_shader(editor_gridlike_shader);
             set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
             set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);

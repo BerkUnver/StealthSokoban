@@ -159,7 +159,7 @@ main :: () {
         },
         hInstance = module_handle,
         hCursor = LoadCursorA(null, IDC_ARROW),
-        hbrBackground = CreateSolidBrush((BACKGROUND_B << 16) | (BACKGROUND_G << 8) | BACKGROUND_R),
+        hbrBackground = CreateSolidBrush(0),
         lpszClassName = "Window Class", // Jai string literals are zero-terminated for backwards-compatability.
     };
 
@@ -467,15 +467,12 @@ main :: () {
     game_init := cast(Game_Init_Proc, GetProcAddress(game_dll, "game_init"));
     assert(game_init != null);
     
-    game_memory := VirtualAlloc(null, GAME_MEMORY_SIZE, MEM_COMMIT, PAGE_READWRITE);
-
     gameplay_arena := make_arena(VirtualAlloc(null, GAMEPLAY_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), GAMEPLAY_ARENA_SIZE);
     editor_arena := make_arena(VirtualAlloc(null, EDITOR_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), EDITOR_ARENA_SIZE);
     frame_arena := make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
     permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
 
     data := Game_Init_Data.{
-        game_memory            = game_memory,
         gl_extension_loader    = wglGetProcAddress,
         keys_down = keys_down,
         gameplay_arena = *gameplay_arena,
@@ -484,7 +481,7 @@ main :: () {
         permanent_arena = *permanent_arena
     };
 
-    game_init(*context.base, *data);
+    game_memory := game_init(*context.base, *data);
 
     game_update: Game_Update = xx GetProcAddress(game_dll, "game_update");
     assert(game_update != null);
