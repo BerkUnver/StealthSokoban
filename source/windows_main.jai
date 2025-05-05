@@ -99,6 +99,7 @@ main :: () {
                     // The common consensus is that this proc only gets called nonqueued from 
                     // SendMessage if it's in the same thread or GetMessage / PeekMessage if it
                     // is not.
+
                     case WM_KEYDOWN;
                         // This flag is 1 if the key was down before the message was sent,
                         // and 0 if it was up before the message was sent. Use this to filter
@@ -148,7 +149,6 @@ main :: () {
                         // and then a letter in each menu option is highlighted, and you can press that key to
                         // select that menu item
 
-                    case WM_CLOSE;
                         PostQuitMessage(0);
                         return 0;
                     case; 

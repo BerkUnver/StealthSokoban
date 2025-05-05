@@ -74,7 +74,7 @@ Now, let's sort these by priority.
 - ~~Enemy pre-warming~~
 - ~~Pulling from all directions of a block.~~
 - ~~Store the overworld state for when you return~~
-- Make a release mode where all the developer hotkeys are disabled.
+- ~~Make a release mode where all the developer hotkeys are disabled.~~
 
 # NEED OR THE GAME IS INCOMPREHENSIBLE
 - Better meshes for level items
@@ -86,8 +86,10 @@ Now, let's sort these by priority.
 - Mouse camera controls
 
 # WE SHOULD HAVE
-- More introductory levels
+- Missing Enemy interpolation effects
 - SFX. Walking, pushing, etc.
+- Get enemies walking past each other to properly annihilate.
+- More introductory levels
 - Multipush
 - Interpolation for player movement, including pulling blocks.
 - MUSIC. A tastefully-chosen selection of not-well-known classical music is likely the best we can do for now.

@@ -136,6 +136,28 @@ Gameplay_State :: enum {
 }
 
 
+// This does not take ownership of "name".
+push_sublevel :: (using gameplay: *Gameplay, name: string, skip_intro := false) {
+    assert(!sublevel_exists);
+    sublevel_exists = true;
+    sublevel = load_level_gameplay(name, arena, skip_intro=skip_intro);
+}
+
+
+pop_sublevel :: (using gameplay: *Gameplay, skip_intro := false) {
+    assert(sublevel_exists);
+    free_level(sublevel, arena);
+    assert(arena.current == overworld.checkpoint_block.count + overworld.self_block.count);
+    sublevel_exists = false;
+    
+    if !skip_intro {
+        set_state(overworld, .FADE_IN);
+        player := *overworld._Player[0];
+        set_state(player, .SPAWNING);
+    }
+}
+
+
 set_state :: (using gameplay: *Gameplay, new_state: Gameplay_State) {
     if #complete new_state == {
         case .PLAYING;
@@ -436,20 +458,18 @@ game_update : Game_Update : (
                         scope_mark(frame_arena);
                         closest_name := get_next_level_name(gameplay.sublevel.name, ascending);
                         if !closest_name return;
-                        free_level(gameplay.sublevel, gameplay.arena);
 
-                        if closest_name == OVERWORLD {
-                            gameplay.sublevel_exists = false;
-                        } else {
-                            gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+                        pop_sublevel(*gameplay, skip_intro=true);
+
+                        if closest_name != OVERWORLD {
+                            push_sublevel(*gameplay, closest_name, skip_intro=true);
                         }
                     } else {    
                         closest_name := get_next_level_name(gameplay.overworld.name, ascending);
                         if !closest_name return;
                         assert(closest_name != OVERWORLD);
-                        
-                        gameplay.sublevel_exists = true;
-                        gameplay.sublevel = load_level_gameplay(closest_name, gameplay.arena, skip_intro=true);
+
+                        push_sublevel(*gameplay, closest_name, skip_intro=true);
                     }
                 }
 
@@ -502,6 +522,18 @@ game_update : Game_Update : (
                             }
                             continue;
                         }
+
+                        if it.key == #char "R" && it.state == .DOWN {
+                            if sublevel_exists {
+                                name := copy_string(frame_arena, sublevel.name);
+                                free_level(sublevel, arena);
+                                sublevel = load_level_gameplay(name, arena, skip_intro=true);
+                            } else {
+                                free_level(overworld, arena);
+                                overworld = load_level_gameplay(OVERWORLD, arena, skip_intro=true);
+                            }
+                            continue;
+                        }
                     }
 
                     if #complete state == {
@@ -546,13 +578,11 @@ game_update : Game_Update : (
                                     if paused.sublevel.selected == {
                                         case .RESUME;
                                         case .PREVIOUS_CHECKPOINT;
-                                            restore_checkpoint(level, do_fade=false);
+                                            restore_checkpoint(level);
                                         case .OVERWORLD;
-                                            free_level(level, arena);
-                                            sublevel_exists = false;
+                                            pop_sublevel(*gameplay);
                                         case .RESET_DEMO;
-                                            free_level(level, arena);
-                                            sublevel_exists = false;
+                                            pop_sublevel(*gameplay);
                                             free_level(overworld, arena);
                                             assert(arena.current == 0);
                                             overworld = load_level_gameplay(OVERWORLD, arena);
@@ -674,8 +704,7 @@ game_update : Game_Update : (
                                 scope_mark(frame_arena);
                                 level_name := copy_string(frame_arena, sublevel.name);
 
-                                free_level(sublevel, arena);
-                                sublevel_exists = false;
+                                pop_sublevel(*gameplay);
 
                                 found := false;
 
@@ -713,13 +742,7 @@ game_update : Game_Update : (
                                 assert(entrance != null);
                                 assert(entrance.level_name != "");
                                 
-                                // For when we return
-                                set_state(overworld, .FADE_IN);
-                                player := *overworld._Player[0];
-                                set_state(player, .SPAWNING);
-
-                                sublevel = load_level_gameplay(entrance.level_name, arena);
-                                sublevel_exists = true;
+                                push_sublevel(*gameplay, entrance.level_name);
                             }
                         }
                     }

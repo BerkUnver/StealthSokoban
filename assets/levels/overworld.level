@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277317501604557034
+			y 0.0277317445725202557
 			z 0.3953233957290649413
 			w 1
 			;
@@ -195,9 +195,9 @@ types
 				;
 			;
 		color
-			x 0.451383829116821289
-			y 0.0612309128046035765
-			z 0.5373598337173461913
+			x 0.4370002150535583493
+			y 0.0592797547578811643
+			z 0.5202365517616271971
 			;
 		level_name "levels/visibility_2.level"
 		;
@@ -214,7 +214,7 @@ types
 			y 0.1933375000953674315
 			z 0.1933451890945434569
 			;
-		level_name "levels/enemies_intro.level"
+		level_name "levels/enemies_1.level"
 		;
 		e
 			eid 12
@@ -270,6 +270,7 @@ types
 		color
 			x 0.3707969784736633299
 			;
+		level_name "levels/enemies_3.level"
 		;
 		e
 			eid 25
@@ -282,7 +283,7 @@ types
 		color
 			x 0.7288293838500976562
 			;
-		level_name "levels/enemies_advanced.level"
+		level_name "levels/enemies_2.level"
 		;
 		e
 			eid 26
@@ -307,6 +308,7 @@ types
 				z 18
 				;
 			;
+		level_name "levels/enemies_3.level"
 		;
 		e
 			eid 32

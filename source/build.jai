@@ -15,7 +15,7 @@
         if it == "developer" build_developer = true;
     }
 
-    if args.count == 1 && args[0] == "all" {
+    if args.count == 1 && args[0] == "exe" {
         build_exe = true;
     }
 

@@ -676,7 +676,7 @@ get_gameplay_camera_info :: (using level: *Level) -> position: Vector3, orientat
             distance = FAR_DISTANCE;
 
         case .LEVEL;
-            RADIUS_MULTIPLIER :: 2.5;
+            RADIUS_MULTIPLIER :: 3.0;
             radius := max(level_size.x, max(level_size.y, level_size.z));
             distance = max(NEAR_DISTANCE, radius * RADIUS_MULTIPLIER);
             focus = to_vector3(level_position) + to_vector3(level_size) / 2;
@@ -1191,62 +1191,6 @@ restore_checkpoint :: (using level: *Level, do_fade := true) {
 }
 
 
-get_enemy_next_position :: (using level: *Level, enemy: *Enemy) -> moved: bool, desired_position: Vector3i, desired_facing: Facing {
-    can_move_to :: (using level: *Level, position: Vector3i) -> bool {
-        if !is_colliding_below(level, position) return false;
-        in_bounds, index := get_3d_index(position, level_position, level_size);
-        assert(in_bounds);
-        eid := collision[index];
-        if eid == 0 return true;
-        if get_entity(level, eid).type == .Block return false;
-        return true;
-    }
-
-
-    moved := true;
-    new_facing := enemy.facing;
-    desired_direction := facing_to_vector3i(enemy.facing);
-
-    if can_move_to(level, enemy.position + desired_direction) {
-        return true, enemy.position + desired_direction, new_facing;
-    }
-
-    if #complete enemy.favored_direction == {
-        case .LEFT;
-            new_facing = facing_left(enemy.facing);
-        case .RIGHT;    
-            new_facing = facing_right(enemy.facing);
-    }
-
-    desired_direction = facing_to_vector3i(new_facing);
-
-    if can_move_to(level, enemy.position + desired_direction) {
-        return true, enemy.position + desired_direction, new_facing;
-    }
-
-
-    if #complete enemy.favored_direction == {
-        case .LEFT;
-            new_facing = facing_right(enemy.facing);
-        case .RIGHT;
-            new_facing = facing_left(enemy.facing);
-    }
-
-    if can_move_to(level, enemy.position + desired_direction) {
-        return true, enemy.position + desired_direction, new_facing;
-    }
-
-    new_facing = facing_opposite(enemy.facing);
-    desired_direction = facing_to_vector3i(new_facing);
-
-    if can_move_to(level, enemy.position + desired_direction) {
-        return true, enemy.position + desired_direction, new_facing;
-    }
-    
-    return false, .{}, 0;
-}
-
-
 gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
     if !just_do_falls {
         for * _Enemy_Despawner {
@@ -1266,10 +1210,11 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
             if !just_do_falls {
 
                 continue_if_valid :: () #expand {
-                    position := it.position + desired_direction;
+                    position := it.position + facing_to_vector3i(new_facing);
 
-                    if !is_colliding_below(level, position) return;
+                    // if !is_colliding_below(level, position) return;
                     in_bounds, index := get_3d_index(position, level_position, level_size);
+                    if !in_bounds return;
                     assert(in_bounds);
                     eid := collision[index];
                     if eid && get_entity(level, eid).type == .Block return;
@@ -1286,7 +1231,6 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
 
                 moved := true;
                 new_facing := it.facing;
-                desired_direction := facing_to_vector3i(it.facing);
 
                 continue_if_valid();
 
@@ -1296,8 +1240,6 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
                     case .RIGHT;    
                         new_facing = facing_right(it.facing);
                 }
-
-                desired_direction = facing_to_vector3i(new_facing);
 
                 continue_if_valid();
 
@@ -1311,7 +1253,6 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
                 continue_if_valid();
 
                 new_facing = facing_opposite(it.facing);
-                desired_direction = facing_to_vector3i(new_facing);
 
                 continue_if_valid();
 
@@ -1517,11 +1458,6 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if state != .PLAYING return;
 
-    if event.key == #char "C" && event.state == .DOWN {
-        restore_checkpoint(level, do_fade=true);
-        return;
-    }
-
     if event.key == #char " " {
         if event.state == .DOWN flags |= .PULLING;
         else                    flags &= ~.PULLING;
@@ -1711,7 +1647,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             {
                 in_bounds, index := get_3d_index(player.position + push_direction, level_position, level_size);
-                assert(in_bounds);
+                if !in_bounds return;
                 eid := collision[index];
                 if eid {
                     block := as(get_entity(level, eid), Block);
