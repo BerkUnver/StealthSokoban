@@ -1,12 +1,6 @@
 // These are the type definitions shared between the os-specific main
 // and the game itself. Please keep the stuff in this file to a minimum.
 
-INNER_WINDOW_W :: 2560;
-INNER_WINDOW_H :: 1600;
-
-// INNER_WINDOW_W :: 1920;
-// INNER_WINDOW_H :: 1080;
-
 MAX_INPUT_EVENTS_PER_TICK :: 64;
 
 // @TODO: See how much of this memory is actually used!
@@ -36,6 +30,8 @@ Game_Init_Data :: struct {
     editor_arena: *Memory_Arena;
     frame_arena: *Memory_Arena;
     permanent_arena: *Memory_Arena;
+    window_w: int;
+    window_h: int;
 }
 
 // :ContextBase
@@ -61,7 +57,9 @@ Game_Update :: #type (
     input: Input,
     dt: float,
     hotloaded: bool,
-    changed_file_names: [] string
+    changed_file_names: [] string,
+    new_window_w: int,
+    new_window_h: int
 ) #no_context;
 
 

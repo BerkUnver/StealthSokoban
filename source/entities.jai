@@ -212,7 +212,7 @@ entity_mesh :: (e: *Entity) -> *Mesh {
         case .Player;
             return player_mesh;
         case .Exit;
-            return *exit_mesh;
+            return exit_mesh;
         case .Enemy;
             return enemy_mesh;
         case .Enemy_Spawner;
@@ -240,9 +240,6 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
 
     player := as(e, Player);
     if player return get_player_draw_info(player);
-
-    enemy_despawner := as(e, Enemy_Despawner);
-    if enemy_despawner return get_enemy_despawner_draw_info(enemy_despawner);
 
     return make_translation_matrix4(to_vector3(e.position));
 }

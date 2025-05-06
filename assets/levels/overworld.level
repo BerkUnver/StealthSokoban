@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277317445725202557
+			y 0.0277317389845848081
 			z 0.3953233957290649413
 			w 1
 			;
@@ -159,13 +159,22 @@ types
 		facing 1
 		;
 	]
-	_Enemy_Despawner 1[
+	_Enemy_Despawner 2[
 		e
 			eid 22
 			position
 				x -11
 				y 1
 				z 6
+				;
+			;
+		;
+		e
+			eid 36
+			position
+				x 1
+				y 1
+				z 2
 				;
 			;
 		;
@@ -466,9 +475,9 @@ types
 		e
 			eid 28
 			position
-				x -4
-				y 2
-				z 27
+				x 2
+				y 1
+				z 2
 				;
 			;
 		;

@@ -224,7 +224,6 @@ Checkpoint :: struct {
 
 Exit :: struct {
     using #as e: Entity;
-    COLOR :: Vector4.{146.0/255.0, 1, 118.0/255.0, 1};
 }
 
 
@@ -1060,7 +1059,8 @@ get_enemy_spawner_draw_info :: (enemy_spawner: *Enemy_Spawner) -> model_to_world
     color: Vector4;
     if #complete enemy_spawner.enemy_spawner_type == {
         case .ALTERNATING;
-            color = .{0, 0.5, 0, 1}; // @TODO: We should have alternating stripes or something on the enemy spawner
+            color = .{0.4, 0.949, 0.4, 1}; // @TODO: We should have alternating stripes or something on the enemy spawner
+            color.xyz /= 2;
         case .ALL_RIGHT;
             color = RIGHT_ENEMY_COLOR;
             color.xyz /= 2;
@@ -1072,12 +1072,6 @@ get_enemy_spawner_draw_info :: (enemy_spawner: *Enemy_Spawner) -> model_to_world
     matrix := facing_to_matrix4(enemy_spawner.facing);
     matrix = make_translation_matrix4(to_vector3(enemy_spawner.position) + Vector3.{0.5, 0, 0.5}) * matrix;
     return matrix, color;
-}
-
-
-get_enemy_despawner_draw_info :: (enemy_despawner: *Enemy_Despawner) -> model_to_world: Matrix4 {
-    matrix := make_translation_matrix4(to_vector3(enemy_despawner.position) + Vector3.{0.5, 0, 0.5});
-    return matrix;
 }
 
 
@@ -1778,16 +1772,6 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 play_positional_sound(level, player.position, footstep);
             }
     } 
-}
-
-
-GAMEPLAY_FRUSTUM :: #run -> Matrix4 {
-    FOV :: PI / 5;
-
-    right := cast(float, NEAR_PLANE * tan(FOV / 2));
-    top := right * cast(float, INNER_WINDOW_H) / cast(float, INNER_WINDOW_W);
-     
-    return make_left_handed_frustum_matrix(-right, -top, NEAR_PLANE, right, top, FAR_PLANE);
 }
 
 

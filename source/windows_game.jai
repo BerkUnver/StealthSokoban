@@ -131,6 +131,15 @@ get_date :: () -> Date {
 }
 
 
+enable_cursor :: (enabled: bool) {
+    if enabled {
+        SetCursor(LoadCursorA(null, IDC_ARROW));
+    } else {
+        SetCursor(null);
+    }
+}
+
+
 #scope_file
 
 #load "windows_winapi.jai";

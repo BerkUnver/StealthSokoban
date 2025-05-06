@@ -7,6 +7,7 @@
 // @TODO: Switch to the wide character version of everything.
 // @TODO: Handle switching monitors. Right now the window might become weirdly stretched and unresponsive.
 // @TODO: Detect keys that were pressed when you alt-tabbed away from this application, then alt-tabbed back.
+// @TODO: Handle not rendering while window is being dragged
 
 #load "shared.jai";
 #load "windows_winapi.jai";
@@ -15,25 +16,10 @@
 #program_export AmdPowerXpressRequestHighPerformance: s32 = 1;
 
 
-
-input_events: [MAX_INPUT_EVENTS_PER_TICK] Input_Event; // :DynamicArray
-input_event_count: s64;
-keys_down: [Key.COUNT] bool; // :BitArray
 window: HWND;
-
-
-append_input_event :: (e: Input_Event) #no_context {
-    if e.state == .DOWN {
-        keys_down[e.key] = true;
-    } else if e.state == .UP {
-        keys_down[e.key] = false;
-    }
-
-    if input_event_count < input_events.count {
-        input_events[input_event_count] = e;
-        input_event_count += 1;
-    }
-}
+keys_down: [Key.COUNT] bool; // :BitArray
+frame_arena: Memory_Arena;
+input_events: [..] Input_Event;
 
 
 main :: () {
@@ -44,9 +30,8 @@ main :: () {
         cbSize = size_of(WNDCLASSEXA),
         style = CS_VREDRAW | CS_HREDRAW | CS_OWNDC,
         lpfnWndProc = xx (window: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT #c_call {
-            push_context .{} {
-        
-                translate_keycode_to_game_input :: (state: Input_Event_State, keycode: WPARAM) #no_context {
+            push_context {
+                translate_keycode_to_game_input :: (state: Input_Event_State, keycode: WPARAM) {
                     key: Key;
 
                     if #char "A" <= keycode && keycode <= #char "Z"
@@ -85,7 +70,7 @@ main :: () {
                             return;
                             // @TODO: Handle alt, f10 (they is special on windows, and isn't recieved via WM_KEY... messages).
                     }
-                    append_input_event(.{key=key, state=state});
+                    append(*input_events, *frame_arena).* = .{key=key, state=state};
                 }
 
 
@@ -119,38 +104,29 @@ main :: () {
 
                     case WM_LBUTTONDOWN;
                         SetCapture(window);
-                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, state=.DOWN});
+                        append(*input_events, *frame_arena).* = .{key=.MOUSE_LEFT_BUTTON, state=.DOWN};
                         return 0;
 
                     case WM_RBUTTONDOWN;
                         SetCapture(window);
-                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.DOWN});
+                        append(*input_events, *frame_arena).* = .{key=.MOUSE_RIGHT_BUTTON, state=.DOWN};
                         return 0;
 
 
                     case WM_LBUTTONUP;
-                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, state=.UP});
+                        append(*input_events, *frame_arena).* = .{key=.MOUSE_LEFT_BUTTON, state=.UP};
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
                         
                     case WM_RBUTTONUP;
-                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.UP});
+                        append(*input_events, *frame_arena).* = .{key=.MOUSE_RIGHT_BUTTON, state=.UP};
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
-                    
-                    case WM_SYSKEYDOWN; #through;
-                    case WM_SYSKEYUP; #through;
-                    case WM_SYSCHAR;
-                        // @TODO: If we press alt or f10, then release, the entire application freezes until
-                        // you press another key.
 
-                        // This is because windows is waiting for the user to press another key for their
-                        // really old builtin keyboard shortcut system that nobody uses, where you press ALT
-                        // and then a letter in each menu option is highlighted, and you can press that key to
-                        // select that menu item
-
+                    case WM_CLOSE;
                         PostQuitMessage(0);
                         return 0;
+                    
                     case; 
                 }
 
@@ -165,52 +141,76 @@ main :: () {
 
     assert(RegisterClassExA(*window_class) != 0);
     
-
-    //
-    // Get the coordinates to center the window
-    //
-
-    // @TODO: Support fullscreen, changing the window size
-    WINDOW_FLAGS :: WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX;
-    // This is WS_OVERLAPPEDWINDOW without the WS_MAXIMIZEBOX and WS_THICKFRAME.
-    // Supposedly this is to prevent you from resizing
-    
-    window_x := (GetSystemMetrics(SM_CXSCREEN) - INNER_WINDOW_W) / 2;
-    window_y := (GetSystemMetrics(SM_CYSCREEN) - INNER_WINDOW_H) / 2;
-
-    rect := RECT.{
-        right = INNER_WINDOW_W,
-        bottom = INNER_WINDOW_H,
-    };
-
-    AdjustWindowRect(*rect, WINDOW_FLAGS, .FALSE);
-    window_w := rect.right - rect.left;
-    window_h := rect.bottom - rect.top;
-    
-    // If you try to create a window that's too big to
-    // fit on the screen, CreateWindowExA will truncate
-    // it to fit!
     window = CreateWindowExA(
         0,
         "Window Class",
         "Stealth Sokoban",
-        WINDOW_FLAGS,
-        xx window_x,
-        xx window_y,
-        xx window_w,
-        xx window_h,
+        0,
+        0,
+        0,
+        0,
+        0,
         null,
         null,
         module_handle,
         null
     );
     assert(window != null);
+    
+    WINDOW_W :: 2560;
+    WINDOW_H :: 1600;
 
-    ShowWindow(window, SW_SHOW);
+    fullscreen := false;
 
+    toggle_fullscreen :: () #expand {
+        if fullscreen {
 
+            outer_window_x := (GetSystemMetrics(SM_CXSCREEN) - WINDOW_W) / 2;
+            outer_window_y := (GetSystemMetrics(SM_CYSCREEN) - WINDOW_H) / 2;
 
+            outer_rect := RECT.{
+                right = xx WINDOW_W,
+                bottom = xx WINDOW_H,
+            };
 
+            AdjustWindowRect(*outer_rect, WS_OVERLAPPEDWINDOW, .FALSE);
+            outer_window_w := outer_rect.right - outer_rect.left;
+            outer_window_h := outer_rect.bottom - outer_rect.top;
+
+            SetWindowLongA(window, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+
+            SetWindowPos(
+                window,
+                HWND_TOP, 
+                xx outer_window_x,
+                xx outer_window_y,
+                xx outer_window_w,
+                xx outer_window_h,
+                SWP_FRAMECHANGED | SWP_SHOWWINDOW
+            );
+
+        } else {
+            SetWindowLongA(window, GWL_STYLE, 0);
+            monitor := MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+            info: MONITORINFO;
+            info.cbSize = size_of(type_of(info));
+
+            assert(GetMonitorInfoA(monitor, *info) == .TRUE);
+            SetWindowPos(
+                window,
+                HWND_TOP,
+                info.rcMonitor.left,
+                info.rcMonitor.top,
+                info.rcMonitor.right - info.rcMonitor.left,
+                info.rcMonitor.bottom - info.rcMonitor.top,
+                SWP_FRAMECHANGED | SWP_SHOWWINDOW
+            );
+        }
+
+        fullscreen = !fullscreen;
+    }
+
+    toggle_fullscreen();
 
 
     // 
@@ -469,7 +469,7 @@ main :: () {
     
     gameplay_arena := make_arena(VirtualAlloc(null, GAMEPLAY_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), GAMEPLAY_ARENA_SIZE);
     editor_arena := make_arena(VirtualAlloc(null, EDITOR_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), EDITOR_ARENA_SIZE);
-    frame_arena := make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
+    frame_arena = make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
     permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
 
     data := Game_Init_Data.{
@@ -478,7 +478,9 @@ main :: () {
         gameplay_arena = *gameplay_arena,
         editor_arena = *editor_arena,
         frame_arena = *frame_arena,
-        permanent_arena = *permanent_arena
+        permanent_arena = *permanent_arena,
+        window_w = WINDOW_W,
+        window_h = WINDOW_H,
     };
 
     game_memory := game_init(*context.base, *data);
@@ -558,55 +560,9 @@ main :: () {
 
 
     while main_loop := true {
-        message: MSG;
-
-        // @Investigate: Windows documentation mentions that if you do not pass the window handle (HINSTANCE)
-        // directly to GetMessage, it gets all the messages for all windows belonging to the current
-        // thread, as well as the THREAD message queue.
-        // Does this mean that there is a separate message queue for each thread?
-
-        while (PeekMessageA(*message, null, 0, 0, PM_REMOVE)) {
-            if message.message == WM_QUIT break main_loop;
-            TranslateMessage(*message);
-            DispatchMessageA(*message);
-        }
-
         //
         // Do the gameplay update and render
         //
-
-        monitor_h := GetSystemMetrics(SM_CYSCREEN);
-
-        client_rect: RECT;
-        GetClientRect(window, *client_rect);
-
-        window_top_left := POINT.{0, 0};
-        ClientToScreen(window, *window_top_left);
-        window_bottom_right := POINT.{x=client_rect.right, y=client_rect.bottom};
-        ClientToScreen(window, *window_bottom_right);
-
-
-
-        window_w := window_bottom_right.x - window_top_left.x;
-        window_h := window_bottom_right.y - window_top_left.y;
-
-        window_x := window_top_left.x;
-        window_y := monitor_h - window_bottom_right.y - 1;
-
-        mouse_pos: POINT;
-        GetCursorPos(*mouse_pos);
-
-        global_mouse_x := mouse_pos.x;
-        global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
-
-        mouse_x := cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
-        mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
-
-        input := Input.{
-            events = .{input_event_count, input_events.data},
-            mouse_x = mouse_x,
-            mouse_y = mouse_y
-        };
 
         ticks_since_start: s64;
         assert(QueryPerformanceCounter(xx *ticks_since_start) != 0);
@@ -664,7 +620,41 @@ main :: () {
         time_elapsed = new_time_elapsed;
 
         {
+            assert(frame_arena.current == 0);
             scope_mark(*frame_arena);
+
+            // :InputEventsInFrameArena
+
+            message: MSG;
+
+            // @Investigate: Windows documentation mentions that if you do not pass the window handle (HINSTANCE)
+            // directly to GetMessage, it gets all the messages for all windows belonging to the current
+            // thread, as well as the THREAD message queue.
+            // Does this mean that there is a separate message queue for each thread?
+
+            while (PeekMessageA(*message, null, 0, 0, PM_REMOVE)) {
+                if message.message == WM_QUIT break main_loop;
+                TranslateMessage(*message);
+                DispatchMessageA(*message);
+            }
+
+
+            for input_events {
+                if it.state == .UP {
+                    keys_down[it.key] = false;
+                } else {
+                    keys_down[it.key] = true;
+                }
+
+                if it.key != Key.F_BASE + 11 || it.state != .DOWN continue;
+
+                toggle_fullscreen();
+
+                // This will REORDER the input events. Do we want that?
+                remove it;
+            }
+
+
             changed_file_names: [..] string;
 
             BATCH_TIME :: 0.1;
@@ -690,7 +680,7 @@ main :: () {
                 // the file watcher! Maybe the thread the watcher is running on (I believe
                 // that is what happens when you use ReadDirectoryChangesW) is locking the
                 // file, but I have no idea why it would do that. The error message you get
-                // from GetLastError() after MoveFileA failes is ERROR_FILE_NOT_FOUND. I
+                // from GetLastError() after MoveFileA fails is ERROR_FILE_NOT_FOUND. I
                 // have no idea why.
 
                 game_dll = LoadLibraryA(GAME_DLL_NAME);
@@ -704,8 +694,46 @@ main :: () {
                 remove it;
                 break;
             }
-            game_update(*context.base, game_memory, input, dt, hotloaded, changed_file_names);
-            input_event_count=0;
+
+            //
+            // Get the mouse position in Opengl-style coordinates
+            //
+
+            monitor_h := GetSystemMetrics(SM_CYSCREEN);
+
+            client_rect: RECT;
+            GetClientRect(window, *client_rect);
+
+            window_top_left := POINT.{0, 0};
+            ClientToScreen(window, *window_top_left);
+            window_bottom_right := POINT.{x=client_rect.right, y=client_rect.bottom};
+            ClientToScreen(window, *window_bottom_right);
+
+
+
+            window_w := window_bottom_right.x - window_top_left.x;
+            window_h := window_bottom_right.y - window_top_left.y;
+
+            window_x := window_top_left.x;
+            window_y := monitor_h - window_bottom_right.y - 1;
+
+            mouse_pos: POINT;
+            GetCursorPos(*mouse_pos);
+
+            global_mouse_x := mouse_pos.x;
+            global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
+
+            mouse_x := cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
+            mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
+
+            input := Input.{
+                events = input_events,
+                mouse_x = mouse_x,
+                mouse_y = mouse_y
+            };
+
+            game_update(*context.base, game_memory, input, dt, hotloaded, changed_file_names, window_w, window_h);
+            memset(*input_events, 0, size_of(type_of(input_events)));
         }
 
         if changed_files.count == 0 {
@@ -713,19 +741,6 @@ main :: () {
             changed_files.allocated = 0;
             clear(*changed_file_arena);
         }
-
-        assert(frame_arena.current == 0);
-        // I'm trying to enforce people who use the stack arena to use it
-        // like a stack and not just put stuff into it and expect it to
-        // get cleared at the end of the frame.
-        // Therefore, we check to make sure everyone has popped their stuff
-        // off of the stack.
-
-        // @TODO: This isn't a very good check because someone higher up the call
-        // stack could just call "restore_mark" and set the current to 0 even if
-        // someone lower in the call stack could have done it.
-        // This causes us to use more memory than we should.
-      
 
         //
         // Do audio update
@@ -813,3 +828,12 @@ utf16_to_ascii :: (utf16: [] u16, arena: *Memory_Arena) -> bool, string {
     return true, .{utf16.count, ascii};
 }
 
+
+// @Copypasta from windows_game.jai
+print :: (s: string) {
+    stdout := GetStdHandle(STD_OUTPUT_HANDLE);
+    assert(stdout != INVALID_HANDLE_VALUE);
+    WriteConsoleA(stdout, s.data, cast(u32, s.count), null, null);
+    FlushFileBuffers(stdout); 
+    // This function is for debug output. We don't care about performance, so we flush every time we call this.
+}

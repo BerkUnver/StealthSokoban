@@ -11,12 +11,8 @@
     build_developer := false;
 
     for args {
-        if it == "all"       build_exe = true;
+        if it == "exe"       build_exe = true;
         if it == "developer" build_developer = true;
-    }
-
-    if args.count == 1 && args[0] == "exe" {
-        build_exe = true;
     }
 
     // Compile the platform executable

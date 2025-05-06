@@ -48,6 +48,9 @@ Game_Context :: struct {
 
     ui_to_camera: Matrix4;
     camera_to_ui: Matrix4;
+
+    window_w: int;
+    window_h: int;
     
     editor_imgui_disabled: bool;
   
@@ -79,11 +82,12 @@ Game_Context :: struct {
     enemy_right_bitmap: *Bitmap;
     enemy_annihilation_mesh: Mesh;
     enemy_spawner_mesh: *Mesh;
-    enemy_spawner_bitmap: *Bitmap;
     enemy_despawner_mesh: *Mesh;
+    enemy_item_bitmap: *Bitmap;
     player_mesh: *Mesh;
     player_bitmap: *Bitmap;
-    exit_mesh: Mesh;
+    player_item_bitmap: *Bitmap;
+    exit_mesh: *Mesh;
     overworld_entrance_mesh: *Mesh;
     overworld_entrance_sound: *Sound;
     chroma_key_bitmap: *Bitmap;
@@ -189,9 +193,6 @@ Paused_Overworld_Selection :: enum {
 NEAR_PLANE :: 0.1;
 FAR_PLANE :: 1000.0;
 
-IMGUI_POSITION :: Vector2.{0, 0};
-IMGUI_SIZE :: Vector2.{700, INNER_WINDOW_H};
-
 OVERWORLD :: "levels/overworld.level";
 
 #program_export "game_init"
@@ -241,7 +242,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 
         // We want to support Mac, so we can't support OpenGL 4.3 which is when this
         // extension became part of the standard. As such, we have to use the extension.
-        stack_context := context;
         if GL_ARB_debug_output {
             glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // @Investigate
             // Make sure we do not have to also call glEnable(GL_DEBUG_OUTPUT);
@@ -250,29 +250,21 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         }
 
         hotloaded_dll_init();
+        window_resize_init(data.window_w, data.window_h);
         
         // We only ever set this stuff once.
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
+        glEnable(GL_SCISSOR_TEST); // :ClearAndScissor
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
         glStencilMask(0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
 
-        zoom_in_matrix := Matrix4_Identity;
-        zoom_in_matrix._11 /= INNER_WINDOW_W / 2;
-        zoom_in_matrix._22 /= -INNER_WINDOW_H / 2;
-        ui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
-
-        zoom_out_matrix := Matrix4_Identity;
-        zoom_out_matrix._11 *= INNER_WINDOW_W / 2;
-        zoom_out_matrix._22 *= -INNER_WINDOW_H / 2;
-        camera_to_ui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
-
         assert(FT_Init_FreeType(*freetype) == 0);
         success:, shader_include = read_file("shaders/include.gl", permanent_arena);
         assert(success);
-        
+
         imm_state = imm_init();
 
         
@@ -302,13 +294,14 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         enemy_right_bitmap          = load_asset(Bitmap, *asset_table, "enemy_right.tga");
         enemy_annihilation_mesh     = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
         enemy_spawner_mesh          = load_asset(Mesh, *asset_table, "enemy_spawner.my_mesh");
-        enemy_spawner_bitmap        = load_asset(Bitmap, *asset_table, "enemy_spawner.tga");
+        enemy_item_bitmap           = load_asset(Bitmap, *asset_table, "enemy_item.tga");
         enemy_despawner_mesh        = load_asset(Mesh, *asset_table, "enemy_despawner.my_mesh");
         overworld_entrance_mesh     = load_asset(Mesh, *asset_table, "overworld_entrance.my_mesh");
         overworld_entrance_sound    = load_asset(Sound, *asset_table, "sounds/overworld_entrance.wav");
         chroma_key_bitmap           = load_asset(Bitmap, *asset_table, "chroma_key.tga");
         overworld_exit_mesh         = load_asset(Mesh, *asset_table, "overworld_exit.my_mesh");
-        exit_mesh                   = make_cuboid_vertex_mesh(.{0.15, 0, 0.15}, .{0.85, 0.1, 0.85}, permanent_arena);
+        exit_mesh                   = load_asset(Mesh, *asset_table, "exit.my_mesh");
+        player_item_bitmap          = load_asset(Bitmap, *asset_table, "player_item.tga");
         checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
         player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
         player_bitmap               = load_asset(Bitmap, *asset_table, "player.tga");
@@ -350,6 +343,45 @@ hotloaded_dll_init :: () {
 }
 
 
+window_resize_init :: (new_window_w: int, new_window_h: int) {
+    using context.game_context;
+    // @TODO: Update fonts?
+    
+    // Make the inner window 16x9
+    window_w = new_window_w / 16 * 16;
+    window_h = new_window_h / 9 * 9;
+
+    if window_w / 16 * 9 < window_h {
+        window_h = window_w / 16 * 9;
+    } else {
+        window_w = window_h / 9 * 16;
+    }
+
+    viewport_x := (new_window_w - window_w) / 2;
+    viewport_y := (new_window_h - window_h) / 2;
+
+    x := cast(s32, viewport_x);
+    y := cast(s32, viewport_y);
+    w := cast(u32, window_w);
+    h := cast(u32, window_h);
+
+    glViewport(x, y, w, h);
+    // :ClearAndScissor we need to set a scissor rect to prevent glClear from
+    // clearing the entire window instead of just what we need it to clear.
+    glScissor(x, y, w, h);
+
+    zoom_in_matrix := Matrix4_Identity;
+    zoom_in_matrix._11 /= window_w / 2;
+    zoom_in_matrix._22 /= -window_h / 2;
+    ui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
+
+    zoom_out_matrix := Matrix4_Identity;
+    zoom_out_matrix._11 *= window_w / 2;
+    zoom_out_matrix._22 *= -window_h / 2;
+    camera_to_ui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
+}
+
+
 
 #program_export "game_update"
 game_update : Game_Update : (
@@ -358,7 +390,9 @@ game_update : Game_Update : (
     input: Input,
     dt: float,
     hotloaded: bool,
-    changed_file_names: [] string
+    changed_file_names: [] string,
+    new_window_w: int,
+    new_window_h: int
 ) #no_context {
     game_memory := cast(*Game_Memory, game_memory_);
     push_context {
@@ -373,14 +407,22 @@ game_update : Game_Update : (
         using game_memory;
         using game_memory.game_context;
 
+        if new_window_w != window_w || new_window_h != window_h {
+            window_resize_init(new_window_w, new_window_h);
+        }
+
         reload_assets(*asset_table, changed_file_names);
         
+        // :ClearAndScissor
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         mouse := Vector2.{input.mouse_x, input.mouse_y};
         
         imgui_state.event_count = 0;
         imgui_state.mouse = (camera_to_ui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
+
+        imgui_position := Vector2.{0, 0};
+        imgui_size := Vector2.{700, xx window_h};
         
         // Instead of using different focusing systems for the editor and imgui,
         // we could have a #caller_location-based focusing system for everything,
@@ -397,8 +439,12 @@ game_update : Game_Update : (
             #if DEVELOPER {
                 if it.key == .TILDE && it.state == .DOWN {
                     if #complete mode == {
-                        case .GAMEPLAY; mode = .EDITOR;
-                        case .EDITOR;   mode = .GAMEPLAY;
+                        case .GAMEPLAY; 
+                            mode = .EDITOR;
+                            enable_cursor(true);
+                        case .EDITOR;
+                            mode = .GAMEPLAY;
+                            enable_cursor(false);
                     }
                     continue;
                 }
@@ -616,7 +662,7 @@ game_update : Game_Update : (
                     
                     imgui_capturing_input: bool;
                     if !editor_imgui_disabled && editor.mode == .IDLE {
-                        if imgui_state.active_widget_exists || (inside(IMGUI_POSITION, IMGUI_SIZE, imgui_state.mouse) && it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN) {
+                        if imgui_state.active_widget_exists || (inside(imgui_position, imgui_size, imgui_state.mouse) && it.key == .MOUSE_LEFT_BUTTON && it.state == .DOWN) {
                            imgui_capturing_input = true;
                         }
                     } 
@@ -677,18 +723,95 @@ game_update : Game_Update : (
 
         if #complete mode == {
             case .EDITOR;
+                using editor_level;
                 editor_update(editor_level, mouse, dt);
                 draw(editor_level, .EDITOR);
 
-
                 if !editor_imgui_disabled {
                     scope_mark(frame_arena);
-                    new_level_name := editor_draw_imgui(editor_level, editor_arena);
+
+                    new_level_name: string;
+
+                    set_shader(imm_color_shader, .{flags = .BLEND});
+                    set_uniform("projection", ui_to_camera);
+                    imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
+                    imm_flush();
+
+                    font := *consolas_32pt;
+                    item_height := font.ascender * 2;
+
+                    item_size := Vector2.{imgui_size.x, item_height};
+                    head := imgui_position;
+
+
+                    level_name: [STRING_ENTRY_MAX_COUNT] u8;
+                    level_name_count: int;
+
+                    assert(level_name.count >= name.count);
+                    memcpy(level_name.data, name.data, name.count);
+                    level_name_count = name.count;
+
+                    label_length := label("Level", head, item_size);
+                    if string_entry(.{head.x + label_length, head.y}, .{item_size.x - label_length, item_size.y}, *level_name, *level_name_count) {
+                        data := alloc(frame_arena, level_name_count, zero_init=false);
+                        memcpy(data, level_name.data, level_name_count);
+                        new_level_name = .{level_name_count, data};
+                        // Maybe the correct thing to do is to load the new level, then rerender
+                        // the entire frame.
+
+                        // Things we need to do to make this work:
+                        
+                        // 1.
+                        // Separate imgui rendering from the rest of the drawing code.
+                        // It's okay if the imgui has stuff that is off by a frame, because
+                        // you did something in the imgui that affected a level element
+                        // that had its respective imgui already rendered.
+                        // HOWEVER, that should not contaminate the rest of the drawing.
+                    }
+
+                    head.y += item_height;
+
+
+                    entity_type: [STRING_ENTRY_MAX_COUNT] u8;
+                    entity_type_count: int; 
+
+                    entity_name := ENTITIES[editor.entity_type].name;
+                    assert(entity_name.count <= entity_type.count);
+                    memcpy(entity_type.data, entity_name.data, entity_name.count);
+                    entity_type_count = entity_name.count;
+
+                    label_length_2 := label("Entity Type", head, item_size);
+                    if string_entry(.{head.x + label_length_2, head.y}, .{item_size.x - label_length_2, item_size.y}, *entity_type, *entity_type_count) {
+                        str := string.{entity_type_count, entity_type.data};
+                        for ENTITIES {
+                            if it.name == str {
+                                editor.entity_type = xx it_index;
+                                break;
+                            }
+                        }
+                    }
+                    
+
+
+                    head.y += item_height;
+                    head.y += item_height; // A little spacing
+                    
+
+                    if editor.selected {
+                        e := get_entity(editor_level, editor.selected);
+                        type := ENTITIES[e.type];
+                        imgui_for_value(e, type, head, item_size, editor_arena);
+                    } else {
+                        imgui_for_value(editor_level, type_info(Level), head, item_size, editor_arena);
+                    }
+
+
                     if new_level_name {
                         free_level(editor_level, editor_arena);
                         editor_level = load_level_editor(new_level_name, editor_arena, make_if_not_exists=true);
                     }
                 }
+
             case .GAMEPLAY;
                 using gameplay;
                 if state == .PLAYING {
@@ -755,15 +878,16 @@ game_update : Game_Update : (
                 }
 
                 if gameplay.state == .PAUSED {
-                    h := cast(float, INNER_WINDOW_H / 1.5);
-                    y := cast(float, INNER_WINDOW_H / 2 - h / 2);
+                    h := cast(float, window_h) / 1.5;
+                    y := cast(float, window_h) / 2 - h / 2;
 
-                    x := INNER_WINDOW_W / 2 - h / 2;
+
+                    x := window_w / 2 - h / 2;
                     w := h;
 
                     set_shader(imm_color_shader, .{flags = .BLEND});
                     set_uniform("projection", ui_to_camera);
-                    imm_quad(.{0, 0}, .{INNER_WINDOW_W, INNER_WINDOW_H}, .{0, 0, 0, 0.5});
+                    imm_quad(Vector2.{0, 0}, Vector2.{xx window_w, xx window_h}, .{0, 0, 0, 0.5});
                     imm_quad(.{x, y}, .{w, h}, .{0, 0, 0, 1});
                     imm_flush();
 
@@ -822,8 +946,8 @@ game_update : Game_Update : (
         #if DEVELOPER {
             if screenshot_requested {
                 scope_mark(frame_arena);
-                data := alloc(frame_arena, INNER_WINDOW_W * INNER_WINDOW_H * 3, zero_init = false);
-                glReadPixels(0, 0, INNER_WINDOW_W, INNER_WINDOW_H, GL_RGB, GL_UNSIGNED_BYTE, data);
+                data := alloc(frame_arena, window_w * window_h * 3, zero_init = false);
+                glReadPixels(0, 0, xx window_w, xx window_h, GL_RGB, GL_UNSIGNED_BYTE, data);
                 
                 write :: (ctx: *void, data: *void, size: s32) #c_call {
                     push_context cast(*#Context, ctx) {
@@ -846,100 +970,11 @@ game_update : Game_Update : (
                     }
                 }
 
-                stbi_write_png_to_func(write, *context, INNER_WINDOW_W, INNER_WINDOW_H, 3, data, INNER_WINDOW_W * 3);
+                stbi_write_png_to_func(write, *context, xx window_w, xx window_h, 3, data, xx (window_w * 3));
                 log(.OK, "Screenshot captured.\n");
             }
         }
     }
-}
-
-
-editor_draw_imgui :: (using level: *Level, arena: *Memory_Arena) -> new_level_name: string {
-    using context.game_context;
-
-    set_shader(imm_color_shader, .{flags = .BLEND});
-    set_uniform("projection", ui_to_camera);
-    imm_quad(IMGUI_POSITION, IMGUI_SIZE, .{0, 0, 0, 1});
-    imm_flush();
-
-    font := *consolas_32pt;
-    item_height := font.ascender * 2;
-
-    item_size := Vector2.{IMGUI_SIZE.x, item_height};
-    head := IMGUI_POSITION;
-
-
-    level_name: [STRING_ENTRY_MAX_COUNT] u8;
-    level_name_count: int;
-
-    assert(level_name.count >= name.count);
-    memcpy(level_name.data, name.data, name.count);
-    level_name_count = name.count;
-
-    new_level_name: string;
-
-    label_length := label("Level", head, item_size);
-    if string_entry(.{head.x + label_length, head.y}, .{item_size.x - label_length, item_size.y}, *level_name, *level_name_count) {
-        data := alloc(frame_arena, level_name_count, zero_init=false);
-        memcpy(data, level_name.data, level_name_count);
-        new_level_name = .{level_name_count, data};
-        // Maybe the correct thing to do is to load the new level, then rerender
-        // the entire frame.
-
-        // Things we need to do to make this work:
-        
-        // 1.
-        // Separate imgui rendering from the rest of the drawing code.
-        // It's okay if the imgui has stuff that is off by a frame, because
-        // you did something in the imgui that affected a level element
-        // that had its respective imgui already rendered.
-        // HOWEVER, that should not contaminate the rest of the drawing.
-    }
-
-    head.y += item_height;
-
-
-    entity_type: [STRING_ENTRY_MAX_COUNT] u8;
-    entity_type_count: int; 
-
-    entity_name := ENTITIES[editor.entity_type].name;
-    assert(entity_name.count <= entity_type.count);
-    memcpy(entity_type.data, entity_name.data, entity_name.count);
-    entity_type_count = entity_name.count;
-
-    label_length_2 := label("Entity Type", head, item_size);
-    if string_entry(.{head.x + label_length_2, head.y}, .{item_size.x - label_length_2, item_size.y}, *entity_type, *entity_type_count) {
-        str := string.{entity_type_count, entity_type.data};
-        for ENTITIES {
-            if it.name == str {
-                editor.entity_type = xx it_index;
-                break;
-            }
-        }
-    }
-    
-
-
-    head.y += item_height;
-    head.y += item_height; // A little spacing
-    
-
-    if editor.selected {
-        // glEnable(GL_SCISSOR_TEST);
-        // glScissor(
-        //     xx IMGUI_SIZE.x,
-        //     xx (INNER_WINDOW_H - IMGUI_SIZE.y - IMGUI_SIZE.y),
-        //     xx IMGUI_SIZE.x,
-        //     xx IMGUI_SIZE.y
-        // );
-        e := get_entity(level, editor.selected);
-        type := ENTITIES[e.type];
-        imgui_for_value(e, type, head, item_size, arena);
-    } else {
-        imgui_for_value(level, type_info(Level), head, item_size, arena);
-    }
-
-    return new_level_name;
 }
 
 
@@ -967,7 +1002,15 @@ draw :: (using level: *Level, mode: Game_Mode) {
     if #complete mode == {
         case .GAMEPLAY;
             camera_position, camera_quat := get_gameplay_camera_info(level);
-            world_to_camera = multiply(GAMEPLAY_FRUSTUM, multiply(rotation_matrix(Matrix4, camera_quat), make_translation_matrix4(-camera_position)));
+
+            FOV :: PI / 5;
+
+            right := cast(float, NEAR_PLANE * tan(FOV / 2));
+            top := right * cast(float, window_h) / cast(float, window_w);
+             
+            frustum_matrix := make_left_handed_frustum_matrix(-right, -top, NEAR_PLANE, right, top, FAR_PLANE);
+
+            world_to_camera = multiply(frustum_matrix, multiply(rotation_matrix(Matrix4, camera_quat), make_translation_matrix4(-camera_position)));
 
             position = level_position;
             size = level_size;
@@ -1034,14 +1077,6 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
     
-    set_uniform("color", Exit.COLOR);
-    for * _Exit {
-        model_to_world := make_translation_matrix4(to_vector3(it.position));
-        set_uniform("model_to_world", model_to_world);
-        bind_and_draw(*exit_mesh);
-    }
-
-         
     set_shader(item_and_bitmap_shader);
     set_item_shader_uniforms();
 
@@ -1053,12 +1088,13 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
     for * _Enemy_Despawner {
-        matrix := get_enemy_despawner_draw_info(it);
+        matrix := make_translation_matrix4(to_vector3(it.position));
         set_uniform("model_to_world", matrix);
-        set_uniform_bitmap("bitmap", 1, enemy_spawner_bitmap);
+        set_uniform_bitmap("bitmap", 1, enemy_item_bitmap);
         bind_and_draw(enemy_despawner_mesh);
     }
 
+         
 
     
     OVERWORLD_ENTRANCE_DEFAULT_COLOR :: Vector4.{0, 0, 0, 1};
@@ -1076,7 +1112,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
         }
     }
 
-    set_uniform_bitmap("bitmap", 1, enemy_spawner_bitmap);
+    set_uniform_bitmap("bitmap", 1, enemy_item_bitmap);
     for * _Enemy_Spawner {
         matrix, color := get_enemy_spawner_draw_info(it); 
         set_uniform("model_to_world", matrix);
@@ -1106,6 +1142,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
 
+    set_uniform_bitmap("bitmap", 1, player_item_bitmap);
     for * _Checkpoint {
         color: Vector4;
 
@@ -1185,6 +1222,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     //
 
     set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE, depth_func = .GREATER});
+
     set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
     for * _Player {
         matrix := world_to_camera * get_player_draw_info(it);
@@ -1193,10 +1231,10 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
     
-    set_uniform("color", Vector4.{Exit.COLOR.x, Exit.COLOR.y, Exit.COLOR.z, 0.5});
+    set_uniform("color", Vector4.{0.463, 0.571, 0.796, 0.5});
     for * _Exit {
         set_uniform("projection", translate(world_to_camera, to_vector3(it.position)));
-        bind_and_draw(*exit_mesh);
+        bind_and_draw(exit_mesh);
     }
 
     //
@@ -1205,6 +1243,17 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
     // We draw the player after so the player always draws on top
     // of the exit.
+
+    set_shader(item_and_bitmap_shader);
+    set_item_shader_uniforms();
+
+    for * _Exit {
+        matrix := make_translation_matrix4(to_vector3(it.position));
+        set_uniform_bitmap("bitmap", 1, player_item_bitmap);
+        set_uniform("model_to_world", matrix);
+        bind_and_draw(exit_mesh);
+    }
+
 
     set_shader(bitmap_shader);
     set_uniform_bitmap("bitmap", 0, player_bitmap);
