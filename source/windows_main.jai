@@ -22,6 +22,12 @@ frame_arena: Memory_Arena;
 input_events: [..] Input_Event;
 
 
+// GetClientRect lies to us if the window is minimized
+window_minimized: bool;
+
+window_w: int;
+window_h: int;
+
 main :: () {
     assert(SetProcessDPIAware() != 0);
     module_handle := GetModuleHandleA(null);
@@ -123,6 +129,27 @@ main :: () {
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
 
+                    case WM_SIZE;
+                        if w_param == {
+                            case SIZE_MAXIMIZED;
+                                window_minimized = false;
+                                client_rect: RECT;
+                                GetClientRect(window, *client_rect);
+                                window_w = client_rect.right;
+                                window_h = client_rect.bottom;
+
+                            case SIZE_RESTORED;
+                                window_minimized = false;
+                                client_rect: RECT;
+                                GetClientRect(window, *client_rect);
+                                window_w = client_rect.right;
+                                window_h = client_rect.bottom;
+
+                            case SIZE_MINIMIZED;
+                                window_minimized = true;
+                        }
+                        return 0;
+
                     case WM_CLOSE;
                         PostQuitMessage(0);
                         return 0;
@@ -189,6 +216,9 @@ main :: () {
                 SWP_FRAMECHANGED | SWP_SHOWWINDOW
             );
 
+            window_w = WINDOW_W;
+            window_h = WINDOW_H;
+
         } else {
             SetWindowLongA(window, GWL_STYLE, 0);
             monitor := MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
@@ -205,6 +235,9 @@ main :: () {
                 info.rcMonitor.bottom - info.rcMonitor.top,
                 SWP_FRAMECHANGED | SWP_SHOWWINDOW
             );
+
+            window_w = info.rcMonitor.right - info.rcMonitor.left;
+            window_h = info.rcMonitor.bottom - info.rcMonitor.top;
         }
 
         fullscreen = !fullscreen;
@@ -472,9 +505,6 @@ main :: () {
     frame_arena = make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
     permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
 
-    client_rect: RECT;
-    GetClientRect(window, *client_rect);
-
     data := Game_Init_Data.{
         gl_extension_loader    = wglGetProcAddress,
         keys_down = keys_down,
@@ -482,8 +512,8 @@ main :: () {
         editor_arena = *editor_arena,
         frame_arena = *frame_arena,
         permanent_arena = *permanent_arena,
-        window_w = client_rect.right,
-        window_h = client_rect.bottom,
+        window_w = window_w,
+        window_h = window_h,
     };
 
     game_memory := game_init(*context.base, *data);
@@ -702,37 +732,39 @@ main :: () {
             // Get the mouse position in Opengl-style coordinates
             //
 
-            monitor_h := GetSystemMetrics(SM_CYSCREEN);
+            mouse_x, mouse_y: float;
 
-            client_rect: RECT;
-            GetClientRect(window, *client_rect);
+            if !window_minimized {
+                monitor_h := GetSystemMetrics(SM_CYSCREEN);
+                
+                // GetClientRect lies to us when the window is minimized
+                client_rect: RECT;
+                GetClientRect(window, *client_rect);
 
-            window_top_left := POINT.{0, 0};
-            ClientToScreen(window, *window_top_left);
-            window_bottom_right := POINT.{x=client_rect.right, y=client_rect.bottom};
-            ClientToScreen(window, *window_bottom_right);
+                window_top_left := POINT.{0, 0};
+                ClientToScreen(window, *window_top_left);
+                window_bottom_right := POINT.{x=client_rect.right, y=client_rect.bottom};
+                ClientToScreen(window, *window_bottom_right);
 
+                window_x := window_top_left.x;
+                window_y := monitor_h - window_bottom_right.y - 1;
 
-            window_w := client_rect.right;
-            window_h := client_rect.bottom;
+                mouse_pos: POINT;
+                GetCursorPos(*mouse_pos);
 
-            window_x := window_top_left.x;
-            window_y := monitor_h - window_bottom_right.y - 1;
+                global_mouse_x := mouse_pos.x;
+                global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
 
-            mouse_pos: POINT;
-            GetCursorPos(*mouse_pos);
-
-            global_mouse_x := mouse_pos.x;
-            global_mouse_y := monitor_h - mouse_pos.y - 1; // Flip so we're in the cartesian plane
-
-            mouse_x := cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
-            mouse_y := cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
+                mouse_x = cast(float, global_mouse_x - window_x) / cast(float, window_w) * 2 - 1;
+                mouse_y = cast(float, global_mouse_y - window_y) / cast(float, window_h) * 2 - 1;
+            }
 
             input := Input.{
                 events = input_events,
                 mouse_x = mouse_x,
                 mouse_y = mouse_y
             };
+
 
             game_update(*context.base, game_memory, input, dt, hotloaded, changed_file_names, window_w, window_h);
             memset(*input_events, 0, size_of(type_of(input_events)));
