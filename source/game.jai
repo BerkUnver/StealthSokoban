@@ -49,8 +49,8 @@ Game_Context :: struct {
     ui_to_camera: Matrix4;
     camera_to_ui: Matrix4;
 
-    window_w: int;
-    window_h: int;
+    viewport_w: int;
+    viewport_h: int;
     
     editor_imgui_disabled: bool;
   
@@ -71,8 +71,8 @@ Game_Context :: struct {
     item_and_bitmap_shader: Shader;
     occlusion_shader: Shader;
 
-    consolas_32pt: Font;
-    consolas_64pt: Font;
+    consolas_small: Font;
+    consolas_large: Font;
 
     footstep: *Sound;
     gridlike_bitmap: *Bitmap;
@@ -249,8 +249,11 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
             print("glDebugMessageCallbackARB was not found\n.");
         }
 
-        hotloaded_dll_init();
-        window_resize_init(data.window_w, data.window_h);
+        hotloaded_dll_init(false);
+        // This hotloaded_dll_init has freetype loading code, it needs to happen
+        // before window_resize_init, which has font loading code.
+
+        window_resize_init(data.window_w, data.window_h, false);
         
         // We only ever set this stuff once.
         glClearColor(70.0/256.0, 85.0/256.0, 131.0/256.0, 1);
@@ -261,7 +264,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
 
-        assert(FT_Init_FreeType(*freetype) == 0);
         success:, shader_include = read_file("shaders/include.gl", permanent_arena);
         assert(success);
 
@@ -282,9 +284,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         item_and_color_shader = load_shader("shaders/item_and_color.gl");
         item_and_bitmap_shader = load_shader("shaders/item_and_bitmap.gl");
         occlusion_shader = load_shader("shaders/occlusion.gl");
-
-        consolas_32pt = load_font("consolas.ttf", 32);
-        consolas_64pt = load_font("consolas.ttf", 64);
 
         footstep                    = load_asset(Sound, *asset_table, "sounds/footstep.wav");
         gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
@@ -334,51 +333,95 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
 // get reset when we hotload, and the imgui uses the
 // code loc to store the active widget, and those
 // numbers could change, so we have to reset that.
-hotloaded_dll_init :: () {
+hotloaded_dll_init :: (already_initted: bool) {
     using context.game_context;
     stbi_set_flip_vertically_on_load(1);
     stbi_flip_vertically_on_write(1);
     if GL_ARB_debug_output glDebugMessageCallbackARB(gl_debug_callback, context.game_context);
     imgui_state.active_widget_exists = false;
+    
+    // @Leak!
+    // Freetype does NOT like dll hotloading!
+    // If we use the old FT_Library, it crashes the program whenever you try to use it.
+    // I assume this is because it stores some kind of global state needed to free it.
+    // The thing to do would be to:
+    //      1.) Make a pre_dll_hotload and post_dll_hotload in game dll for the exe to call
+    //      2.) Write our own font loading
+    //      3.) Prebake our font textures
+    //      4.) Use another library with no globals (stbtt?)
+
+    // if already_initted {
+    //     assert(FT_Done_FreeType(freetype) == 0);
+    // }
+
+    assert(FT_Init_FreeType(*freetype) == 0);
 }
 
 
-window_resize_init :: (new_window_w: int, new_window_h: int) {
+window_resize_init :: (new_window_w: int, new_window_h: int, already_initted: bool) {
     using context.game_context;
-    // @TODO: Update fonts?
-    
-    // Make the inner window 16x9
-    window_w = new_window_w / 16 * 16;
-    window_h = new_window_h / 9 * 9;
 
-    if window_w / 16 * 9 < window_h {
-        window_h = window_w / 16 * 9;
+    old_viewport_h := viewport_h;
+    
+    // Make the inner window 16x9.
+    
+    // :FontScaling we use 45 and 80 instead of 9 and 16 so the fonts
+    // always cleanly increment in size by at least an integer value.
+
+    viewport_w = new_window_w / 80 * 80;
+    viewport_h = new_window_h / 45 * 45;
+    
+    if viewport_w / 16 * 9 < viewport_h {
+        viewport_h = viewport_w / 16 * 9;
     } else {
-        window_w = window_h / 9 * 16;
+        viewport_w = viewport_h / 9 * 16;
     }
 
-    viewport_x := (new_window_w - window_w) / 2;
-    viewport_y := (new_window_h - window_h) / 2;
+    viewport_x := (new_window_w - viewport_w) / 2;
+    viewport_y := (new_window_h - viewport_h) / 2;
 
     x := cast(s32, viewport_x);
     y := cast(s32, viewport_y);
-    w := cast(u32, window_w);
-    h := cast(u32, window_h);
+    w := cast(u32, viewport_w);
+    h := cast(u32, viewport_h);
 
     glViewport(x, y, w, h);
     // :ClearAndScissor we need to set a scissor rect to prevent glClear from
     // clearing the entire window instead of just what we need it to clear.
     glScissor(x, y, w, h);
 
+    // Don't resize fonts unless we absolutely need to
+    if already_initted && old_viewport_h == viewport_h return;
+
     zoom_in_matrix := Matrix4_Identity;
-    zoom_in_matrix._11 /= window_w / 2;
-    zoom_in_matrix._22 /= -window_h / 2;
+    zoom_in_matrix._11 /= viewport_w / 2;
+    zoom_in_matrix._22 /= -viewport_h / 2;
     ui_to_camera = make_translation_matrix4(.{-1, 1, 0}) * zoom_in_matrix;
 
     zoom_out_matrix := Matrix4_Identity;
-    zoom_out_matrix._11 *= window_w / 2;
-    zoom_out_matrix._22 *= -window_h / 2;
+    zoom_out_matrix._11 *= viewport_w / 2;
+    zoom_out_matrix._22 *= -viewport_h / 2;
     camera_to_ui = zoom_out_matrix * make_translation_matrix4(.{1, -1, 0});
+    
+    
+    if already_initted {
+        free_font(*consolas_small);
+        free_font(*consolas_large);
+    }
+
+    
+    // :FontScaling
+    BASE :: 0.0222222;
+    
+    // font_height_in_pixels = 16 at 720p
+    // font_height_in_pixels = 24 at 1080p
+    // font_height_in_pixels = 32 at 1440p
+    // font_height_in_pixels = 48 at 2160p
+
+    font_height_in_pixels := cast(int, round(BASE * viewport_h));
+    
+    consolas_small = load_font("consolas.ttf", font_height_in_pixels);
+    consolas_large = load_font("consolas.ttf", font_height_in_pixels * 2);
 }
 
 
@@ -400,16 +443,14 @@ game_update : Game_Update : (
         context.game_context = *game_memory.game_context;
 
         if hotloaded {
-            hotloaded_dll_init();
+            hotloaded_dll_init(true);
             log(.OK, "Game DLL has been hotloaded.\n");
         }
 
         using game_memory;
         using game_memory.game_context;
 
-        if new_window_w != window_w || new_window_h != window_h {
-            window_resize_init(new_window_w, new_window_h);
-        }
+        window_resize_init(new_window_w, new_window_h, true);
 
         reload_assets(*asset_table, changed_file_names);
         
@@ -422,7 +463,7 @@ game_update : Game_Update : (
         imgui_state.mouse = (camera_to_ui * Vector4.{mouse.x, mouse.y, 0, 1}).xy;
 
         imgui_position := Vector2.{0, 0};
-        imgui_size := Vector2.{700, xx window_h};
+        imgui_size := Vector2.{viewport_w / 4.0, xx viewport_h};
         
         // Instead of using different focusing systems for the editor and imgui,
         // we could have a #caller_location-based focusing system for everything,
@@ -737,7 +778,7 @@ game_update : Game_Update : (
                     imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
                     imm_flush();
 
-                    font := *consolas_32pt;
+                    font := *consolas_small;
                     item_height := font.ascender * 2;
 
                     item_size := Vector2.{imgui_size.x, item_height};
@@ -878,21 +919,21 @@ game_update : Game_Update : (
                 }
 
                 if gameplay.state == .PAUSED {
-                    h := cast(float, window_h) / 1.5;
-                    y := cast(float, window_h) / 2 - h / 2;
+                    h := cast(float, viewport_h) / 1.5;
+                    y := cast(float, viewport_h) / 2 - h / 2;
 
 
-                    x := window_w / 2 - h / 2;
+                    x := viewport_w / 2 - h / 2;
                     w := h;
 
                     set_shader(imm_color_shader, .{flags = .BLEND});
                     set_uniform("projection", ui_to_camera);
-                    imm_quad(Vector2.{0, 0}, Vector2.{xx window_w, xx window_h}, .{0, 0, 0, 0.5});
+                    imm_quad(Vector2.{0, 0}, Vector2.{xx viewport_w, xx viewport_h}, .{0, 0, 0, 0.5});
                     imm_quad(.{x, y}, .{w, h}, .{0, 0, 0, 1});
                     imm_flush();
 
                     
-                    font := *consolas_64pt;
+                    font := *consolas_large;
 
 
                     draw_pause_menu :: (selected: $T) #expand {
@@ -946,8 +987,8 @@ game_update : Game_Update : (
         #if DEVELOPER {
             if screenshot_requested {
                 scope_mark(frame_arena);
-                data := alloc(frame_arena, window_w * window_h * 3, zero_init = false);
-                glReadPixels(0, 0, xx window_w, xx window_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+                data := alloc(frame_arena, viewport_w * viewport_h * 3, zero_init = false);
+                glReadPixels(0, 0, xx viewport_w, xx viewport_h, GL_RGB, GL_UNSIGNED_BYTE, data);
                 
                 write :: (ctx: *void, data: *void, size: s32) #c_call {
                     push_context cast(*#Context, ctx) {
@@ -970,7 +1011,7 @@ game_update : Game_Update : (
                     }
                 }
 
-                stbi_write_png_to_func(write, *context, xx window_w, xx window_h, 3, data, xx (window_w * 3));
+                stbi_write_png_to_func(write, *context, xx viewport_w, xx viewport_h, 3, data, xx (viewport_w * 3));
                 log(.OK, "Screenshot captured.\n");
             }
         }
@@ -1006,7 +1047,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
             FOV :: PI / 5;
 
             right := cast(float, NEAR_PLANE * tan(FOV / 2));
-            top := right * cast(float, window_h) / cast(float, window_w);
+            top := right * cast(float, viewport_h) / cast(float, viewport_w);
              
             frustum_matrix := make_left_handed_frustum_matrix(-right, -top, NEAR_PLANE, right, top, FAR_PLANE);
 

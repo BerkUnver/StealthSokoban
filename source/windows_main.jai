@@ -157,13 +157,13 @@ main :: () {
     );
     assert(window != null);
     
-    WINDOW_W :: 2560;
-    WINDOW_H :: 1600;
-
     fullscreen := false;
 
     toggle_fullscreen :: () #expand {
         if fullscreen {
+            // @TODO: Pick reasonable values based on the monitor size
+            WINDOW_W :: 2560;
+            WINDOW_H :: 1600;
 
             outer_window_x := (GetSystemMetrics(SM_CXSCREEN) - WINDOW_W) / 2;
             outer_window_y := (GetSystemMetrics(SM_CYSCREEN) - WINDOW_H) / 2;
@@ -472,6 +472,9 @@ main :: () {
     frame_arena = make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
     permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
 
+    client_rect: RECT;
+    GetClientRect(window, *client_rect);
+
     data := Game_Init_Data.{
         gl_extension_loader    = wglGetProcAddress,
         keys_down = keys_down,
@@ -479,8 +482,8 @@ main :: () {
         editor_arena = *editor_arena,
         frame_arena = *frame_arena,
         permanent_arena = *permanent_arena,
-        window_w = WINDOW_W,
-        window_h = WINDOW_H,
+        window_w = client_rect.right,
+        window_h = client_rect.bottom,
     };
 
     game_memory := game_init(*context.base, *data);
@@ -710,9 +713,8 @@ main :: () {
             ClientToScreen(window, *window_bottom_right);
 
 
-
-            window_w := window_bottom_right.x - window_top_left.x;
-            window_h := window_bottom_right.y - window_top_left.y;
+            window_w := client_rect.right;
+            window_h := client_rect.bottom;
 
             window_x := window_top_left.x;
             window_y := monitor_h - window_bottom_right.y - 1;

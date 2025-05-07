@@ -26,7 +26,7 @@ get_editor_camera_matrix :: (using level: *Level) -> Matrix4 {
     FOV :: PI / 3;
 
     right := cast(float, NEAR_PLANE * tan(FOV / 2));
-    top := right * cast(float, window_h) / cast(float, window_w);
+    top := right * cast(float, viewport_h) / cast(float, viewport_w);
 
     frustum_matrix := make_left_handed_frustum_matrix(-right, -top, NEAR_PLANE, right, top, FAR_PLANE);
 

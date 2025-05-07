@@ -166,13 +166,13 @@ Active_Widget_Data :: struct {
 label :: (text: string, position: Vector2, size: Vector2) -> used_length: float {
     using context.game_context;
 
-    font := *consolas_32pt;
+    font := *consolas_small;
 
     margin := font.ascender * 0.2;
-    text_position := round(Vector2.{
+    text_position := Vector2.{
         position.x + margin,
         position.y + size.y / 2 + font.ascender / 2
-    });
+    };
 
     
     draw_text(text, text_position, font, HIGHLIGHT_COLOR);
@@ -187,7 +187,7 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc
     
     scope_widget(loc, id);
 
-    font := *consolas_32pt;
+    font := *consolas_small;
     margin := font.ascender * 0.2;
     
     outline_outer_width := font.ascender * 1.5;
@@ -223,15 +223,15 @@ toggle :: (val: *bool, position: Vector2, size: Vector2, read_only := false, loc
     set_shader(imm_color_shader, .{});
     set_uniform("projection", ui_to_camera);
 
-    imm_quad(round(outline_outer_position), round(outline_outer_size), color);
-    imm_quad(round(outline_inner_position), round(outline_inner_size), BACKGROUND_COLOR);
+    imm_quad(outline_outer_position, outline_outer_size, color);
+    imm_quad(outline_inner_position, outline_inner_size, BACKGROUND_COLOR);
     imm_flush();
 
     if val.* {
         selected_width := font.ascender * 0.9;
         selected_size := Vector2.{selected_width, selected_width};
         selected_position := toggle_center - selected_size / 2;
-        imm_quad(round(selected_position), round(selected_size), color);
+        imm_quad(selected_position, selected_size, color);
     }
 
     imm_flush();
@@ -308,7 +308,7 @@ color_selector :: (color: *Vector4, position: Vector2, field_size: Vector2, loc 
 
     scope_widget(loc, id);
 
-    font := *consolas_32pt;
+    font := *consolas_small;
     margin := font.ascender * 0.2;
 
     head := position;
@@ -508,7 +508,7 @@ enum_selector :: (
 
     scope_widget(loc, id);
 
-    font := *consolas_32pt;
+    font := *consolas_small;
     
     margin := font.ascender * 0.2;
     button_height := size.y - margin * 2;
@@ -553,7 +553,7 @@ enum_selector :: (
     text_x := left_button_position.x - margin - text_length(member_text, font);
     text_y := position.y + size.y / 2 + font.ascender / 2;
 
-    draw_text(member_text, round(Vector2.{text_x, text_y}), font, DULL_COLOR);
+    draw_text(member_text, .{text_x, text_y}, font, DULL_COLOR);
 }
 
 
@@ -599,7 +599,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
     }
     
 
-    font := *consolas_32pt;
+    font := *consolas_small;
 
     width := floor(font.ascender * 0.05);
     
@@ -614,7 +614,7 @@ button :: (label: string, position: Vector2, size: Vector2, loc := #caller_locat
 
     text_x := position.x + size.x / 2 - text_length(label, font) / 2;
     text_y := position.y + size.y / 2 + font.ascender / 2;
-    draw_text(label, round(Vector2.{text_x, text_y}), font, color);
+    draw_text(label, .{text_x, text_y}, font, color);
 
     return clicked;
 }
@@ -637,7 +637,7 @@ string_entry :: (
 
     scope_widget(loc, id);
 
-    font := *consolas_32pt;
+    font := *consolas_small;
     margin := font.ascender * 0.2;
 
     inner_height := font.ascender * 1.5;
@@ -662,10 +662,10 @@ string_entry :: (
         outer_position.y + margin
     };
 
-    text_position := round(Vector2.{
+    text_position := Vector2.{
         position.x + margin,
         position.y + size.y / 2 + font.ascender / 2
-    });
+    };
 
     entered: bool;
 
@@ -901,7 +901,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
     using context.game_context;
     scope_widget(loc, id);
 
-    font := *consolas_32pt;
+    font := *consolas_small;
     margin := font.ascender * 0.2;
     indent := font.ascender * 2;
 
@@ -930,7 +930,7 @@ imgui_for_value :: (val: *void, info: *Type_Info, position: Vector2, field_size:
                     y + field_size.y / 2 + font.ascender / 2
                 };
 
-                text_end := draw_text(it.name, round(label_position), font, text_color);
+                text_end := draw_text(it.name, label_position, font, text_color);
 
                 value_position: Vector2;
                 if it.type.type == .STRUCT {

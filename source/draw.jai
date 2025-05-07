@@ -761,6 +761,12 @@ load_bitmap :: (file_name: string) -> Bitmap {
 }
 
 
+free_bitmap :: (bitmap: *Bitmap) {
+    using context.game_context;
+    glDeleteTextures(1, *bitmap.handle);
+}
+
+
 load_shader :: (file_name: string, prefix := "") -> Shader {
     using context.game_context;
     

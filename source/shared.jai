@@ -8,7 +8,7 @@ MB :: 1024*1024;
 EDITOR_ARENA_SIZE    :: 128 * MB;
 GAMEPLAY_ARENA_SIZE  :: 16 * MB;
 PERMANENT_ARENA_SIZE :: 2 * MB; // Make this kinda big to handle asset hot reloads
-FRAME_ARENA_SIZE     :: 16 * MB;
+FRAME_ARENA_SIZE     :: 32 * MB; // Needs to be big to handle 4k screenshots
 
 // GAMEPLAY_ARENA_SIZE < EDITOR_ARENA_SIZE because the way we make changes to allocations in the level
 // is just to append new allocations to the end of the arena. Once we stop storing mesh vertices on the CPU then

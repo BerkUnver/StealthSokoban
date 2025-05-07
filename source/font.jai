@@ -131,6 +131,11 @@ load_font :: (file_name: string, height: int) -> Font {
 }
 
 
+free_font :: (font: *Font) {
+    free_bitmap(*font.bitmap);
+}
+
+
 text_length :: (str: string, font: *Font) -> float {
     length := 0.0;
     for str {
