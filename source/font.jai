@@ -41,13 +41,16 @@ load_font :: (file_name: string, height: int) -> Font {
 
     FT_Set_Pixel_Sizes(face, 0, xx height);
 
+
     font: Font;
     font.ascender = cast(float, face.size.metrics.ascender) / 64;
     font.em = xx face.size.metrics.x_ppem;
+    bitmap_max_height := height + 1;
+    // @Hack if the font is really small sometimes the max height is one larger.
     
     // @TODO: Make the font texture the exact size we need
-    FONT_BITMAP_WIDTH :: 1024;
-    FONT_BITMAP_HEIGHT :: 1024;
+    BITMAP_WIDTH :: 1024;
+    BITMAP_HEIGHT :: 1024;
 
     x := 0;
     y := 0;
@@ -58,7 +61,7 @@ load_font :: (file_name: string, height: int) -> Font {
     font.space_advance = xx face.glyph.advance.x / 64.0;
 
 
-    bitmap_data := alloc(frame_arena, FONT_BITMAP_WIDTH * FONT_BITMAP_HEIGHT);
+    bitmap_data := alloc(frame_arena, BITMAP_WIDTH * BITMAP_HEIGHT);
 
     
     for VALID_ASCII_START..VALID_ASCII_END {
@@ -67,12 +70,12 @@ load_font :: (file_name: string, height: int) -> Font {
         glyph_width := face.glyph.bitmap.width;
         glyph_height := face.glyph.bitmap.rows;
 
-        assert(glyph_height <= height);
-        assert(glyph_width <= FONT_BITMAP_WIDTH);
-        if x + glyph_width > FONT_BITMAP_WIDTH {
+        assert(glyph_height <= bitmap_max_height);
+        assert(glyph_width <= BITMAP_WIDTH);
+        if x + glyph_width > BITMAP_WIDTH {
             x = 0;
-            y += height;
-            assert(y + height < FONT_BITMAP_HEIGHT);
+            y += bitmap_max_height;
+            assert(y + bitmap_max_height < BITMAP_HEIGHT);
         }
 
         // @TODO @Speed @Memory: Is there a way to give FreeType a pointer
@@ -81,15 +84,15 @@ load_font :: (file_name: string, height: int) -> Font {
         
         for 0..glyph_height-1 {
             src := it * glyph_width;
-            dest := (y + it) * FONT_BITMAP_WIDTH + x;
+            dest := (y + it) * BITMAP_WIDTH + x;
             memcpy(bitmap_data + dest, face.glyph.bitmap.buffer + src, glyph_width);
         }
 
         font.glyphs[it - VALID_ASCII_START] = .{
-            uv_x0 = cast(float, x) / FONT_BITMAP_WIDTH,
-            uv_y0 = cast(float, y) / FONT_BITMAP_HEIGHT,
-            uv_x1 = cast(float, x + glyph_width) / FONT_BITMAP_WIDTH,
-            uv_y1 = cast(float, y + glyph_height) / FONT_BITMAP_HEIGHT,
+            uv_x0 = cast(float, x) / BITMAP_WIDTH,
+            uv_y0 = cast(float, y) / BITMAP_HEIGHT,
+            uv_x1 = cast(float, x + glyph_width) / BITMAP_WIDTH,
+            uv_y1 = cast(float, y + glyph_height) / BITMAP_HEIGHT,
             size = .{
                 xx glyph_width,
                 xx glyph_height,
@@ -112,8 +115,8 @@ load_font :: (file_name: string, height: int) -> Font {
         GL_TEXTURE_2D,
         0,
         GL_RED,
-        FONT_BITMAP_WIDTH,
-        FONT_BITMAP_HEIGHT,
+        BITMAP_WIDTH,
+        BITMAP_HEIGHT,
         0,
         GL_RED,
         GL_UNSIGNED_BYTE,
