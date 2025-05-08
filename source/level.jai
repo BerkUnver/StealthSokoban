@@ -1646,16 +1646,6 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         case .ALIVE;
             if !is_colliding_below(level, player.position) return;
 
-            {
-                in_bounds, index := get_3d_index(player.position + push_direction, level_position, level_size);
-                if !in_bounds return;
-                eid := collision[index];
-                if eid {
-                    block := as(get_entity(level, eid), Block);
-                    if block && !block.moveable return;
-                }
-            }
-
             //
             // Gather the blocks we are pushing
             //
@@ -1723,16 +1713,23 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                                     // An annihilation will happen
 
                                 case .Block;
-                                    if !contains(*moved_blocks, as(next_e, Block)) return;
-                                    // The block you pushed pushed an enemy into another block. This move is invalid
-                                    // for now, maybe we want it to be valid in the future.
+                                    if !contains(*moved_blocks, as(next_e, Block)) {
+                                        remove block;
+                                        continue block;
+                                    }
 
                                 case;
                                     assert(false);
                             }
 
                         case .Block;
-                            if !contains(*moved_blocks, as(e, Block)) return;
+                            // If one of the blocks we were trying to pull/push does not move, that does not mean the
+                            // entire move is cancelled. Just get rid of that block from the move.
+                            // I hope there are not corner cases that I'm failing to account for.
+                            if !contains(*moved_blocks, as(e, Block)) {
+                                remove block;
+                                continue block;
+                            }
 
                         case .Player;
 
@@ -1741,9 +1738,25 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                     }
                 }
             }
+            
 
+            {   
+                // We check if the player can move into the square they're trying to go in after we check if
+                // the move is valid in case the player was going to push what was in front of them, but the 
+                // move is valid code detected that that block shouldn't be able to move.
 
+                in_bounds, index := get_3d_index(player.position + push_direction, level_position, level_size);
+                if !in_bounds return;
+                eid := collision[index];
+                if eid {
+                    block := as(get_entity(level, eid), Block);
+                    if !contains(*moved_blocks, block) return;
+                }
+            }
+            
+            //
             // We know the move is valid. Update everything.
+            //
 
 
             for moved_blocks {
