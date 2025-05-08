@@ -37,9 +37,9 @@ Shader :: struct {
 // When we set up the VAO and write the layouts in the shaders, we use these constants instead of 
 // putting them in ascending order.
 
-// That way, if a shaders needs, let's say, POSITION and VIEWED_OFFSET, the shader will have locations
+// That way, if a shaders needs, let's say, POSITION and FILLED_OFFSET, the shader will have locations
 // 0 and 2 for those vertex attributes and and the VAO will have vertex attribute indices 0 and 2
-// set up to mean position and viewed_offset. As long as the vertex format has what the shader needs,
+// set up to mean position and filled_offset. As long as the vertex format has what the shader needs,
 // the shader will be able to draw that vertex format.
 
 // I don't know enough about rendering to know if this has @Speed considerations, and, quite frankly,
@@ -51,8 +51,9 @@ Shader :: struct {
 Layout_Location :: enum {
     POSITION;
     UV;
-    VIEWED_OFFSET;
     COLOR;
+    FILLED_POSITION;
+    FILLED_OFFSET;
     OUTLINE_UV;
 }
 
@@ -177,7 +178,8 @@ Imm_Vertex :: struct {
 Block_Vertex :: struct {
     position: Vector3;
     uv: Vector2;
-    viewed_offset: Vector3i;
+    filled_position: Vector3i;
+    filled_offset: Vector3i;
     outline_uv: Vector2;
 } #no_padding
 
@@ -307,7 +309,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     append(*vertices, frame_arena).* = .{
                        position = origin + CUBE_VERTICES[xx face + it],
                        uv = CUBE_UVS[xx face + it],
-                       viewed_offset = position,
+                       filled_offset = position,
                     };
                 }
             }
@@ -410,7 +412,6 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     X_AXIS :: 1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
-                    viewed_offset := Vector3i.{it.x + 1, it.y, it.z};
                 case .X_NEGATIVE;
                     NORMAL_INDEX :: 0;
                     NORMAL :: -1;
@@ -418,7 +419,6 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     X_AXIS :: -1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
-                    viewed_offset := it;
                 case .Y_POSITIVE;
                     NORMAL_INDEX :: 1;
                     NORMAL :: 1;
@@ -426,7 +426,6 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     X_AXIS :: 1;
                     Y_AXIS_INDEX :: 2;
                     Y_AXIS :: 1;
-                    viewed_offset := Vector3i.{it.x, it.y + 1, it.z};
                 case .Y_NEGATIVE;
                     NORMAL_INDEX :: 1;
                     NORMAL :: -1;
@@ -434,7 +433,6 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     X_AXIS :: -1;
                     Y_AXIS_INDEX :: 2;
                     Y_AXIS :: 1;
-                    viewed_offset := it;
                 case .Z_POSITIVE;
                     NORMAL_INDEX :: 2;
                     NORMAL :: 1;
@@ -442,7 +440,6 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     X_AXIS :: -1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
-                    viewed_offset := Vector3i.{it.x, it.y, it.z + 1};
                 case .Z_NEGATIVE;
                     NORMAL_INDEX :: 2;
                     NORMAL :: -1;
@@ -450,16 +447,15 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     X_AXIS :: 1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
-                    viewed_offset := it;
                 case;
                     #assert false;
             }
 
 
-            above := it;
-            above.component[NORMAL_INDEX] += NORMAL;
+            beside := it;
+            beside.component[NORMAL_INDEX] += NORMAL;
 
-            success, index := get_3d_index(above, size);
+            success, index := get_3d_index(beside, size);
             if success && filled[index] return;
 
             occupied: Gridlike_Edge;
@@ -578,7 +574,8 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                 append(*vertices, frame_arena).* = .{
                     position = origin + CUBE_VERTICES[index],
                     uv = CUBE_UVS[index],
-                    viewed_offset = above,
+                    filled_position = it,
+                    filled_offset = beside,
                     outline_uv = outline_uvs[i]
                 };
             }
@@ -628,8 +625,11 @@ make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Are
     glEnableVertexAttribArray(xx UV);
     glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
 
-    glEnableVertexAttribArray(xx VIEWED_OFFSET);
-    glVertexAttribIPointer(xx VIEWED_OFFSET, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).viewed_offset);
+    glEnableVertexAttribArray(xx FILLED_POSITION);
+    glVertexAttribIPointer(xx FILLED_POSITION, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).filled_position);
+
+    glEnableVertexAttribArray(xx FILLED_OFFSET);
+    glVertexAttribIPointer(xx FILLED_OFFSET, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).filled_offset);
 
     glEnableVertexAttribArray(xx OUTLINE_UV);
     glVertexAttribPointer(xx OUTLINE_UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).outline_uv);
@@ -708,6 +708,13 @@ free :: (tex: *View_Texture) {
     using context.game_context;
     glDeleteBuffers(1, *tex.vbo);
     glDeleteTextures(1, *tex.tbo);
+}
+
+
+make_view_mesh :: (position: Vector3i, size: Vector3i) {
+    using context.game_context;
+
+    scope_mark(frame_arena);
 }
 
 

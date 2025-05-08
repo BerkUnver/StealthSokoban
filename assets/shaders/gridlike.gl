@@ -1,8 +1,9 @@
 #ifdef VERTEX_SHADER
-layout(location=LOC_POSITION)      in vec3 vertex_position;
-layout(location=LOC_UV)            in vec2 vertex_uv;
-layout(location=LOC_VIEWED_OFFSET) in ivec3 vertex_viewed_offset;
-layout(location=LOC_OUTLINE_UV)    in vec2 vertex_outline_uv;
+layout(location=LOC_POSITION)        in vec3 vertex_position;
+layout(location=LOC_UV)              in vec2 vertex_uv;
+layout(location=LOC_FILLED_POSITION) in ivec3 vertex_filled_position;
+layout(location=LOC_FILLED_OFFSET)   in ivec3 vertex_filled_offset;
+layout(location=LOC_OUTLINE_UV)      in vec2 vertex_outline_uv;
 #else
 layout(location=0) out vec4 fragment_color;
 #endif
@@ -19,11 +20,44 @@ uniform ivec3 viewed_position;
 #endif
 
 
-centroid OUTIN vec2 fragment_uv;
-centroid OUTIN vec2 fragment_outline_uv;
+OUTIN vec2 fragment_uv;
+OUTIN vec2 fragment_outline_uv;
 
 #ifdef GAMEPLAY
-OUTIN float fragment_brightness;
+#define FRAGMENT_INTERIOR_SEEN 0
+#define FRAGMENT_INTERIOR_VISIBLE 1
+#define FRAGMENT_EXTERIOR_HIDDEN 2  // Hidden on the edge of the level.
+#define FRAGMENT_EXTERIOR_VISIBLE 3 // One square away from something visible.
+flat OUTIN int fragment_type;
+#endif
+
+
+#ifndef VERTEX_SHADER
+
+// @Volatile  :GridlikeExteriorColor
+#define EXTERIOR_HIDDEN_COLOR vec4(14.0/255.0, 21.0/255.0, 63.0/255.0, 1)
+
+vec4 get_base_color() {
+    vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
+
+    float outline_brightness = 1;
+    if (outline_color.a == 1) {
+        outline_brightness = 0.4;
+    }
+
+    vec4 bitmap_color = texture(bitmap, fragment_uv);
+
+    float edge_brightness = 1;
+    if (fragment_uv.x < 0.0625 || (1 - 0.0625) < fragment_uv.x
+     || fragment_uv.y < 0.0625 || (1 - 0.0625) < fragment_uv.y) {
+        edge_brightness = 0.9;
+    }
+
+    vec4 base_color = color * bitmap_color;
+    base_color.rgb *= outline_brightness * edge_brightness;
+
+    return base_color;
+}
 #endif
 
 
@@ -31,50 +65,54 @@ OUTIN float fragment_brightness;
 void main() {
 #ifdef VERTEX_SHADER
 #ifdef GAMEPLAY
-    ivec3 viewed_coord = viewed_position + vertex_viewed_offset;
-    
     int index;
-    bool success = get_3d_index(viewed_coord, viewed_size, index);
+    bool success = get_3d_index(viewed_position + vertex_filled_offset, viewed_size, index);
         
-    if (!success) {
-        gl_Position = vec4(0, 0, -3, 1);
-        return;
-    }
+    if (success) {
+        uint filled = texelFetch(viewed, index).r;
 
-    uint filled = texelFetch(viewed, index).r;
-
-    if ((filled & VIEW_STATE_VISIBLE) != 0u) {
-        fragment_brightness = 1;
-    } else if ((filled & VIEW_STATE_SEEN) != 0u) {
-        fragment_brightness = SEEN_BRIGHTNESS;
+        if ((filled & VIEW_STATE_VISIBLE) != 0u) {
+            fragment_type = FRAGMENT_INTERIOR_VISIBLE;
+        } else {
+            fragment_type = FRAGMENT_INTERIOR_SEEN;
+        }
     } else {
-        gl_Position = vec4(0, 0, -2, 1);
-        return;
+        // We are on the edge. 
+        int index;
+        get_3d_index(viewed_position + vertex_filled_position, viewed_size, index); // This will always work.
+        if ((texelFetch(viewed, index).r & VIEW_STATE_BLEED) != 0u) {
+            fragment_type = FRAGMENT_EXTERIOR_VISIBLE;
+        } else {
+            fragment_type = FRAGMENT_EXTERIOR_HIDDEN;
+        }
     }
+
 #endif
     gl_Position = projection * vec4(vertex_position, 1.0);
     fragment_uv = vertex_uv;
     fragment_outline_uv = vertex_outline_uv;
 #else
-    vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
-    float outline_brightness = 1;
-    if (outline_color.a == 1) {
-        outline_brightness = 0.4;
-    }
 
-    vec4 bitmap_color = texture(bitmap, fragment_uv);
-    
-    float edge_brightness = 1;
-#define GRID_THICKNESS 0.0625
-    if (fragment_uv.x < GRID_THICKNESS || (1 - GRID_THICKNESS) < fragment_uv.x
-     || fragment_uv.y < GRID_THICKNESS || (1 - GRID_THICKNESS) < fragment_uv.y) {
-        edge_brightness = 0.9;
-    }
-
-    fragment_color = color * bitmap_color;
-    fragment_color.rgb *= outline_brightness * edge_brightness;
 #ifdef GAMEPLAY
-    fragment_color.rgb *= fragment_brightness;
+    if (fragment_type == FRAGMENT_INTERIOR_SEEN) {
+       fragment_color = get_base_color();
+       fragment_color.rgb *= SEEN_BRIGHTNESS;
+    } else if (fragment_type == FRAGMENT_INTERIOR_VISIBLE) {
+        fragment_color = get_base_color();
+    } else if (fragment_type == FRAGMENT_EXTERIOR_HIDDEN) {
+        fragment_color = EXTERIOR_HIDDEN_COLOR;
+    } else if (fragment_type == FRAGMENT_EXTERIOR_VISIBLE) {
+        vec4 base_color = get_base_color();
+        // @Volatile :GridlikeExteriorHiddenColor
+        fragment_color = mix(EXTERIOR_HIDDEN_COLOR, color, 0.5);
+
+    } else {
+        // This should not happen. Make it an obnoxious green color.
+        fragment_color = vec4(0, 1, 0, 1);
+
+    }
+#else
+    fragment_color = get_base_color();
 #endif
 #endif
 }

@@ -1203,15 +1203,13 @@ draw :: (using level: *Level, mode: Game_Mode) {
         bind_and_draw(checkpoint_mesh);    
     }
 
-
+    
     if mode == .GAMEPLAY {
         set_shader(imm_color_shader);
         set_uniform("projection", world_to_camera);
         
         // @Speed this is taking 1ms... Look into optimizing this.
         for :iterate_vector3i level_size {
-            hidden := viewed[it_index] & (.SEEN | .VISIBLE) == 0;
-        
             is_a_gridlike_at :: (using level: *Level, index: int) -> bool {
                 block_eid := collision[index];
                 if block_eid {
@@ -1226,20 +1224,24 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 return false;
             }
 
-            a_gridlike_is_here := is_a_gridlike_at(level, it_index);
+            if is_a_gridlike_at(level, it_index) continue;
+            // This is handled in the shader for gridlikes
 
+            view_state := viewed[it_index];
+            
             origin := to_vector3(level_position + it);
 
             check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
                 in_bounds, index := get_3d_index(position, level_size);
                 
-                COLOR :: Vector4.{43.0/255.0, 42.0/255.0, 76.0/255.0, 1};
+                // @Volatile :GridlikeExteriorHiddenColor
+                COLOR :: Vector4.{14.0/255.0, 21.0/255.0, 63.0/255.0, 1};
                 if !in_bounds {
-                    if hidden || a_gridlike_is_here {
+                    if !(view_state & (.VISIBLE | .SEEN)) {
                         for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
                     }
                 } else {
-                    if hidden && !a_gridlike_is_here && viewed[index] & .SEEN != 0 {
+                    if !(view_state & (.VISIBLE | .SEEN)) && (viewed[index] & .SEEN) {
                         if !is_a_gridlike_at(level, index) {
                             for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
                         }

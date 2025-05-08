@@ -1,5 +1,3 @@
-// @BeforeDemo Prevent windows from resizing when the computer goes to sleep then is woken up.
-// @BeforeDemo Toggleable fullscreen
 // @BeforeDemo Handle alt and f10 freezing the game until another key is pressed
 // @BeforeDemo Disable the mouse while in gameplay mode
 

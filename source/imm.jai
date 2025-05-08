@@ -1,7 +1,7 @@
 Imm_State :: struct {
     vao: GLuint;
     vbo: GLuint;
-    vertices: [2400] Imm_Vertex;
+    vertices: [7200] Imm_Vertex;
     vertex_count: u32;
 
     // @TODO: Should we store the shader on here instead of setting it explicitly with OpenGL?

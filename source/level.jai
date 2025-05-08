@@ -410,10 +410,17 @@ Door :: struct {
 
 
 View_State :: enum_flags u8 { // @Volatile :ViewState
+    // The valid combinations of flags are:
+    // .BLEED | .SEEN | .VISIBLE    (.VISIBLE takes priority)
+    // .BLEED | .SEEN               (.SEEN takes priority)
+    // .BLEED                       (.BLEED takes priority)
+    BLEED;
     SEEN;
     VISIBLE;
     
     QUEUED_FOR_FLOODFILL;
+    // This is just a status flag used by the floodfill algorithm.
+    // Ignore this, please.
 }
 
 
@@ -2059,7 +2066,7 @@ gameplay_update :: (using level: *Level, dt: float) {
     player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
     assert(player_in_bounds);
     positions[0] = player.position;
-    viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
+    viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
 
     while position_count {
         position_count -= 1;
@@ -2070,9 +2077,10 @@ gameplay_update :: (using level: *Level, dt: float) {
                 success, index := get_3d_index(position, level_position, level_size);
                 if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                     eid := collision[index];
-                    door_eid := doors[index];
-                    if (!eid || get_entity(level, eid).type != .Block) && !door_eid {
-                        viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
+                    if (eid && get_entity(level, eid).type == .Block) || doors[index] {
+                        viewed[index] |= .BLEED;
+                    } else {
+                        viewed[index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
                         positions[position_count] = position;
                         position_count += 1;
                     }
