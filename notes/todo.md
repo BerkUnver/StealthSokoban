@@ -78,6 +78,7 @@ Now, let's sort these by priority.
 
 # NEED OR THE GAME IS INCOMPREHENSIBLE
 - Better meshes for level items
+- Get floodfill in Doors to well-specified
 - ~~Better vfx for invisible parts of the level. The color of what you can see should "leak" into the areas you cannot see.~~
 - Some kind of reaction when you do an invalid move, like pull a block that cannot be pulled. It jiggles a little.
 - Some explanation of basic movement. Input hinting in the game?
@@ -87,6 +88,7 @@ Now, let's sort these by priority.
 
 # WE SHOULD HAVE
 - Missing Enemy interpolation effects
+- Better door vfx
 - SFX. Walking, pushing, etc.
 - Get enemies walking past each other to properly annihilate.
 - More introductory levels
