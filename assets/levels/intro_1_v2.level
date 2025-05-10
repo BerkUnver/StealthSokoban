@@ -105,6 +105,23 @@ types
 		moveable 1
 		;
 	]
+	_Input_Hint 1[
+		e
+			eid 8
+			position
+				x -2
+				y 1
+				;
+			;
+		size
+			x 5
+			y 1
+			z 5
+			;
+		filled 25[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
+		input_hint_type 2
+		;
+	]
 	_Player 1[
 		e
 			eid 2

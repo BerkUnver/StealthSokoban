@@ -75,7 +75,6 @@ Game_Context :: struct {
     consolas_large: Font;
 
     footstep: *Sound;
-    gridlike_bitmap: *Bitmap;
     gridlike_outline_bitmap: *Bitmap;
     enemy_mesh: *Mesh;
     enemy_left_bitmap: *Bitmap;
@@ -93,7 +92,8 @@ Game_Context :: struct {
     chroma_key_bitmap: *Bitmap;
     overworld_exit_mesh: *Mesh;
     checkpoint_mesh: *Mesh;
-    input_hint_mesh: *Mesh;
+    gridlike_bitmap: *Bitmap;
+    input_hint_bitmap: *Bitmap;
 }
 
 #add_context game_context: *Game_Context;
@@ -141,6 +141,17 @@ Gameplay_State :: enum {
 }
 
 
+UP_KEY          : Key : #char "W";
+DOWN_KEY        : Key : #char "S";
+LEFT_KEY        : Key : #char "A";
+RIGHT_KEY       : Key : #char "D";
+PULL_KEY        : Key : #char " ";
+SELECT_KEY      : Key : #char "U";
+TELEPORT_KEY    : Key : #char "H";
+CAMERA_MODE_KEY : Key : #char "O";
+PAUSE_KEY       : Key : .ESCAPE;
+
+
 // This does not take ownership of "name".
 push_sublevel :: (using gameplay: *Gameplay, name: string, skip_intro := false) {
     assert(!sublevel_exists);
@@ -176,7 +187,7 @@ set_state :: (using gameplay: *Gameplay, new_state: Gameplay_State) {
 
 Paused_Sublevel_Selection :: enum {
     RESUME;
-    PREVIOUS_CHECKPOINT;
+    LAST_CHECKPOINT;
     OVERWORLD;
     RESET_DEMO;
     COUNT;
@@ -287,7 +298,6 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         occlusion_shader            = load_asset(Shader, *asset_table, "shaders/occlusion.gl");
 
         footstep                    = load_asset(Sound, *asset_table, "sounds/footstep.wav");
-        gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
         gridlike_outline_bitmap     = load_asset(Bitmap, *asset_table, "gridlike_outline.tga");
         enemy_mesh                  = load_asset(Mesh, *asset_table, "enemy.my_mesh");
         enemy_left_bitmap           = load_asset(Bitmap, *asset_table, "enemy_left.tga");
@@ -303,9 +313,11 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         exit_mesh                   = load_asset(Mesh, *asset_table, "exit.my_mesh");
         player_item_bitmap          = load_asset(Bitmap, *asset_table, "player_item.tga");
         checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
-        input_hint_mesh             = load_asset(Mesh, *asset_table, "input_hint.my_mesh");
         player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
         player_bitmap               = load_asset(Bitmap, *asset_table, "player.tga");
+        gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
+        input_hint_bitmap           = load_asset(Bitmap, *asset_table, "input_hint.tga");
+
 
 
         //
@@ -626,14 +638,14 @@ game_update : Game_Update : (
                     if #complete state == {
                         case .PLAYING; 
 
-                            if (level.flags & .CHECKPOINT_EXISTS) && it.key == .ESCAPE && it.state == .DOWN {
+                            if (level.flags & .CHECKPOINT_EXISTS) && it.key == PAUSE_KEY && it.state == .DOWN {
                                 set_state(*gameplay, .PAUSED);
                                 continue;
                             }
 
                             gameplay_handle_input(level, it);
                         case .PAUSED;
-                            if it.key == .ESCAPE && it.state == .DOWN {
+                            if it.key == PAUSE_KEY && it.state == .DOWN {
                                 set_state(*gameplay, .PLAYING);
                                 continue;
                             }
@@ -660,11 +672,11 @@ game_update : Game_Update : (
                                 }
                             }
 
-                            if it.key == #char " " && it.state == .DOWN {
+                            if it.key == SELECT_KEY && it.state == .DOWN {
                                 if sublevel_exists {
                                     if paused.sublevel.selected == {
                                         case .RESUME;
-                                        case .PREVIOUS_CHECKPOINT;
+                                        case .LAST_CHECKPOINT;
                                             restore_checkpoint(level);
                                         case .OVERWORLD;
                                             pop_sublevel(*gameplay);
@@ -760,8 +772,8 @@ game_update : Game_Update : (
                     editor_handle_input(editor_level, editor_arena, mouse, it);
             }
         }
-        
 
+        
         if #complete mode == {
             case .EDITOR;
                 using editor_level;
@@ -857,6 +869,7 @@ game_update : Game_Update : (
                 using gameplay;
                 if state == .PLAYING {
                     dt_modified := dt * dt_modifier;
+
                     if sublevel_exists {
                         gameplay_update(sublevel, dt_modified);
 
@@ -912,10 +925,9 @@ game_update : Game_Update : (
                     }
                 }
 
-                if sublevel_exists {
-                    draw(sublevel, .GAMEPLAY);
-                } else {
-                    draw(overworld, .GAMEPLAY);
+                {
+                    level := ifx sublevel_exists then sublevel else overworld;
+                    draw(level, .GAMEPLAY, draw_gameplay_input_hints=gameplay.state == .PLAYING);
                 }
 
                 if gameplay.state == .PAUSED {
@@ -957,7 +969,7 @@ game_update : Game_Update : (
                             } else #if T == Paused_Sublevel_Selection {
                                 if it == {
                                     case .RESUME;               text = "Resume Playing";
-                                    case .PREVIOUS_CHECKPOINT;  text = "Go to Previous Checkpoint";
+                                    case .LAST_CHECKPOINT;      text = "Go to Last Checkpoint";
                                     case .OVERWORLD;            text = "Return to Overworld";
                                     case .RESET_DEMO;           text = "Reset Demo";
                                 }
@@ -970,6 +982,20 @@ game_update : Game_Update : (
                             text_position := round(Vector2.{x + w / 2 - length / 2, head});
                             draw_text(text, text_position, font, color);
                             head += font.ascender * 2;
+                        }
+                        
+                        {
+                            scope_mark(frame_arena);
+                            sb := make_string_builder(frame_arena);
+                            print(
+                                *sb,
+                                "Press the % and % key to navigate. Press the % key to select.",
+                                key_to_string(UP_KEY, frame_arena),
+                                key_to_string(DOWN_KEY, frame_arena),
+                                key_to_string(SELECT_KEY, frame_arena)
+                            );
+
+                            draw_input_hint(get_string(*sb));
                         }
                     }
 
@@ -1042,8 +1068,10 @@ game_update : Game_Update : (
 
 
 
-draw :: (using level: *Level, mode: Game_Mode) {
+draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := false) {
     using context.game_context;
+
+    if (draw_gameplay_input_hints) assert(mode == .GAMEPLAY);
 
     world_to_camera: Matrix4;
     
@@ -1069,8 +1097,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
             size = level_size;
 
             set_shader(gridlike_gameplay_shader);
-            set_uniform_bitmap("outline_bitmap", 0, gridlike_outline_bitmap);
-            set_uniform_view_texture("viewed", 1, *view_texture);
+            set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
+            set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
+            set_uniform_view_texture("viewed", 2, *view_texture);
             set_uniform("viewed_size", level_size);
 
             for * _Block {
@@ -1093,7 +1122,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
             position, size = get_block_extents(_Block); // :LevelSizeInEditor
 
             set_shader(gridlike_editor_shader);
-            set_uniform_bitmap("outline_bitmap", 0, gridlike_outline_bitmap);
+            set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
+
+            set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
             for * _Block {
                 projection := translate(world_to_camera, to_vector3(it.position));
                 set_uniform("projection", projection);
@@ -1103,6 +1134,14 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
             set_uniform("color", Door.COLOR);
             for * _Door {
+                projection := translate(world_to_camera, to_vector3(it.position));
+                set_uniform("projection", projection);
+                bind_and_draw(*it.mesh);
+            }
+
+            set_uniform_bitmap("bitmap", 0, input_hint_bitmap);
+            set_uniform("color", Vector4.{1, 1, 1, 1});
+            for * _Input_Hint {
                 projection := translate(world_to_camera, to_vector3(it.position));
                 set_uniform("projection", projection);
                 bind_and_draw(*it.mesh);
@@ -1126,13 +1165,6 @@ draw :: (using level: *Level, mode: Game_Mode) {
             for mutual_annihilations {
                 set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
                 bind_and_draw(*enemy_annihilation_mesh);
-            }
-
-        case .EDITOR;
-            set_uniform("color", Vector4.{1, 0, 0, 1});
-            for * _Input_Hint {
-                set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-                bind_and_draw(input_hint_mesh);
             }
     }
     
@@ -1334,46 +1366,21 @@ draw :: (using level: *Level, mode: Game_Mode) {
     
     if mode == {
         case .GAMEPLAY;
-            player := *_Player[0];
-            font := *consolas_large;
+            if draw_gameplay_input_hints {
 
-            draw_input_hint :: (text: string) #expand {
-                margin_x := viewport_h * 0.03;
-                margin_y := font.ascender * 0.7;
-
-                length := text_length(text, font);
-                
-                text_position := Vector2.{
-                    (cast(float, viewport_w) - length) / 2.0,
-                    input_hint_y
-                };
-
-                set_shader(imm_color_shader, .{});
-                set_uniform("projection", ui_to_camera);
-
-                quad_position := Vector2.{
-                    text_position.x - margin_x,
-                    text_position.y - font.ascender - margin_y
-                };
-
-                quad_size := Vector2.{
-                    length + margin_x * 2,
-                    font.ascender + margin_y * 2
-                };
-
-                imm_quad(quad_position, quad_size, BACKGROUND_COLOR);
-                imm_flush();
+                player := *_Player[0];
+                font := *consolas_large;
 
 
+                // Why don't we use a 3d array to store where the input hints are?
+                // Frankly, there's just not that many of them.
 
-                draw_text(text, text_position, font, HIGHLIGHT_COLOR);
-            }
-
-            input_hint_y := cast(float, viewport_h) * 0.95;
-
-            for * _Input_Hint {
-                if it.position == player.position {
-
+                for * _Input_Hint { 
+                    position := player.position - it.position;
+                    in_bounds, index := get_3d_index(position, it.size);
+                    if !in_bounds continue;
+                    if !it.filled[index] continue;
+                    
                     scope_mark(frame_arena);
                     sb := make_string_builder(frame_arena);
 
@@ -1382,59 +1389,114 @@ draw :: (using level: *Level, mode: Game_Mode) {
                             print(
                                 *sb,
                                 "Press the %, %, %, and % keys to move.",
-                                Print_Ascii.{UP_KEY}, 
-                                Print_Ascii.{LEFT_KEY},
-                                Print_Ascii.{DOWN_KEY},
-                                Print_Ascii.{RIGHT_KEY}
+                                key_to_string(UP_KEY, frame_arena), 
+                                key_to_string(LEFT_KEY, frame_arena),
+                                key_to_string(DOWN_KEY, frame_arena),
+                                key_to_string(RIGHT_KEY, frame_arena)
                             );
+                        case .PULL; 
+                            show_second_message := false;
+
+                            if keys_down[PULL_KEY] {
+                                can_pull :: (using level: *Level, position: Vector3i) -> bool {
+                                    in_bounds, index := get_3d_index(position, level_position, level_size);
+                                    if !in_bounds return false;
+                                    eid := collision[index];
+                                    if !eid return false;
+                                    block := as(get_entity(level, eid), Block);
+                                    if !block return false;
+                                    return block.moveable;
+                                }
+
+                                if !show_second_message show_second_message = can_pull(level, player.position + .{-1, 0,  0});
+                                if !show_second_message show_second_message = can_pull(level, player.position + .{ 0, 0, -1});
+                                if !show_second_message show_second_message = can_pull(level, player.position + .{ 1, 0,  0});
+                                if !show_second_message show_second_message = can_pull(level, player.position + .{ 0, 0,  1});
+                            }
+
+                            if show_second_message {
+                                print(
+                                    *sb,
+                                    "Walk away from the block to pull it."
+                                );
+                            } else {
+                                print(
+                                    *sb,
+                                    "Hold the % key while next to a block to pull it.",
+                                    key_to_string(PULL_KEY, frame_arena)
+                                );
+                            }
+                        
+                        case .PAUSE;
+                            print(
+                                *sb,
+                                "Press the % key to pause the game.",
+                                 key_to_string(PAUSE_KEY, frame_arena)
+                            );
+                                
                     }
 
                     draw_input_hint(get_string(*sb));
                 }
-            }
 
 
-            for * _Overworld_Entrance {
-                if it.position == player.position {
-                    scope_mark(frame_arena);
-                    sb := make_string_builder(frame_arena);
+                for * _Overworld_Entrance {
+                    if it.position == player.position {
+                        scope_mark(frame_arena);
+                        sb := make_string_builder(frame_arena);
 
-                    if it.activated {
-                        print(
-                            *sb,
-                            "% key: Enter the level, % key: Go to its overworld exit.",
-                            Print_Ascii.{ENTER_LEVEL_KEY},
-                            Print_Ascii.{TELEPORT_KEY}
-                        );
-                    } else {
-                        print(
-                            *sb,
-                            "Press the % key to enter the level.",
-                            Print_Ascii.{ENTER_LEVEL_KEY}
-                        );
+                        if it.activated {
+                            print(
+                                *sb,
+                                "% key: Replay this level. % key: Go to its overworld exit.",
+                                key_to_string(SELECT_KEY, frame_arena),
+                                key_to_string(TELEPORT_KEY, frame_arena)
+                            );
+                        } else {
+                            print(
+                                *sb,
+                                "Press the % key to enter the level.",
+                                key_to_string(SELECT_KEY, frame_arena)
+                            );
+                        }
+
+                        draw_input_hint(get_string(*sb));
                     }
-
-                    draw_input_hint(get_string(*sb));
                 }
-            }
 
-            
-            for * _Overworld_Exit {
-                entrance := get_entrance_for_overworld_exit(level, it, log_errors=false);
-                if !entrance || !entrance.activated continue;
+                
+                for * _Overworld_Exit {
+                    entrance := get_entrance_for_overworld_exit(level, it, log_errors=false);
+                    if !entrance || !entrance.activated continue;
 
-                if it.position == player.position {
-                    scope_mark(frame_arena);
-                    sb := make_string_builder(frame_arena);
-                    
-                    print(
-                        *sb, 
-                        "% key: Enter the level, % key: Go to its overworld entrance.",
-                        Print_Ascii.{ENTER_LEVEL_KEY},
-                        Print_Ascii.{TELEPORT_KEY}
-                    );
+                    if it.position == player.position {
+                        scope_mark(frame_arena);
+                        sb := make_string_builder(frame_arena);
+                        
+                        print(
+                            *sb, 
+                            "% key: Replay this level. % key: Go to its overworld entrance.",
+                            key_to_string(SELECT_KEY, frame_arena),
+                            key_to_string(TELEPORT_KEY, frame_arena)
+                        );
 
-                    draw_input_hint(get_string(*sb));
+                        draw_input_hint(get_string(*sb));
+                    }
+                }
+
+                for * _Checkpoint {
+                    if it.position == player.position {
+                        scope_mark(frame_arena);
+                        sb := make_string_builder(frame_arena);
+
+                        print(
+                            *sb,
+                            "Press the % key to set a checkpoint.",
+                            key_to_string(SELECT_KEY, frame_arena)
+                        );
+
+                        draw_input_hint(get_string(*sb));
+                    }
                 }
             }
 
@@ -1472,39 +1534,42 @@ draw :: (using level: *Level, mode: Game_Mode) {
 
         case .EDITOR;
             {
-                scope_mark(frame_arena);
-
-                position, size := get_block_extents(_Block);
-                
-                overlapping := alloc_view(frame_arena, size.x * size.y * size.z, int);
-
-                for * block: _Block {
-                    offset := block.position - position;
-                    for :iterate_vector3i block.size {
-                        filled := block.filled[it_index];
-                        if !filled continue;
-
-                        success, index := get_3d_index(it + offset, size);
-                        assert(success);
-                        
-                        overlapping[index] += 1;
-                    }
-                }
-
-               
                 set_shader(imm_color_shader, .{flags = .BLEND | .CULL_FACE});
                 set_uniform("projection", world_to_camera);
 
-                OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+                detect_overlapping_gridlikes :: (gridlikes: [] $T/interface Gridlike_Entity) #expand {
+                    using context.game_context;
+                    if gridlikes.count == 0 return;
+                    scope_mark(frame_arena);
+                    overlapping := alloc_view(frame_arena, size.x * size.y * size.z, s16);
+                    
+                    for * gridlike: gridlikes {
+                        offset := gridlike.position - position;
+                        for :iterate_vector3i gridlike.size {
+                            filled := gridlike.filled[it_index];
+                            if !filled continue;
 
-                for :iterate_vector3i size {
-                    count := overlapping[it_index];
-                    if count > 1 {
-                        start := position + it;
-                        end := start + Vector3i.{1,1,1};
-                        imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                            success, index := get_3d_index(it + offset, size);
+                            assert(success);
+                            
+                            overlapping[index] += 1;
+                        }
+                    }
+                    OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
+
+                    for :iterate_vector3i size {
+                        count := overlapping[it_index];
+                        if count > 1 {
+                            start := position + it;
+                            end := start + Vector3i.{1,1,1};
+                            imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                        }
                     }
                 }
+
+                detect_overlapping_gridlikes(_Block);
+                detect_overlapping_gridlikes(_Door);
+                detect_overlapping_gridlikes(_Input_Hint);
 
                 imm_flush();
             }
@@ -1647,6 +1712,68 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 imm_flush();
             }
     }
+}
+
+
+draw_input_hint :: (text: string) {
+    using context.game_context;
+
+    font := *consolas_large;
+
+    margin_x := viewport_h * 0.03;
+    margin_y := font.ascender * 0.7;
+
+    length := text_length(text, font);
+
+    input_hint_y := cast(float, viewport_h) * 0.95;
+    
+    text_position := Vector2.{
+        (cast(float, viewport_w) - length) / 2.0,
+        input_hint_y
+    };
+
+    set_shader(imm_color_shader, .{});
+    set_uniform("projection", ui_to_camera);
+
+    quad_position := Vector2.{
+        text_position.x - margin_x,
+        text_position.y - font.ascender - margin_y
+    };
+
+    quad_size := Vector2.{
+        length + margin_x * 2,
+        font.ascender + margin_y * 2
+    };
+
+    imm_quad(quad_position, quad_size, BACKGROUND_COLOR);
+    imm_flush();
+
+
+
+    draw_text(text, text_position, font, HIGHLIGHT_COLOR);
+}
+
+
+key_to_string :: (key: Key, arena: *Memory_Arena) -> string {
+    // @Incomplete fill the rest of these out.
+
+    if #char "A" <= key && key <= #char "Z" {
+        str := alloc_string(arena, 1, zero_init=false);
+        str[0] = xx key;
+        return str;
+
+    }
+    
+    // Maybe we can just return the static string?
+    if key == {
+        case #char " ";
+            return copy_string(arena, "Space");
+        case .ESCAPE;
+            return copy_string(arena, "Escape");
+    }
+
+    assert(false);
+    return .{};
 }
 
 

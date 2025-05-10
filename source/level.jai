@@ -28,7 +28,6 @@ Level :: struct {
         mutual_annihilations: [..] Mutual_Annihilation;
         
         flags: enum_flags u8 {
-            PULLING;
             CHECKPOINT_EXISTS;
         }
 
@@ -69,9 +68,16 @@ Level :: struct {
         camera_yaw_target: float64;
         camera_yaw_old: float64;
         camera_yaw_interp := 1.0;
+            
+    
+        // @TODO @Memory: I think we can make a "static collision" array with
+        // doors, non-moving blocks, and possibly level hints, and a
+        // "dynamic collision" array that we update when we call 
+        // collision_resolution.
         
         doors: [] Entity_Id; // Only Door entities should be put in here.
         collision: [] Entity_Id;
+
         viewed: [] View_State;
         
         // These are stored SOA because we don't want to touch these at the same time.
@@ -130,15 +136,6 @@ Level :: struct {
         camera_yaw: float;
     } @NoSerialize
 }
-
-
-UP_KEY    :: #char "W";
-DOWN_KEY  :: #char "S";
-LEFT_KEY  :: #char "A";
-RIGHT_KEY :: #char "D";
-ENTER_LEVEL_KEY :: #char "U";
-TELEPORT_KEY :: #char "H";
-CAMERA_MODE_KEY :: #char "O";
 
 
 CAMERA_PITCH_VALUES :: float.[
@@ -233,17 +230,6 @@ Checkpoint :: struct {
 
 Exit :: struct {
     using #as e: Entity;
-}
-
-
-Input_Hint_Type :: enum u8 {
-    MOVEMENT;
-}
-
-
-Input_Hint :: struct {
-    using #as e: Entity;
-    input_hint_type: Input_Hint_Type;
 }
 
 
@@ -407,6 +393,16 @@ Enemy_Despawner :: struct {
 }
 
 
+// Not an actual entity, it is an interface.
+Gridlike_Entity :: struct {
+    e: Entity;
+
+    size: Vector3i;
+    filled: [] bool;
+    mesh: Mesh;
+}
+
+
 Block :: struct {
     using #as e: Entity;
 
@@ -426,6 +422,22 @@ Door :: struct {
     mesh: Mesh; @NoSerialize
 
     COLOR :: Vector4.{1, 0.5, 0.5, 1};
+}
+
+
+Input_Hint_Type :: enum u8 {
+    MOVEMENT;
+    PULL;
+    PAUSE;
+}
+
+
+Input_Hint :: struct {
+    using #as e: Entity;
+    size: Vector3i; @ReadOnly
+    filled: [] bool; // :BitArray
+    mesh: Mesh; @NoSerialize
+    input_hint_type: Input_Hint_Type;
 }
 
 
@@ -778,6 +790,10 @@ load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists
         it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
     }
 
+    for * _Input_Hint {
+        it.mesh = make_gridlike_mesh(it.size, it.filled, arena);
+    }
+
     return level;
 }
 
@@ -838,42 +854,29 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
     view_texture = make_view_texture(level_size);
 
     viewed = alloc_view(arena, size_1d, View_State);
-    doors = alloc_view(arena, size_1d, Entity_Id);
     collision = alloc_view(arena, size_1d, Entity_Id);
+    doors = alloc_view(arena, size_1d, Entity_Id);
+
     mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
 
     // Should adding this stuff to the collision array be done with collision_resolution?
-
-    for * block: _Block {      
-        offset := block.position - level_position;
-
-        for :iterate_vector3i block.size {
-            if !block.filled[it_index] continue;
-            in_bounds, index := get_3d_index(it + offset, level_size);
-            assert(in_bounds);
-            eid := collision[index];
-            if eid {
-                log(.ERROR, "There was an overlap between Block entity % and another entity %\n", block.eid, eid);
-                return null;
+    
+    init_gridlike_array :: (gridlikes: [] $T/interface Gridlike_Entity, array: [] Entity_Id) #expand {
+        for * gridlike: gridlikes {
+            offset := gridlike.position - level_position;
+            for :iterate_vector3i gridlike.size {
+                if !gridlike.filled[it_index] continue;
+                in_bounds, index := get_3d_index(it + offset, level_size);
+                assert(in_bounds);
+                assert(!array[index]);
+                array[index] = gridlike.eid;
             }
-            collision[index] = block.eid;
         }
     }
 
-    for * door: _Door {
-        offset := door.position - level_position;
-        for :iterate_vector3i door.size {
-            success, index := get_3d_index(it + offset, level_size);
-            if !success {
-                log(.ERROR, "There was a Door entity outside of the level's bounding box.\n");
-                return null;
-            }
-            
-            // We don't care about overlapping door entities right now.
-            // Maybe we will care about them in the future.
-            doors[index] = door.eid;
-        }
-    }
+    init_gridlike_array(_Block, collision);
+    init_gridlike_array(_Door, doors);
+    
     
     for * _Enemy {
         in_bounds, index := get_3d_index(it.position, level_position, level_size);
@@ -1401,9 +1404,12 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
         }
     }
 
-
+    //
     // The new_collision array is now set up. Delete everything that needs to be deleted.
     //
+
+    assert(new_collision.count == collision.count);
+    memcpy(collision.data, new_collision.data, byte_count(new_collision));
     
     for * _Enemy {
         if it.collision_resolution == {
@@ -1415,8 +1421,8 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 
                 in_bounds, index := get_3d_index(it.position, level_position, level_size);
                 assert(in_bounds);
-                assert(new_collision[index] == it.eid);
-                new_collision[index] = 0;
+                assert(collision[index] == it.eid);
+                collision[index] = 0;
                 #through;
             case .SECONDARY_ANNIHILATOR;
                 delete_entity(level, it.eid);
@@ -1430,16 +1436,19 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
             case .PRIMARY_ANNIHILATOR;
                 in_bounds, index := get_3d_index(player.position, level_position, level_size);
                 assert(in_bounds);
-                assert(new_collision[index] == player.eid);
-                new_collision[index] = 0;
+                assert(collision[index] == player.eid);
+                collision[index] = 0;
                 set_state(player, .DEAD);
             case .SECONDARY_ANNIHILATOR;
                 set_state(player, .DEAD);
         }
     }
 
-    assert(new_collision.count == collision.count);
-    memcpy(collision.data, new_collision.data, byte_count(new_collision));
+    for * _Exit {
+        if player.position == it.position {
+            set_state(level, .FADE_OUT_EXIT);
+        }
+    }
 }
 
 
@@ -1476,12 +1485,6 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
 
     if state != .PLAYING return;
-
-    if event.key == #char " " {
-        if event.state == .DOWN flags |= .PULLING;
-        else                    flags &= ~.PULLING;
-        return;
-    }
 
     if event.key == #char "M" && event.state == .DOWN {
         player := *_Player[0];
@@ -1577,7 +1580,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     }
 
 
-    if event.key == ENTER_LEVEL_KEY && event.state == .DOWN {
+    if event.key == SELECT_KEY && event.state == .DOWN {
         player := *_Player[0];
         
         // @Speed Once ladders and stuff are a thing maybe we should store the entrance positions
@@ -1623,14 +1626,6 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 }
                 it.state = .CURRENT;
                 set_checkpoint(level);
-                return;
-            }
-        }
-
-
-        for * _Exit {
-            if it.position == player.position {
-                set_state(level, .FADE_OUT_EXIT);
                 return;
             }
         }
@@ -1687,7 +1682,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             }
                 
             // Are we pulling a moveable block?
-            if flags & .PULLING {
+            if keys_down[PULL_KEY] {
                 push_block(.{ 1,  0,  0});
                 push_block(.{-1,  0,  0});
                 push_block(.{ 0,  1,  0});

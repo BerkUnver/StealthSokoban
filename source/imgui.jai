@@ -868,8 +868,8 @@ number_entry :: (
         print(*sb, "%", dynamic_any(info, val));
         val_str := get_string(*sb);
         
-        str_count := get_string(*sb).count;
-        memcpy(str.data, val_str.data, val_str.count);
+        str_count = val_str.count;
+        memcpy(str.data, val_str.data, str_count);
     }
 
     

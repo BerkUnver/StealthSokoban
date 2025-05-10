@@ -83,7 +83,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 }
 
                 visitor :: (position: Vector3i, using data: *Data) -> bool {
-                    check_gridlike_entities :: (entities: [] $T) #expand {
+                    check_gridlike_entities :: (entities: [] $T/interface Gridlike_Entity) #expand {
                         for entities {
                             success, index := get_3d_index(position, it.position, it.size);
                             if success && it.filled[index] {
@@ -96,6 +96,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
 
                     check_gridlike_entities(level._Block);
                     check_gridlike_entities(level._Door);
+                    check_gridlike_entities(level._Input_Hint);
 
                     previous_position = position;
                     previous_position_exists = true;
@@ -354,7 +355,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 e.position = position;
 
 
-                init_grid_entity :: (e: *$T) #expand {
+                init_gridlike_entity :: (e: *$T/interface Gridlike_Entity) #expand {
                     filled := alloc_view(arena, 1, bool);
                     filled[0] = true;
 
@@ -365,11 +366,12 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
 
                 if e.type == .Block {
                     block := as(e, Block);
-                    init_grid_entity(block);
+                    init_gridlike_entity(block);
                     block.color = .{1, 1, 1, 1};
                 } else if e.type == .Door {
-                    door := as(e, Door);
-                    init_grid_entity(door);
+                    init_gridlike_entity(as(e, Door));
+                } else if e.type == .Input_Hint {
+                    init_gridlike_entity(as(e, Input_Hint));
                 }
                 return;
             }
@@ -413,7 +415,7 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
             } else if event.key == #char "Z" && event.state == .UP {
                 position, size := get_editor_extrude_size(level);
 
-                extrude_gridlike_entity :: (e: *$T/Entity) #expand {
+                extrude_gridlike_entity :: (e: *$T/interface Gridlike_Entity) #expand {
                     if deletion {
                         offset := position - e.position;
                         // @Speed iterate over the overlap between the selection and the block
@@ -488,6 +490,8 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                     extrude_gridlike_entity(as(e, Block));
                 } else if e.type == .Door {
                     extrude_gridlike_entity(as(e, Door));
+                } else if e.type == .Input_Hint {
+                    extrude_gridlike_entity(as(e, Input_Hint));
                 } else assert(false);
 
                 editor.mode = .IDLE;

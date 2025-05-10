@@ -541,6 +541,11 @@ alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) ->
 }
 
 
+alloc_string :: (arena: *Memory_Arena, count: s64, zero_init := true) -> string {
+    return .{count, alloc(arena, count, zero_init)};
+}
+
+
 reserve_array :: (arena: *Memory_Arena, reserve: s64, $T: Type, zero_init := true) -> [..] T {
     mem := alloc(arena, reserve * size_of(T), zero_init);
 

@@ -224,7 +224,7 @@ entity_mesh :: (e: *Entity) -> *Mesh {
         case .Overworld_Exit;
             return overworld_exit_mesh;
         case .Input_Hint;
-            return input_hint_mesh;
+            return *as(e, Input_Hint).mesh;
     }
 
     return null;

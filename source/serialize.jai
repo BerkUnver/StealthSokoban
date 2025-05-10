@@ -67,12 +67,12 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
             
             separator: string;
             default: *void;
-            mark: s64;
+            // mark: s64; I stopped using a mark here because now the String_Builder uses the frame arena,
+            // so we don't want to restore a mark when it doesn't exist.
 
             if array_info.element_type.type == .STRUCT {
                 separator = "\n";
                 struct_info := cast(*Type_Info_Struct, array_info.element_type);
-                mark = get_mark(frame_arena);
                 default = alloc(frame_arena, struct_info.runtime_size, zero_init = false);
                 init_from_info(struct_info, default);
             } else {
@@ -88,7 +88,6 @@ serialize_next :: (sb: *String_Builder, info: *Type_Info, val: *void, struct_def
 
             if array_info.element_type.type == .STRUCT {
                 for 0..indent-1 print_string(sb, "\t");
-                restore_mark(frame_arena, mark);
             }
 
             print_string(sb, "]");
@@ -201,6 +200,7 @@ return_if_invalid :: (token: Token) #expand {
     if token.type == .EOF   `return UNEXPECTED_EOF;
 }
 
+
 can_serialize_member :: (member: *Type_Info_Struct_Member, greatest_offset_before_this_member: int) -> bool {
     if member.flags & .CONSTANT != 0 return false;
     if member.offset_in_bytes <= greatest_offset_before_this_member return false; // This is how we detect #place members.
@@ -209,6 +209,7 @@ can_serialize_member :: (member: *Type_Info_Struct_Member, greatest_offset_befor
     if contains(member.notes, "NoSerialize") return false;
     return true;
 }
+
 
 deserialize :: (data: string, val: *$T, arena: *Memory_Arena = null) -> Deserialization_Error {
     lexer := Lexer.{str = data};
