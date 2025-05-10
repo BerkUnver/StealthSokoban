@@ -93,6 +93,7 @@ Game_Context :: struct {
     chroma_key_bitmap: *Bitmap;
     overworld_exit_mesh: *Mesh;
     checkpoint_mesh: *Mesh;
+    input_hint_mesh: *Mesh;
 }
 
 #add_context game_context: *Game_Context;
@@ -302,6 +303,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         exit_mesh                   = load_asset(Mesh, *asset_table, "exit.my_mesh");
         player_item_bitmap          = load_asset(Bitmap, *asset_table, "player_item.tga");
         checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
+        input_hint_mesh             = load_asset(Mesh, *asset_table, "input_hint.my_mesh");
         player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
         player_bitmap               = load_asset(Bitmap, *asset_table, "player.tga");
 
@@ -1107,14 +1109,22 @@ draw :: (using level: *Level, mode: Game_Mode) {
     
     set_shader(item_and_color_shader);
     set_item_shader_uniforms();
+    
+    if mode == {
+        case .GAMEPLAY;
+            set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
+            for mutual_annihilations {
+                set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+                bind_and_draw(*enemy_annihilation_mesh);
+            }
 
-
-    set_uniform("color", Vector4.{1, 143.0/255.0, 0, 1});
-    for mutual_annihilations {
-        set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
-        bind_and_draw(*enemy_annihilation_mesh);
+        case .EDITOR;
+            set_uniform("color", Vector4.{1, 0, 0, 1});
+            for * _Input_Hint {
+                set_uniform("model_to_world", make_translation_matrix4(to_vector3(it.position)));
+                bind_and_draw(input_hint_mesh);
+            }
     }
-
     
     set_shader(item_and_bitmap_shader);
     set_item_shader_uniforms();
@@ -1265,11 +1275,6 @@ draw :: (using level: *Level, mode: Game_Mode) {
     }
 
 
-    if mode == .GAMEPLAY {
-
-    }
-
-
     //
     // Draw the occlusion effects
     //
@@ -1319,6 +1324,80 @@ draw :: (using level: *Level, mode: Game_Mode) {
     
     if mode == {
         case .GAMEPLAY;
+            player := *_Player[0];
+            font := *consolas_large;
+
+            draw_input_hint :: (text: string) #expand {
+                length := text_length(text, font);
+                
+                text_position := Vector2.{
+                    (cast(float, viewport_w) - length) / 2.0,
+                    input_hint_y
+                };
+
+                draw_text(text, text_position, font, .{1, 1, 1, 1});
+            }
+
+            input_hint_y := cast(float, viewport_h) * 0.95;
+
+            for * _Input_Hint {
+                if it.position == player.position {
+                    text: string;
+                    buf: [4096] u8 = ---;
+                    sb := make_string_builder(buf);
+
+                    if #complete it.input_hint_type == {
+                        case .MOVEMENT;
+                            print(
+                                *sb,
+                                "Press the %, %, %, and % keys to move.",
+                                Print_Ascii.{UP_KEY}, 
+                                Print_Ascii.{LEFT_KEY},
+                                Print_Ascii.{DOWN_KEY},
+                                Print_Ascii.{RIGHT_KEY}
+                            );
+                            text = get_string(*sb);
+                    }
+
+                    draw_input_hint(text);
+                }
+            }
+
+            for * _Overworld_Entrance {
+                if it.position == player.position {
+                    buf: [4096] u8 = ---;
+                    sb := make_string_builder(buf);
+                    if it.activated {
+                        print(
+                            *sb,
+                            "Press the % key to enter the level and the % key to skip over it.",
+                            Print_Ascii.{ENTER_LEVEL_KEY},
+                            Print_Ascii.{TELEPORT_KEY}
+                        );
+                    } else {
+                        print(
+                            *sb,
+                            "Press the % key to enter the level.",
+                            Print_Ascii.{ENTER_LEVEL_KEY}
+                        );
+                    }
+
+                    text := get_string(*sb);
+                    
+                    draw_input_hint(text);
+                }
+            }
+
+            for * _Exit {
+                if it.position == player.position {
+                    buf: [4096] u8 = ---;
+                    sb := make_string_builder(buf);
+                    if it.activated {
+                    }
+                }
+            }
+            
+
 
             draw_fade :: (alpha: float) {
                 using context.game_context;

@@ -199,6 +199,12 @@ expand_to_s64 :: (value: *void, info: *Type_Info) -> s64 {
     return 0;
 }
 
+
+Print_Ascii :: struct {
+    ascii: u8;
+}
+
+
 print :: (using sb: *String_Builder, s: string, args: ..Any) {
     arg_index := 0;
 
@@ -386,6 +392,16 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                             array := cast(*Resizable_Array, arg.value_pointer);
                             print_array(sb, array.count, array.data, info.element_type);
                     }
+                
+                case .STRUCT;
+                    info := type_info(Print_Ascii);
+                    if arg.type == info {
+                        assert(index < buf.count);
+                        buf[index] = cast(*Print_Ascii, arg.value_pointer).ascii;
+                        index += 1;
+                    } else {
+                        assert(false);
+                    }
 
                 case .POINTER;
                     info := cast(*Type_Info_Pointer, arg.type);
@@ -403,7 +419,6 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                 case .VARIANT;
                     info := cast(*Type_Info_Variant, arg.type);
                     print(sb, "%", dynamic_any(info.variant_of, arg.value_pointer));
-                case; assert(false);
             }
             arg_index += 1;
         } else {

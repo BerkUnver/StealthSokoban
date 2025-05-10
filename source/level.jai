@@ -132,6 +132,15 @@ Level :: struct {
 }
 
 
+UP_KEY    :: #char "W";
+DOWN_KEY  :: #char "S";
+LEFT_KEY  :: #char "A";
+RIGHT_KEY :: #char "D";
+ENTER_LEVEL_KEY :: #char "U";
+TELEPORT_KEY :: #char "H";
+CAMERA_MODE_KEY :: #char "O";
+
+
 CAMERA_PITCH_VALUES :: float.[
     -PI / 2,
     -PI / 2 + 0.12 * PI,
@@ -224,6 +233,17 @@ Checkpoint :: struct {
 
 Exit :: struct {
     using #as e: Entity;
+}
+
+
+Input_Hint_Type :: enum u8 {
+    MOVEMENT;
+}
+
+
+Input_Hint :: struct {
+    using #as e: Entity;
+    input_hint_type: Input_Hint_Type;
 }
 
 
@@ -1500,7 +1520,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         return;
     }
 
-    if event.key == #char "U" && event.state == .DOWN {
+    if event.key == CAMERA_MODE_KEY && event.state == .DOWN {
        camera_mode = (camera_mode + 1) % Camera_Mode.COUNT;
         if camera_mode == {
             case .NEAR; #through;
@@ -1510,7 +1530,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         return;
     }
 
-    if event.key == #char "H" && event.state == .DOWN {
+    if event.key == TELEPORT_KEY && event.state == .DOWN {
         player := *_Player[0];
 
         if player.state != .ALIVE return;
@@ -1559,7 +1579,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     }
 
 
-    if event.key == #char "O" && event.state == .DOWN {
+    if event.key == ENTER_LEVEL_KEY && event.state == .DOWN {
         player := *_Player[0];
         
         // @Speed Once ladders and stuff are a thing maybe we should store the entrance positions
@@ -1630,10 +1650,10 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     push_direction: Vector3i;
     
     if event.key == {
-        case xx #char "W"; push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
-        case xx #char "A"; push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
-        case xx #char "S"; push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
-        case xx #char "D"; push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
+        case xx UP_KEY;    push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
+        case xx LEFT_KEY;  push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
+        case xx DOWN_KEY; push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
+        case xx RIGHT_KEY; push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
         case xx #char "Q"; if player.state == .DEBUG_MOVEMENT push_direction.y += 1; else return;
         case xx #char "E"; if player.state == .DEBUG_MOVEMENT push_direction.y -= 1; else return;
         case; return;

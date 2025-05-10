@@ -7,6 +7,7 @@ Entity_Type :: enum {
     Overworld_Entrance;
     Overworld_Exit;
     Checkpoint;
+    Input_Hint;
     Player;
     Exit;
 }
@@ -225,6 +226,8 @@ entity_mesh :: (e: *Entity) -> *Mesh {
             return overworld_entrance_mesh;
         case .Overworld_Exit;
             return overworld_exit_mesh;
+        case .Input_Hint;
+            return input_hint_mesh;
     }
 
     return null;

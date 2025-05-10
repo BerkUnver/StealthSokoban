@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277317352592945096
+			y 0.0277317333966493604
 			z 0.3953233957290649413
 			w 1
 			;
@@ -451,13 +451,24 @@ types
 		entrance 34
 		;
 	]
+	_Input_Hint 1[
+		e
+			eid 36
+			position
+				x 2
+				y 1
+				z 2
+				;
+			;
+		;
+	]
 	_Player 1[
 		e
 			eid 17
 			position
 				x 2
 				y 1
-				z 1
+				z 2
 				;
 			;
 		;
