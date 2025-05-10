@@ -14,8 +14,7 @@ Entity_Type :: enum {
 
 
 ENTITIES :: #insert -> string {
-    buf: [4096] u8 = ---;
-    sb := make_string_builder(buf);
+    sb := make_local_string_builder();
     print(*sb, "*Type_Info_Struct.[\n");
     for type_info(Entity_Type).names {
         print(*sb, "    type_info(%),\n", it);
@@ -38,8 +37,7 @@ Entity :: struct {
 
 Entity_Types :: struct {
     #insert -> string {
-        buf: [4096] u8 = ---;
-        sb := make_string_builder(buf);
+        sb := make_local_string_builder();
         for ENTITIES {
             print(*sb, "    _%: [..] %;\n", it.name, it.name);
         }
@@ -180,8 +178,7 @@ iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand
     // @Speed This generates more code EVERY TIME this macro
     // is invoked! This might kill compile times!
     #insert -> string {
-        buf: [4096] u8 = ---;
-        sb := make_string_builder(buf);
+        sb := make_local_string_builder();
         for ENTITIES {
             print(*sb, "for * e: types._% {\n", it.name);
             print(*sb, "    it = e;\n");

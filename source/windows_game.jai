@@ -79,8 +79,7 @@ create_directory :: (name: string) -> bool {
 iterate_directory :: (dir: string, data: *void, func: (*void, string)) -> bool {
     using context.game_context;
 
-    buf: [1024] u8 = ---;
-    sb := make_string_builder(buf);
+    sb := make_local_string_builder();
     print(*sb, "%/*", dir);
     str := get_string(*sb);
     
@@ -97,8 +96,7 @@ iterate_directory :: (dir: string, data: *void, func: (*void, string)) -> bool {
         && !jai_string_equals_c_string("..", find_data.cFileName.data) 
         // We're not doing recursive iteration for now.
         && !(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { 
-            buf: [1024] u8 = ---;
-            sb := make_string_builder(buf);
+            sb := make_local_string_builder();
             print(*sb, "%/%", dir, find_data.cFileName.data);
             str := get_string(*sb);
 
@@ -133,9 +131,15 @@ get_date :: () -> Date {
 
 enable_cursor :: (enabled: bool) {
     if enabled {
-        SetCursor(LoadCursorA(null, IDC_ARROW));
+        while true {
+            count := ShowCursor(.TRUE);
+            if count >= 0 break;
+        }
     } else {
-        SetCursor(null);
+        while true {
+            count := ShowCursor(.FALSE);
+            if count < 0 break;
+        }
     }
 }
 

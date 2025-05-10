@@ -132,7 +132,7 @@ deactivate :: () {
 
 
 HIGHLIGHT_COLOR :: Vector4.{1, 1, 1, 1};
-DULL_COLOR :: Vector4.{0.6, 0.6, 0.6, 1};
+DULL_COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
 READ_ONLY_COLOR :: Vector4.{0.3, 0.3, 0.3, 1};
 BACKGROUND_COLOR :: Vector4.{0, 0, 0, 1};
 
@@ -858,11 +858,20 @@ number_entry :: (
 ) -> entered: bool {
     using context.game_context;
     assert(info.type == .INTEGER || info.type == .FLOAT);
-
+    
+    // @Speed Make the String_Builder print directly into here.
     str: [STRING_ENTRY_MAX_COUNT] u8;
-    sb := make_string_builder(str);
-    print(*sb, "%", dynamic_any(info, val));
-    str_count := get_string(*sb).count;
+    str_count: int;
+    {
+        scope_mark(frame_arena);
+        sb := make_string_builder(frame_arena);
+        print(*sb, "%", dynamic_any(info, val));
+        val_str := get_string(*sb);
+        
+        str_count := get_string(*sb).count;
+        memcpy(str.data, val_str.data, val_str.count);
+    }
+
     
     
     entered := string_entry(position, size, *str, *str_count, read_only=read_only, loc=loc, id=id);

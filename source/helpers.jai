@@ -70,8 +70,9 @@ realloc_3d_array_to_fit_subarea :: (position: Vector3i, size: Vector3i, data: []
 
 
 print :: (s: string, args: ..Any) {
-    buf: [4096] u8;
-    sb := make_string_builder(buf);
+    using context.game_context;
+    scope_mark(frame_arena);
+    sb := make_string_builder(frame_arena);
     print(*sb, s, ..args);
     os_print(get_string(*sb));
 }
@@ -88,8 +89,8 @@ log :: (level: Log_Level, s: string, args: ..Any, loc := #caller_location) {
     
     if level == .ERROR set_console_text_color(.RED);
 
-    buf: [4096] u8 = ---;
-    sb := make_string_builder(buf);
+    scope_mark(frame_arena);
+    sb := make_string_builder(frame_arena);
    
     print(*sb, "%(%): ", loc.fully_pathed_filename, loc.line_number);
     print(*sb, s, ..args);

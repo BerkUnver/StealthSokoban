@@ -154,15 +154,22 @@ assert :: (condition: bool, message := "", loc := #caller_location) #no_debug #e
 }
 
 
-make_string_builder :: (backing_store: [] u8) -> String_Builder {
-    return .{backing_store, 0};
+make_string_builder :: (arena: *Memory_Arena) -> String_Builder {
+    return .{arena=arena};
+}
+
+
+make_local_string_builder :: () -> String_Builder #expand {
+    buf: [4096] u8 = ---;
+    arena := make_arena(buf.data, buf.count);
+    return .{arena=*arena};
 }
 
 
 // @TODO: Make this use memory arenas
 String_Builder :: struct {
-    buf: [] u8;
-    index: int;
+    arena: *Memory_Arena;
+    buf: [..] u8;
 }
 
 
@@ -174,9 +181,10 @@ Console_Text_Color :: enum {
 
 
 print_string :: (using sb: *String_Builder, str: string) {
-    assert(index + str.count < buf.count);
-    memcpy(buf.data + index, str.data, str.count);
-    index += str.count;
+    // @Speed Fast path where we can memcpy this
+    for str {
+        append(*buf, arena).* = it;
+    }
 }
 
 
@@ -234,14 +242,10 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                     }
 
                     if arg_u64 == 0 {
-                        assert(index < buf.count);
-                        buf[index] = #char "0";
-                        index += 1;
+                        append(*buf, arena).* = #char "0";
                     } else {
                         if negative {
-                            assert(index < buf.count);
-                            buf[index] = #char "-";
-                            index += 1;
+                            append(*buf, arena).* = #char "-";
                         }
                         
                         divisor: u64 = 1;
@@ -252,14 +256,11 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                             digit_count += 1;
                         }
                         
-                        assert(index + digit_count <= buf.count);
-
                         remainder := arg_u64;
                         while divisor {
-                            buf[index] = cast(u8, #char "0" + remainder / divisor);
+                            append(*buf, arena).* = xx (#char "0" + remainder / divisor);
                             remainder = remainder % divisor;
                             divisor /= 10;
-                            index += 1;
                         }
                     }
                 case .FLOAT;
@@ -279,14 +280,14 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                     // Max value of u64 is 18_446_744_073_709_551_616.
                     DECIMAL : u64 : 10_000_000_000_000_000_000;
                     
-                    print_fractional_part :: (sb: *String_Builder, fractional_part: u64) {
+                    print_fractional_part :: (using sb: *String_Builder, fractional_part: u64) {
                         if fractional_part == 0 return;
-                        print_string(sb, ".");
+                        append(*buf, arena).* = #char ".";
 
                         divisor := DECIMAL;
                         while divisor / 10 > fractional_part {
                             divisor /= 10;
-                            print_string(sb, "0");
+                            append(*buf, arena).* = #char "0";
                         }
 
                         while fractional_part / 10 * 10 == fractional_part {
@@ -309,7 +310,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                         // @Incomplete: Handle printing tiny floats correctly
                         // @Incomplete: Handle printing denormalized numbers correctly
                         if sign print_string(sb, "-0");
-                        else    print_string(sb, "0");
+                        else    append(*buf, arena).* = #char "0";
                     } else if exponent >= 0 {
                         int_part := cast(u64, 1 << exponent);
                         
@@ -320,7 +321,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                             }
                         }
                         
-                        if sign print_string(sb, "-");
+                        if sign append(*buf, arena).* = #char "-";
                         print(sb, "%", int_part);
                         
                         
@@ -339,7 +340,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
 
                     } else {
                         if sign print_string(sb, "-0");
-                        else    print_string(sb, "0");
+                        else    append(*buf, arena).* = #char "0";
 
                         fractional_part := DECIMAL >> cast(u64, -exponent);
                         
@@ -396,9 +397,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                 case .STRUCT;
                     info := type_info(Print_Ascii);
                     if arg.type == info {
-                        assert(index < buf.count);
-                        buf[index] = cast(*Print_Ascii, arg.value_pointer).ascii;
-                        index += 1;
+                        append(*buf, arena).* = cast(*Print_Ascii, arg.value_pointer).ascii;
                     } else {
                         assert(false);
                     }
@@ -411,9 +410,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
                     assert(info.pointer_to == type_info(u8));
                     c_string := cast(**u8, arg.value_pointer).*;
                     while c_string.* {
-                        assert(index < buf.count);
-                        buf[index] = c_string.*;
-                        index += 1;
+                        append(*buf, arena).* = c_string.*;
                         c_string += 1;
                     }
                 case .VARIANT;
@@ -422,9 +419,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
             }
             arg_index += 1;
         } else {
-            assert(index < buf.count);
-            buf[index] = s[it];
-            index += 1;
+            append(*buf, arena).* = s[it];
         }
     }
     assert(arg_index == args.count);
@@ -432,7 +427,7 @@ print :: (using sb: *String_Builder, s: string, args: ..Any) {
 
 
 get_string :: (using sb: *String_Builder) -> string {
-    return .{index, buf.data};
+    return .{buf.count, buf.data};
 }
 
 

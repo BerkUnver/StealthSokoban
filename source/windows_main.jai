@@ -16,6 +16,16 @@
 
 window: HWND;
 keys_down: [Key.COUNT] bool; // :BitArray
+
+append_input_event :: (event: Input_Event) {    
+    append(*input_events, *frame_arena).* = event;
+    if event.state == .UP {
+        keys_down[event.key] = false;
+    } else {
+        keys_down[event.key] = true;
+    }
+}
+
 frame_arena: Memory_Arena;
 input_events: [..] Input_Event;
 
@@ -74,7 +84,7 @@ main :: () {
                             return;
                             // @TODO: Handle alt, f10 (they is special on windows, and isn't recieved via WM_KEY... messages).
                     }
-                    append(*input_events, *frame_arena).* = .{key=key, state=state};
+                    append_input_event(.{key=key, state=state});
                 }
 
 
@@ -108,22 +118,22 @@ main :: () {
 
                     case WM_LBUTTONDOWN;
                         SetCapture(window);
-                        append(*input_events, *frame_arena).* = .{key=.MOUSE_LEFT_BUTTON, state=.DOWN};
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, state=.DOWN});
                         return 0;
 
                     case WM_RBUTTONDOWN;
                         SetCapture(window);
-                        append(*input_events, *frame_arena).* = .{key=.MOUSE_RIGHT_BUTTON, state=.DOWN};
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.DOWN});
                         return 0;
 
 
                     case WM_LBUTTONUP;
-                        append(*input_events, *frame_arena).* = .{key=.MOUSE_LEFT_BUTTON, state=.UP};
+                        append_input_event(.{key=.MOUSE_LEFT_BUTTON, state=.UP});
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
                         
                     case WM_RBUTTONUP;
-                        append(*input_events, *frame_arena).* = .{key=.MOUSE_RIGHT_BUTTON, state=.UP};
+                        append_input_event(.{key=.MOUSE_RIGHT_BUTTON, state=.UP});
                         if !keys_down[Key.MOUSE_LEFT_BUTTON] && !keys_down[Key.MOUSE_RIGHT_BUTTON] ReleaseCapture();
                         return 0;
 
@@ -445,6 +455,7 @@ main :: () {
 
     time_elapsed: float64;
     
+    frame_arena = make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
 
     //
     // Set working directory to exe directory
@@ -468,9 +479,9 @@ main :: () {
 
         assert(last_path_index >= 0 && second_to_last_path_index >= 0);
         game_path := string.{second_to_last_path_index + 1, exe_path.data};
-
-        assets_path_buf: [4096] u8 = ---;
-        sb := make_string_builder(assets_path_buf);
+        
+        scope_mark(*frame_arena);
+        sb := make_string_builder(*frame_arena);
         print(*sb, "%assets\0", game_path);
         assert(SetCurrentDirectoryA(get_string(*sb).data) != 0);
     }
@@ -500,7 +511,6 @@ main :: () {
     
     gameplay_arena := make_arena(VirtualAlloc(null, GAMEPLAY_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), GAMEPLAY_ARENA_SIZE);
     editor_arena := make_arena(VirtualAlloc(null, EDITOR_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), EDITOR_ARENA_SIZE);
-    frame_arena = make_arena(VirtualAlloc(null, FRAME_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), FRAME_ARENA_SIZE);
     permanent_arena := make_arena(VirtualAlloc(null, PERMANENT_ARENA_SIZE, MEM_COMMIT, PAGE_READWRITE), PERMANENT_ARENA_SIZE);
 
     data := Game_Init_Data.{
@@ -674,18 +684,12 @@ main :: () {
 
 
             for input_events {
-                if it.state == .UP {
-                    keys_down[it.key] = false;
-                } else {
-                    keys_down[it.key] = true;
+                if it.key == Key.F_BASE + 11 && it.state == .DOWN {
+                    toggle_fullscreen();
+
+                    // This will REORDER the input events. Do we want that?
+                    remove it;
                 }
-
-                if it.key != Key.F_BASE + 11 || it.state != .DOWN continue;
-
-                toggle_fullscreen();
-
-                // This will REORDER the input events. Do we want that?
-                remove it;
             }
 
 

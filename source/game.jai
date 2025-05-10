@@ -484,10 +484,8 @@ game_update : Game_Update : (
                     if #complete mode == {
                         case .GAMEPLAY; 
                             mode = .EDITOR;
-                            enable_cursor(true);
                         case .EDITOR;
                             mode = .GAMEPLAY;
-                            enable_cursor(false);
                     }
                     continue;
                 }
@@ -777,7 +775,7 @@ game_update : Game_Update : (
 
                     set_shader(imm_color_shader, .{flags = .BLEND});
                     set_uniform("projection", ui_to_camera);
-                    imm_quad(imgui_position, imgui_size, .{0, 0, 0, 1});
+                    imm_quad(imgui_position, imgui_size, BACKGROUND_COLOR);
                     imm_flush();
 
                     font := *consolas_small;
@@ -931,7 +929,7 @@ game_update : Game_Update : (
                     set_shader(imm_color_shader, .{flags = .BLEND});
                     set_uniform("projection", ui_to_camera);
                     imm_quad(Vector2.{0, 0}, Vector2.{xx viewport_w, xx viewport_h}, .{0, 0, 0, 0.5});
-                    imm_quad(.{x, y}, .{w, h}, .{0, 0, 0, 1});
+                    imm_quad(.{x, y}, .{w, h}, BACKGROUND_COLOR);
                     imm_flush();
 
                     
@@ -942,14 +940,11 @@ game_update : Game_Update : (
                         head := y + w / 2 - (T.COUNT - 1) * font.ascender;
 
                         for 0..T.COUNT-1 {
-                            SELECTED_COLOR :: Vector4.{1, 1, 1, 1};
-                            UNSELECTED_COLOR :: Vector4.{0.5, 0.5, 0.5, 1};
-
                             color: Vector4;
                             if it == selected {
-                                color = SELECTED_COLOR;
+                                color = HIGHLIGHT_COLOR;
                             } else {
-                                color = UNSELECTED_COLOR;
+                                color = DULL_COLOR;
                             }
 
 
@@ -994,11 +989,14 @@ game_update : Game_Update : (
                 
                 write :: (ctx: *void, data: *void, size: s32) #c_call {
                     push_context cast(*#Context, ctx) {
+                        using context.game_context;
+
                         assert(create_directory("../screenshots"));
 
-                        buf: [4096] u8 = ---;
                         date := get_date();
-                        sb := make_string_builder(buf);
+
+                        scope_mark(frame_arena);
+                        sb := make_string_builder(frame_arena);
 
                         // @TODO: Pad with zeros for numbers that aren't long enough.
                         print(*sb, "../screenshots/%-%-%_%-%-%-%.png",
@@ -1016,6 +1014,18 @@ game_update : Game_Update : (
                 stbi_write_png_to_func(write, *context, xx viewport_w, xx viewport_h, 3, data, xx (viewport_w * 3));
                 log(.OK, "Screenshot captured.\n");
             }
+        }
+
+        if mode == {
+            case .EDITOR;
+                enable_cursor(true);
+            case .GAMEPLAY;
+                // @Hack we want the cursor to show up outside of the client rect, but not inside.
+                // This is so we can resize the window by clicking on its edges and drag the window
+                // around and such. Maybe this should be handled in the OS code.
+
+                enabled := mouse.x < -1 || 1 < mouse.x || mouse.y < -1 || 1 < mouse.y;
+                enable_cursor(enabled);
         }
     }
 }
@@ -1328,6 +1338,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
             font := *consolas_large;
 
             draw_input_hint :: (text: string) #expand {
+                margin_x := viewport_h * 0.03;
+                margin_y := font.ascender * 0.7;
+
                 length := text_length(text, font);
                 
                 text_position := Vector2.{
@@ -1335,16 +1348,34 @@ draw :: (using level: *Level, mode: Game_Mode) {
                     input_hint_y
                 };
 
-                draw_text(text, text_position, font, .{1, 1, 1, 1});
+                set_shader(imm_color_shader, .{});
+                set_uniform("projection", ui_to_camera);
+
+                quad_position := Vector2.{
+                    text_position.x - margin_x,
+                    text_position.y - font.ascender - margin_y
+                };
+
+                quad_size := Vector2.{
+                    length + margin_x * 2,
+                    font.ascender + margin_y * 2
+                };
+
+                imm_quad(quad_position, quad_size, BACKGROUND_COLOR);
+                imm_flush();
+
+
+
+                draw_text(text, text_position, font, HIGHLIGHT_COLOR);
             }
 
             input_hint_y := cast(float, viewport_h) * 0.95;
 
             for * _Input_Hint {
                 if it.position == player.position {
-                    text: string;
-                    buf: [4096] u8 = ---;
-                    sb := make_string_builder(buf);
+
+                    scope_mark(frame_arena);
+                    sb := make_string_builder(frame_arena);
 
                     if #complete it.input_hint_type == {
                         case .MOVEMENT;
@@ -1356,21 +1387,22 @@ draw :: (using level: *Level, mode: Game_Mode) {
                                 Print_Ascii.{DOWN_KEY},
                                 Print_Ascii.{RIGHT_KEY}
                             );
-                            text = get_string(*sb);
                     }
 
-                    draw_input_hint(text);
+                    draw_input_hint(get_string(*sb));
                 }
             }
 
+
             for * _Overworld_Entrance {
                 if it.position == player.position {
-                    buf: [4096] u8 = ---;
-                    sb := make_string_builder(buf);
+                    scope_mark(frame_arena);
+                    sb := make_string_builder(frame_arena);
+
                     if it.activated {
                         print(
                             *sb,
-                            "Press the % key to enter the level and the % key to skip over it.",
+                            "% key: Enter the level, % key: Go to its overworld exit.",
                             Print_Ascii.{ENTER_LEVEL_KEY},
                             Print_Ascii.{TELEPORT_KEY}
                         );
@@ -1382,21 +1414,30 @@ draw :: (using level: *Level, mode: Game_Mode) {
                         );
                     }
 
-                    text := get_string(*sb);
-                    
-                    draw_input_hint(text);
+                    draw_input_hint(get_string(*sb));
                 }
             }
 
-            for * _Exit {
+            
+            for * _Overworld_Exit {
+                entrance := get_entrance_for_overworld_exit(level, it, log_errors=false);
+                if !entrance || !entrance.activated continue;
+
                 if it.position == player.position {
-                    buf: [4096] u8 = ---;
-                    sb := make_string_builder(buf);
-                    if it.activated {
-                    }
+                    scope_mark(frame_arena);
+                    sb := make_string_builder(frame_arena);
+                    
+                    print(
+                        *sb, 
+                        "% key: Enter the level, % key: Go to its overworld entrance.",
+                        Print_Ascii.{ENTER_LEVEL_KEY},
+                        Print_Ascii.{TELEPORT_KEY}
+                    );
+
+                    draw_input_hint(get_string(*sb));
                 }
             }
-            
+
 
 
             draw_fade :: (alpha: float) {

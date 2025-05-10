@@ -9,8 +9,7 @@ ASSET_INFOS :: Asset_Info.[
 
 Asset :: struct {
     #insert -> string {
-        buf: [4096] u8 = ---;
-        sb := make_string_builder(buf);
+        sb := make_local_string_builder();
 
         print(*sb, "Type :: enum u8 {\n");
         for ASSET_INFOS {
@@ -48,24 +47,21 @@ load_asset :: ($T: Type, table: *Asset_Table, name: string) -> *T {
     if !asset {
         asset = add(table, name);
         #insert -> string {
-            buf: [4096] u8 = ---;
-            sb := make_string_builder(buf);
+            sb := make_local_string_builder();
             str := ifx ASSET_INFO.needs_permanent_arena then ", permanent_arena" else "";
             print(*sb, "asset.* = .{ type = .%, _% = %(name%) };\n", ASSET_INFO.type, ASSET_INFO.type, ASSET_INFO.proc, str);
             return get_string(*sb);
         }
     } else {
         #insert -> string {
-            buf: [4096] u8 = ---;
-            sb := make_string_builder(buf);
+            sb := make_local_string_builder();
             print(*sb, "assert(asset.type == .%);\n", ASSET_INFO.type);
             return get_string(*sb);
         }
     }
 
     #insert -> string {
-        buf: [4096] u8 = ---;
-        sb := make_string_builder(buf);
+        sb := make_local_string_builder();
         print(*sb, "return *asset._%;\n", ASSET_INFO.type);
         return get_string(*sb);
     }
@@ -90,8 +86,7 @@ reload_assets :: (table: *Asset_Table, changed_file_names: [] string) {
         if !asset continue;
         log(.OK, "Hotloading asset \"%\"\n", it);
         #insert -> string {
-            buf: [4096] u8 = ---;
-            sb := make_string_builder(buf);
+            sb := make_local_string_builder();
             print(*sb, "if asset.type == {\n");
             for ASSET_INFOS {
                 print(*sb, "    case .%;\n", it.type);

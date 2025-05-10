@@ -761,8 +761,7 @@ load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists
     
     // Restore the type of each entity
     #insert -> string {
-        buf: [4096] u8 = ---;
-        sb := make_string_builder(buf);
+        sb := make_local_string_builder();
         for ENTITIES {
             print(*sb, "for * _% {\n", it.name);
             print(*sb, "    it.type = .%;\n", it.name);
@@ -785,8 +784,8 @@ load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists
 
 serialize_level :: (using level: *Level) {
     using context.game_context;
-    buf: [100000] u8 = ---;
-    str := serialize(buf, level);
+    scope_mark(frame_arena);
+    str := serialize(level);
     assert(write_file(level.name, str));
 }
 
@@ -811,8 +810,7 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
     reserved := 1;
     count := 1;
     #insert -> string {
-        buf: [1024] u8;
-        sb := make_string_builder(buf);
+        sb := make_local_string_builder();
         for ENTITIES {
             print(*sb, "reserved += _%.allocated;\n", it.name);
             print(*sb, "count += _%.count;\n", it.name);

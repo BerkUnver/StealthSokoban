@@ -1,29 +1,22 @@
 // @TODO: :SpecialSerialization Do we want to serialize commonly-used structs
-// (Vector2, Vector3, Vector4, Vector3i to some more convenient form?
+// (Vector2, Vector3, Vector4, Vector3i) to some more convenient form?
 // Like "(% % % %)" where each % is a member of Vector4?
 
-// @TODO: Elegantly fail when the buffer is too small.
-
-serialize :: (buf: [] u8, val: *$T) -> string {
+serialize :: (val: *$T) -> string {
     using context.game_context;
-    
-    sb := make_string_builder(buf);
+      
+    sb := make_string_builder(frame_arena);
 
     INFO :: type_info(T);
     
     default: *void;
 
     #if INFO.type == .STRUCT {
-        mark := get_mark(frame_arena);
         default = alloc(frame_arena, INFO.runtime_size, zero_init = false);
         init_from_info(INFO, default);
     }
 
     serialize_next(*sb, INFO, val, default, 0); 
-
-    #if INFO.type == .STRUCT {
-        restore_mark(frame_arena, mark);
-    }
 
     return get_string(*sb);
 }

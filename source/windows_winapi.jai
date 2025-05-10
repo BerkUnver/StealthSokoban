@@ -1069,7 +1069,7 @@ SetCursor :: (cursor: HCURSOR) #foreign user32;
 // SetCursorPos
 // SetPhysicalCursorPos
 // SetSystemCursor
-ShowCursor :: (bShow: s32) -> s32 #foreign user32;
+ShowCursor :: (bShow: BOOL) -> s32 #foreign user32; // @Added changed bShow to BOOL
 
 
 // Message.
