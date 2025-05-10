@@ -1,0 +1,49 @@
+// @Copypasta from gridlike_gameplay.gl
+#ifdef VERTEX_SHADER
+layout(location=LOC_POSITION)        in vec3 vertex_position;
+layout(location=LOC_UV)              in vec2 vertex_uv;
+layout(location=LOC_OUTLINE_UV)      in vec2 vertex_outline_uv;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform sampler2D outline_bitmap;
+uniform mat4 projection;
+uniform vec4 color;
+
+OUTIN vec2 fragment_uv;
+OUTIN vec2 fragment_outline_uv;
+
+#ifndef VERTEX_SHADER
+vec4 get_base_color() {
+    vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
+
+    float outline_brightness = 1;
+    if (outline_color.a == 1) {
+        outline_brightness = 0.4;
+    }
+
+    float edge_brightness = 1;
+    if (fragment_uv.x < 0.0625 || (1 - 0.0625) < fragment_uv.x
+     || fragment_uv.y < 0.0625 || (1 - 0.0625) < fragment_uv.y) {
+        edge_brightness = 0.9;
+    }
+
+    vec4 base_color = color;
+    base_color.rgb *= outline_brightness * edge_brightness;
+
+    return base_color;
+}
+#endif
+
+
+void main() {
+#ifdef VERTEX_SHADER
+    gl_Position = projection * vec4(vertex_position, 1.0);
+    fragment_uv = vertex_uv;
+    fragment_outline_uv = vertex_outline_uv;
+#else
+    fragment_color = get_base_color();
+#endif
+}
+

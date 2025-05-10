@@ -58,18 +58,18 @@ Game_Context :: struct {
 
     asset_table: Asset_Table;
 
-    imm_color_shader: Shader;
-    imm_text_shader: Shader;
-    imm_saturation_value_shader: Shader;
-    imm_hue_shader: Shader;
-    gameplay_gridlike_shader: Shader;
-    editor_gridlike_shader: Shader;
-    color_shader: Shader;
-    wireframe_shader: Shader;
-    bitmap_shader: Shader;
-    item_and_color_shader: Shader;
-    item_and_bitmap_shader: Shader;
-    occlusion_shader: Shader;
+    imm_color_shader: *Shader;
+    imm_text_shader: *Shader;
+    imm_saturation_value_shader: *Shader;
+    imm_hue_shader: *Shader;
+    gridlike_gameplay_shader: *Shader;
+    gridlike_editor_shader: *Shader;
+    color_shader: *Shader;
+    wireframe_shader: *Shader;
+    bitmap_shader: *Shader;
+    item_and_color_shader: *Shader;
+    item_and_bitmap_shader: *Shader;
+    occlusion_shader: *Shader;
 
     consolas_small: Font;
     consolas_large: Font;
@@ -272,18 +272,18 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         
         asset_table = make_asset_table();
 
-        imm_color_shader = load_shader("shaders/imm_color.gl");
-        imm_text_shader = load_shader("shaders/imm_text.gl");
-        imm_saturation_value_shader = load_shader("shaders/imm_saturation_value.gl");
-        imm_hue_shader = load_shader("shaders/imm_hue.gl");
-        gameplay_gridlike_shader = load_shader("shaders/gridlike.gl", "#define GAMEPLAY\n");
-        editor_gridlike_shader = load_shader("shaders/gridlike.gl");
-        color_shader = load_shader("shaders/color.gl");
-        wireframe_shader = load_shader("shaders/wireframe.gl");
-        bitmap_shader = load_shader("shaders/bitmap.gl");
-        item_and_color_shader = load_shader("shaders/item_and_color.gl");
-        item_and_bitmap_shader = load_shader("shaders/item_and_bitmap.gl");
-        occlusion_shader = load_shader("shaders/occlusion.gl");
+        imm_color_shader            = load_asset(Shader, *asset_table, "shaders/imm_color.gl");
+        imm_text_shader             = load_asset(Shader, *asset_table, "shaders/imm_text.gl");
+        imm_saturation_value_shader = load_asset(Shader, *asset_table, "shaders/imm_saturation_value.gl");
+        imm_hue_shader              = load_asset(Shader, *asset_table, "shaders/imm_hue.gl");
+        gridlike_gameplay_shader    = load_asset(Shader, *asset_table, "shaders/gridlike_gameplay.gl");
+        gridlike_editor_shader      = load_asset(Shader, *asset_table, "shaders/gridlike_editor.gl");
+        color_shader                = load_asset(Shader, *asset_table, "shaders/color.gl");
+        wireframe_shader            = load_asset(Shader, *asset_table, "shaders/wireframe.gl");
+        bitmap_shader               = load_asset(Shader, *asset_table, "shaders/bitmap.gl");
+        item_and_color_shader       = load_asset(Shader, *asset_table, "shaders/item_and_color.gl");
+        item_and_bitmap_shader      = load_asset(Shader, *asset_table, "shaders/item_and_bitmap.gl");
+        occlusion_shader            = load_asset(Shader, *asset_table, "shaders/occlusion.gl");
 
         footstep                    = load_asset(Sound, *asset_table, "sounds/footstep.wav");
         gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
@@ -1056,10 +1056,9 @@ draw :: (using level: *Level, mode: Game_Mode) {
             position = level_position;
             size = level_size;
 
-            set_shader(gameplay_gridlike_shader);
-            set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
-            set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
-            set_uniform_view_texture("viewed", 2, *view_texture);
+            set_shader(gridlike_gameplay_shader);
+            set_uniform_bitmap("outline_bitmap", 0, gridlike_outline_bitmap);
+            set_uniform_view_texture("viewed", 1, *view_texture);
             set_uniform("viewed_size", level_size);
 
             for * _Block {
@@ -1081,9 +1080,8 @@ draw :: (using level: *Level, mode: Game_Mode) {
             world_to_camera = get_editor_camera_matrix(level);
             position, size = get_block_extents(_Block); // :LevelSizeInEditor
 
-            set_shader(editor_gridlike_shader);
-            set_uniform_bitmap("bitmap", 0, gridlike_bitmap);
-            set_uniform_bitmap("outline_bitmap", 1, gridlike_outline_bitmap);
+            set_shader(gridlike_editor_shader);
+            set_uniform_bitmap("outline_bitmap", 0, gridlike_outline_bitmap);
             for * _Block {
                 projection := translate(world_to_camera, to_vector3(it.position));
                 set_uniform("projection", projection);
@@ -1224,39 +1222,51 @@ draw :: (using level: *Level, mode: Game_Mode) {
                 return false;
             }
 
-            if is_a_gridlike_at(level, it_index) continue;
-            // This is handled in the shader for gridlikes
+                    
 
-            view_state := viewed[it_index];
-            
-            origin := to_vector3(level_position + it);
 
-            check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
-                in_bounds, index := get_3d_index(position, level_size);
+            if !is_a_gridlike_at(level, it_index) {
+                // This is handled in the shader for gridlikes
+
+                view_state := viewed[it_index];
                 
+                origin := to_vector3(level_position + it);
+
                 // @Volatile :GridlikeExteriorHiddenColor
                 COLOR :: Vector4.{14.0/255.0, 21.0/255.0, 63.0/255.0, 1};
-                if !in_bounds {
-                    if !(view_state & (.VISIBLE | .SEEN)) {
-                        for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
-                    }
-                } else {
-                    if !(view_state & (.VISIBLE | .SEEN)) && (viewed[index] & .SEEN) {
-                        if !is_a_gridlike_at(level, index) {
-                            for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
+                    in_bounds, index := get_3d_index(position, level_size);
+                    
+                    if in_bounds {
+                        if !(view_state & (.VISIBLE | .SEEN)) && (viewed[index] & .SEEN) {
+                            if !is_a_gridlike_at(level, index) {
+                                for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                            }
+                        }
+                    } else {
+                        if !(view_state & (.VISIBLE | .SEEN)) {
+                            for 0..5 {
+                                vertex := CUBE_VERTICES[xx face + it];
+                                imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                            }
                         }
                     }
                 }
-            }
 
-            check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
-            check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
-            check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
-            check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
-            check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
-            check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
+                check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
+                check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
+                check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
+                check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
+                check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
+                check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
+            }
         }
         imm_flush();
+    }
+
+
+    if mode == .GAMEPLAY {
+
     }
 
 
@@ -1264,7 +1274,7 @@ draw :: (using level: *Level, mode: Game_Mode) {
     // Draw the occlusion effects
     //
 
-    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE, depth_func = .GREATER});
+    set_shader(occlusion_shader, .{flags = .BLEND | .STENCIL_TEST | .CULL_FACE});
 
     set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
     for * _Player {

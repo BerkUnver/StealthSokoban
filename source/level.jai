@@ -2073,45 +2073,49 @@ gameplay_update :: (using level: *Level, dt: float) {
 
     scope_mark(frame_arena);
     // Should this instead be stashed in the data structure for the level so we know how much memory is being used?
-    positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
-    position_count := 1;
 
     player_in_bounds, player_index := get_3d_index(player.position, level_position, level_size);
     assert(player_in_bounds);
-    positions[0] = player.position;
-    viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
 
-    while position_count {
-        position_count -= 1;
-        position := positions[position_count];
+    if !doors[player_index] {
+        positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
+        position_count := 1;
+        positions[0] = player.position;
+        viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
 
-        check_axis :: (i: int) #expand {
-            check_position :: (position: Vector3i) -> bool #expand {
-                success, index := get_3d_index(position, level_position, level_size);
-                if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
-                    eid := collision[index];
-                    if (eid && get_entity(level, eid).type == .Block) || doors[index] {
-                        viewed[index] |= .BLEED;
-                    } else {
-                        viewed[index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
-                        positions[position_count] = position;
-                        position_count += 1;
+
+        while position_count {
+            position_count -= 1;
+            position := positions[position_count];
+
+            check_axis :: (i: int) #expand {
+                check_position :: (position: Vector3i) -> bool #expand {
+                    success, index := get_3d_index(position, level_position, level_size);
+                    if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
+                        eid := collision[index];
+                        if (eid && get_entity(level, eid).type == .Block) || doors[index] {
+                            viewed[index] |= .BLEED;
+                        } else {
+                            viewed[index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
+                            positions[position_count] = position;
+                            position_count += 1;
+                        }
                     }
                 }
+
+                p := position;
+                p.component[i] += 1;
+                check_position(p);
+
+                n := position;
+                n.component[i] -= 1;
+                check_position(n);
             }
 
-            p := position;
-            p.component[i] += 1;
-            check_position(p);
-
-            n := position;
-            n.component[i] -= 1;
-            check_position(n);
+            check_axis(0);
+            check_axis(1);
+            check_axis(2);
         }
-
-        check_axis(0);
-        check_axis(1);
-        check_axis(2);
     }
 
     update_view_texture(*view_texture, level_size, viewed);

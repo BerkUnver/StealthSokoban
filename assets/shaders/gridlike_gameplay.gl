@@ -1,0 +1,170 @@
+#ifdef VERTEX_SHADER
+layout(location=LOC_POSITION)        in vec3 vertex_position;
+layout(location=LOC_UV)              in vec2 vertex_uv;
+layout(location=LOC_FILLED_POSITION) in ivec3 vertex_filled_position;
+layout(location=LOC_FILLED_NORMAL)   in ivec3 vertex_filled_normal;
+layout(location=LOC_OUTLINE_UV)      in vec2 vertex_outline_uv;
+#else
+layout(location=0) out vec4 fragment_color;
+#endif
+
+uniform sampler2D outline_bitmap;
+uniform mat4 projection;
+uniform vec4 color;
+
+uniform usamplerBuffer viewed;
+uniform ivec3 viewed_size;
+uniform ivec3 viewed_position;
+
+#define FRAGMENT_INTERIOR_SEEN 0
+#define FRAGMENT_INTERIOR_VISIBLE 1
+#define FRAGMENT_EXTERIOR_HIDDEN 2
+#define FRAGMENT_EXTERIOR_BLEED 3
+
+flat OUTIN int fragment_type;
+
+OUTIN vec3 fragment_position;
+OUTIN vec2 fragment_uv;
+flat OUTIN ivec3 fragment_filled_position;
+flat OUTIN ivec3 fragment_filled_normal;
+OUTIN vec2 fragment_outline_uv;
+
+#ifndef VERTEX_SHADER
+// @Volatile  :GridlikeExteriorColor
+#define EXTERIOR_HIDDEN_COLOR vec4(14.0/255.0, 21.0/255.0, 63.0/255.0, 1)
+
+vec4 get_base_color() {
+    vec4 outline_color = texture(outline_bitmap, fragment_outline_uv);
+
+    float outline_brightness = 1;
+    if (outline_color.a == 1) {
+        outline_brightness = 0.4;
+    }
+
+    float edge_brightness = 1;
+    if (fragment_uv.x < 0.0625 || (1 - 0.0625) < fragment_uv.x
+     || fragment_uv.y < 0.0625 || (1 - 0.0625) < fragment_uv.y) {
+        edge_brightness = 0.9;
+    }
+
+    vec4 base_color = color;
+    base_color.rgb *= outline_brightness * edge_brightness;
+
+    return base_color;
+}
+
+
+vec4 get_bleed_color(ivec3 adjacent) {
+    int index;
+    bool in_bounds = get_3d_index(adjacent, viewed_size, index);
+    if (in_bounds) {
+        uint view_state = texelFetch(viewed, index).r;
+        if ((view_state & (VIEW_STATE_VISIBLE | VIEW_STATE_SEEN)) != 0u) {
+            return mix(EXTERIOR_HIDDEN_COLOR, color, 0.5);
+        } else {
+            return EXTERIOR_HIDDEN_COLOR;
+        }
+    } else {
+        return EXTERIOR_HIDDEN_COLOR;
+    }
+}
+#endif
+
+
+void main() {
+#ifdef VERTEX_SHADER
+    int index;
+    bool success = get_3d_index(viewed_position + vertex_filled_position + vertex_filled_normal, viewed_size, index);
+        
+    if (success) {
+        uint view_state = texelFetch(viewed, index).r;
+
+        if ((view_state & VIEW_STATE_VISIBLE) != 0u) {
+            fragment_type = FRAGMENT_INTERIOR_VISIBLE;
+        } else {
+            fragment_type = FRAGMENT_INTERIOR_SEEN;
+        }
+    } else {
+        // We are on the edge. 
+        int index;
+        get_3d_index(viewed_position + vertex_filled_position, viewed_size, index); // This will always work.
+        if ((texelFetch(viewed, index).r & VIEW_STATE_BLEED) != 0u) {
+            fragment_type = FRAGMENT_EXTERIOR_BLEED;
+        } else {
+            fragment_type = FRAGMENT_EXTERIOR_HIDDEN;
+        }
+    }
+    
+    fragment_position = vertex_position;
+    fragment_uv = vertex_uv;
+    fragment_filled_position = vertex_filled_position;
+    fragment_filled_normal = vertex_filled_normal;
+    fragment_outline_uv = vertex_outline_uv;
+    gl_Position = projection * vec4(vertex_position, 1.0);
+
+#else
+    if (fragment_type == FRAGMENT_INTERIOR_SEEN) {
+       fragment_color = get_base_color();
+       fragment_color.rgb *= SEEN_BRIGHTNESS;
+    } else if (fragment_type == FRAGMENT_INTERIOR_VISIBLE) {
+        fragment_color = get_base_color();
+    } else if (fragment_type == FRAGMENT_EXTERIOR_HIDDEN) {
+        fragment_color = EXTERIOR_HIDDEN_COLOR;
+    } else if (fragment_type == FRAGMENT_EXTERIOR_BLEED) {
+
+        fragment_color = mix(EXTERIOR_HIDDEN_COLOR, color, 0.5);
+
+        // @TODO:
+        // I'm trying to get a nice fade effect working here but I've run out of time to do it before
+        // the exhibition.
+
+        /*
+        int axis_1_index;
+        int axis_2_index;
+
+        if (fragment_filled_normal == ivec3(1, 0, 0) || fragment_filled_normal == ivec3(-1, 0, 0)) {
+            axis_1_index = 1;
+            axis_2_index = 2;
+        } else if (fragment_filled_normal == ivec3(0, 1, 0) || fragment_filled_normal == ivec3(0, -1, 0)) {
+            axis_1_index = 2;
+            axis_2_index = 0;
+        } else if (fragment_filled_normal == ivec3(0, 0, 1) || fragment_filled_normal == ivec3(0, 0, -1)) {
+            axis_1_index = 0;
+            axis_2_index = 1;
+        } else {
+            // This should not happen. Make it an obnoxious green color.
+            fragment_color = vec4(0, 1, 0, 1);
+            return;
+        }
+        
+        float axis_1_p_distance = abs(fragment_position[axis_1_index] - float(fragment_filled_position[axis_1_index] + 1));
+        float axis_1_n_distance = abs(fragment_position[axis_1_index] - float(fragment_filled_position[axis_1_index]));
+
+        float axis_2_p_distance = abs(fragment_position[axis_2_index] - float(fragment_filled_position[axis_2_index] + 1));
+        float axis_2_n_distance = abs(fragment_position[axis_2_index] - float(fragment_filled_position[axis_2_index]));
+
+        
+        float axis_min = min(min(min(axis_1_p_distance, axis_1_n_distance), axis_2_p_distance), axis_1_n_distance);
+
+        ivec3 adjacent = viewed_position + fragment_filled_position;
+        if (axis_min == axis_1_p_distance) {
+            adjacent[axis_1_index] += 1;
+        } else if (axis_min == axis_1_n_distance) {
+            adjacent[axis_1_index] -= 1;
+        } else if (axis_min == axis_2_p_distance) {
+            adjacent[axis_2_index] += 1;
+        } else if (axis_min == axis_2_n_distance) {
+            adjacent[axis_2_index] -= 1;
+        } else {
+            // This should not happen. Make it an obnoxious green color.
+            fragment_color = vec4(0, 1, 0, 1);
+            return;
+        }
+        fragment_color = get_bleed_color(adjacent);
+        */
+    } else {
+        // This should not happen. Make it an obnoxious green color.
+        fragment_color = vec4(0, 1, 0, 1);
+    }
+#endif
+}

@@ -37,7 +37,7 @@ Shader :: struct {
 // When we set up the VAO and write the layouts in the shaders, we use these constants instead of 
 // putting them in ascending order.
 
-// That way, if a shaders needs, let's say, POSITION and FILLED_OFFSET, the shader will have locations
+// That way, if a shaders needs, let's say, POSITION and FILLED_NORMAL, the shader will have locations
 // 0 and 2 for those vertex attributes and and the VAO will have vertex attribute indices 0 and 2
 // set up to mean position and filled_offset. As long as the vertex format has what the shader needs,
 // the shader will be able to draw that vertex format.
@@ -53,7 +53,7 @@ Layout_Location :: enum {
     UV;
     COLOR;
     FILLED_POSITION;
-    FILLED_OFFSET;
+    FILLED_NORMAL;
     OUTLINE_UV;
 }
 
@@ -175,11 +175,11 @@ Imm_Vertex :: struct {
 } #no_padding
 
 
-Block_Vertex :: struct {
+Gridlike_Vertex :: struct {
     position: Vector3;
     uv: Vector2;
-    filled_position: Vector3i;
-    filled_offset: Vector3i;
+    filled_position: Vector3i; // Position of the grid cell the vertex belongs to in the "filled" array on the gridlike
+    filled_normal: Vector3i;
     outline_uv: Vector2;
 } #no_padding
 
@@ -283,59 +283,10 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
     glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Vector3), null);
 
     glEnableVertexAttribArray(xx UV);
-    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Gridlike_Vertex), *cast(*Gridlike_Vertex, null).uv);
 
     return .{vertex_positions = vertex_positions, vao = vao, vbo = vbo};
 }
-
-
-/*
-make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena: *Memory_Arena) -> vertices: [] Vector3 {
-    using context.game_context;
-    
-    scope_mark(frame_arena);
-    
-    vertices: [..] Block_Vertex;
-
-    for :iterate_vector3i size {
-        if !filled[it_index] continue;
-        
-        origin := to_vector3(it);
-        
-        check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
-            success, index := get_3d_index(position, size);
-            if !success || !filled[index] {
-                for 0..5 {
-                    append(*vertices, frame_arena).* = .{
-                       position = origin + CUBE_VERTICES[xx face + it],
-                       uv = CUBE_UVS[xx face + it],
-                       filled_offset = position,
-                    };
-                }
-            }
-        }
-        
-        check_cube_face(.{it.x-1, it.y, it.z}, .X_NEGATIVE);
-        check_cube_face(.{it.x+1, it.y, it.z}, .X_POSITIVE);
-        check_cube_face(.{it.x, it.y-1, it.z}, .Y_NEGATIVE);
-        check_cube_face(.{it.x, it.y+1, it.z}, .Y_POSITIVE);
-        check_cube_face(.{it.x, it.y, it.z-1}, .Z_NEGATIVE);
-        check_cube_face(.{it.x, it.y, it.z+1}, .Z_POSITIVE);
-    }
-    
-    vertex_positions := alloc_view(arena, vertices.count, Vector3);
-
-    for * vertices {
-        vertex_positions[it_index] = it.position;
-    }
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
-
-
-    return vertex_positions;
-}
-*/
 
 
 // @CompilerBug doing "enum_flags u8" doesn't actually make it a u8
@@ -357,7 +308,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
     
     scope_mark(frame_arena);
 
-    vertices: [..] Block_Vertex;
+    vertices: [..] Gridlike_Vertex;
 
     for :iterate_vector3i size {
         if !filled[it_index] continue;
@@ -406,43 +357,37 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
         check :: ($face: Cube_Vertex) #expand {
             #if face == {
                 case .X_POSITIVE;
-                    NORMAL_INDEX :: 0;
-                    NORMAL :: 1;
+                    NORMAL :: Vector3i.{1, 0, 0};
                     X_AXIS_INDEX :: 2;
                     X_AXIS :: 1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
                 case .X_NEGATIVE;
-                    NORMAL_INDEX :: 0;
-                    NORMAL :: -1;
+                    NORMAL :: Vector3i.{-1, 0, 0};
                     X_AXIS_INDEX :: 2;
                     X_AXIS :: -1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
                 case .Y_POSITIVE;
-                    NORMAL_INDEX :: 1;
-                    NORMAL :: 1;
+                    NORMAL :: Vector3i.{0, 1, 0};
                     X_AXIS_INDEX :: 0;
                     X_AXIS :: 1;
                     Y_AXIS_INDEX :: 2;
                     Y_AXIS :: 1;
                 case .Y_NEGATIVE;
-                    NORMAL_INDEX :: 1;
-                    NORMAL :: -1;
+                    NORMAL :: Vector3i.{0, -1, 0};
                     X_AXIS_INDEX :: 0;
                     X_AXIS :: -1;
                     Y_AXIS_INDEX :: 2;
                     Y_AXIS :: 1;
                 case .Z_POSITIVE;
-                    NORMAL_INDEX :: 2;
-                    NORMAL :: 1;
+                    NORMAL :: Vector3i.{0, 0, 1};
                     X_AXIS_INDEX :: 0;
                     X_AXIS :: -1;
                     Y_AXIS_INDEX :: 1;
                     Y_AXIS :: 1;
                 case .Z_NEGATIVE;
-                    NORMAL_INDEX :: 2;
-                    NORMAL :: -1;
+                    NORMAL :: Vector3i.{0, 0, -1};
                     X_AXIS_INDEX :: 0;
                     X_AXIS :: 1;
                     Y_AXIS_INDEX :: 1;
@@ -451,11 +396,8 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     #assert false;
             }
 
-
-            beside := it;
-            beside.component[NORMAL_INDEX] += NORMAL;
-
-            success, index := get_3d_index(beside, size);
+            
+            success, index := get_3d_index(it + NORMAL, size);
             if success && filled[index] return;
 
             occupied: Gridlike_Edge;
@@ -468,7 +410,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                 if !success || !filled[index] {
                     occupied |= edge;
                 } else {
-                    position.component[NORMAL_INDEX] += NORMAL;
+                    position += NORMAL;
                     success, index := get_3d_index(position, size);
                     if success && filled[index] occupied |= edge;
                 }
@@ -488,7 +430,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                 if !success || !filled[index] {
                     occupied |= corner;
                 } else {
-                    position.component[NORMAL_INDEX] += NORMAL;
+                    position += NORMAL;
                     success, index := get_3d_index(position, size);
                     if success && filled[index] occupied |= corner;
                 }
@@ -575,7 +517,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                     position = origin + CUBE_VERTICES[index],
                     uv = CUBE_UVS[index],
                     filled_position = it,
-                    filled_offset = beside,
+                    filled_normal = NORMAL,
                     outline_uv = outline_uvs[i]
                 };
             }
@@ -599,7 +541,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.count * size_of(Block_Vertex), vertices.data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertices.count * size_of(Gridlike_Vertex), vertices.data, GL_STATIC_DRAW);
 
 
     return vertex_positions;
@@ -620,19 +562,19 @@ make_gridlike_mesh :: (size: Vector3i, filled: [] bool, level_arena: *Memory_Are
     using Layout_Location;
 
     glEnableVertexAttribArray(xx POSITION);
-    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), null);
+    glVertexAttribPointer(xx POSITION, 3, GL_FLOAT, GL_FALSE, size_of(Gridlike_Vertex), null);
 
     glEnableVertexAttribArray(xx UV);
-    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).uv);
+    glVertexAttribPointer(xx UV, 2, GL_FLOAT, GL_FALSE, size_of(Gridlike_Vertex), *cast(*Gridlike_Vertex, null).uv);
 
     glEnableVertexAttribArray(xx FILLED_POSITION);
-    glVertexAttribIPointer(xx FILLED_POSITION, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).filled_position);
+    glVertexAttribIPointer(xx FILLED_POSITION, 3, GL_INT, size_of(Gridlike_Vertex), *cast(*Gridlike_Vertex, null).filled_position);
 
-    glEnableVertexAttribArray(xx FILLED_OFFSET);
-    glVertexAttribIPointer(xx FILLED_OFFSET, 3, GL_INT, size_of(Block_Vertex), *cast(*Block_Vertex, null).filled_offset);
+    glEnableVertexAttribArray(xx FILLED_NORMAL);
+    glVertexAttribIPointer(xx FILLED_NORMAL, 3, GL_INT, size_of(Gridlike_Vertex), *cast(*Gridlike_Vertex, null).filled_normal);
 
     glEnableVertexAttribArray(xx OUTLINE_UV);
-    glVertexAttribPointer(xx OUTLINE_UV, 2, GL_FLOAT, GL_FALSE, size_of(Block_Vertex), *cast(*Block_Vertex, null).outline_uv);
+    glVertexAttribPointer(xx OUTLINE_UV, 2, GL_FLOAT, GL_FALSE, size_of(Gridlike_Vertex), *cast(*Gridlike_Vertex, null).outline_uv);
 
 
 
@@ -774,7 +716,7 @@ free_bitmap :: (bitmap: *Bitmap) {
 }
 
 
-load_shader :: (file_name: string, prefix := "") -> Shader {
+load_shader :: (file_name: string) -> Shader {
     using context.game_context;
     
     scope_mark(frame_arena);
@@ -785,11 +727,11 @@ load_shader :: (file_name: string, prefix := "") -> Shader {
         assert(false);
     }
 
-    return load_shader(file_name, str, prefix);
+    return load_shader(file_name, str);
 }
 
 
-load_shader :: (name: string, text: string, prefix: string) -> Shader {
+load_shader :: (name: string, text: string) -> Shader {
     using context.game_context;
 
     LOG_SIZE :: 1024;
@@ -866,12 +808,11 @@ load_shader :: (name: string, text: string, prefix: string) -> Shader {
     defer glDeleteShader(vertex);
 
     // You need the "#line 1" directive or else the NVIDIA shader compiler will report the line number including the
-    // prefix lines in its compilation errors.
+    // stuff that comes before.
     vertex_strings := string.[
         "#version 330 core\n",
         shader_include,
         "#define VERTEX_SHADER\n#define OUTIN out\n",
-        prefix,
         "#line 1\n",
         text
     ];
@@ -900,7 +841,6 @@ load_shader :: (name: string, text: string, prefix: string) -> Shader {
         "#version 330 core\n",
         shader_include,
         "#define OUTIN in\n",
-        prefix,
         "#line 1\n",
         text
     ];
@@ -961,7 +901,7 @@ Pipeline :: struct {
 }
 
 
-set_shader :: (shader: Shader, using pipeline := Pipeline.{flags = .DEPTH_TEST | .CULL_FACE}) {
+set_shader :: (shader: *Shader, using pipeline := Pipeline.{flags = .DEPTH_TEST | .CULL_FACE}) {
     using context.game_context;
     glUseProgram(shader.program);
 

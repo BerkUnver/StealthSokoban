@@ -1,5 +1,6 @@
 Asset_Info :: struct { type, proc: string; needs_permanent_arena: bool; }
 ASSET_INFOS :: Asset_Info.[
+    .{"Shader", "load_shader", false},
     .{"Sound", "load_sound", true},
     .{"Mesh", "load_mesh", true},
     .{"Bitmap", "load_bitmap", false},

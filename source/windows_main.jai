@@ -568,7 +568,10 @@ main :: () {
             dir,
             file_notifications.data,
             xx file_notifications.count,
-            BOOL.TRUE,
+            BOOL.FALSE,
+            // For some reason this was returning the wrong file names
+            // when I tried to do it recursively. Skipping for now.
+            // @Investigate
             FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
             null,
             *overlapped,

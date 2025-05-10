@@ -25,7 +25,7 @@
 #define LOC_UV              1 
 #define LOC_COLOR           2
 #define LOC_FILLED_POSITION 3
-#define LOC_FILLED_OFFSET   4
+#define LOC_FILLED_NORMAL   4
 #define LOC_OUTLINE_UV      5
 
 
