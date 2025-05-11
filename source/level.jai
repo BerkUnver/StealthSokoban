@@ -27,10 +27,6 @@ Level :: struct {
 
         mutual_annihilations: [..] Mutual_Annihilation;
         
-        flags: enum_flags u8 {
-            CHECKPOINT_EXISTS;
-        }
-
         state: Level_Gameplay_State;
 
         union {
@@ -163,7 +159,6 @@ Camera_Mode :: enum u8 {
 
 
 Level_Gameplay_State :: enum u8 {
-    FADE_IN_START;
     FADE_IN;
     PLAYING;
     FADE_OUT_ENTRANCE;
@@ -916,11 +911,12 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
 
     if skip_intro {
         set_state(level, .PLAYING);
-        set_checkpoint(level);
     } else {
         set_state(player, .SPAWNING);
-        set_state(level, .FADE_IN_START);
+        set_state(level, .FADE_IN);
     }
+
+    set_checkpoint(level);
 
 
     return level;
@@ -1131,8 +1127,6 @@ play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav:
 
 set_state :: (using level: *Level, new_state: Level_Gameplay_State) {
     if #complete new_state == {
-        case .FADE_IN_START;
-            fade_in_start = .{interp = 0};
         case .FADE_IN;
             fade_in = .{interp = 0};
         case .PLAYING;
@@ -1148,8 +1142,6 @@ set_state :: (using level: *Level, new_state: Level_Gameplay_State) {
 
 
 set_checkpoint :: (using level: *Level) {
-    assert(state == .PLAYING);
-    flags |= .CHECKPOINT_EXISTS;
     assert(checkpoint_block.count == self_block.count);
     memcpy(checkpoint_block.data, self_block.data, self_block.count);
 }
@@ -1187,17 +1179,12 @@ restore_checkpoint :: (using level: *Level, do_fade := true) {
     // diffing system that lets us selectively ignore restoring certain members.
 
     //`         -berk, 2025 - 4 - 15.
-    assert((flags & .CHECKPOINT_EXISTS) != 0);
-
-    old_flags := flags;
     old_camera_mode := camera_mode;
     
     assert(self_block.data + self_block.count == checkpoint_block.data);
     memcpy(self_block.data, checkpoint_block.data, checkpoint_block.count);
 
     player := *_Player[0];
-
-    flags = old_flags;
 
     camera_mode = old_camera_mode;
     camera_yaw_target = 0;
@@ -1329,6 +1316,7 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
 
 collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
     using context.game_context;
+    scope_mark(frame_arena);
     
     size_1d := level_size.x * level_size.y * level_size.z;
     new_collision := alloc_view(frame_arena, size_1d, Entity_Id);
@@ -1646,17 +1634,23 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     player := *_Player[0];
 
     push_direction: Vector3i;
-    
-    if event.key == {
-        case xx UP_KEY;    push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
-        case xx LEFT_KEY;  push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
-        case xx DOWN_KEY; push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
-        case xx RIGHT_KEY; push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
-        case xx #char "Q"; if player.state == .DEBUG_MOVEMENT push_direction.y += 1; else return;
-        case xx #char "E"; if player.state == .DEBUG_MOVEMENT push_direction.y -= 1; else return;
-        case; return;
+
+    if contains(UP_KEYS, event.key) {
+        push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
+    } else if contains(LEFT_KEYS, event.key) {
+        push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
+    } else if contains(DOWN_KEYS, event.key) {
+        push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
+    } else if contains(RIGHT_KEYS, event.key) {
+        push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
+    } else if event.key == #char "Q" && player.state == .DEBUG_MOVEMENT {
+        push_direction.y += 1;
+    } else if event.key == #char "E" && player.state == .DEBUG_MOVEMENT {
+        push_direction.y -= 1;
+    } else {
+        return;
     }
- 
+    
     // @TODO Add pulling blocks next to you, not just in the opposite direction of where
     // you are moving (I'm pretty sure we want this)
 
@@ -1866,14 +1860,6 @@ gameplay_update :: (using level: *Level, dt: float) {
     FADE_TIME :: 0.5;
 
     if #complete state == {
-        case .FADE_IN_START;
-            using fade_in_start;
-            interp += dt / FADE_TIME;
-            if interp >= 1 {
-                set_state(level, .PLAYING);
-                set_checkpoint(level);
-            }
-
         case .FADE_IN;
             using fade_in;
             interp += dt / FADE_TIME;

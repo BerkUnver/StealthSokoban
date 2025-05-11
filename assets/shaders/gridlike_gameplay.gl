@@ -49,7 +49,7 @@ vec4 get_base_color() {
 }
 
 vec4 get_bleed_color() {
-    return mix(EXTERIOR_HIDDEN_COLOR, color, 0.5);
+    return mix(EXTERIOR_HIDDEN_COLOR, get_base_color(), 0.5);
 }
 
 #endif
@@ -65,10 +65,9 @@ void main() {
     gl_Position = projection * vec4(vertex_position, 1.0);
 
 #else
+    ivec3 normal_position = viewed_position + fragment_filled_position + fragment_filled_normal;
     int index;
-    bool success = get_3d_index(viewed_position + fragment_filled_position + fragment_filled_normal, viewed_size, index);
-        
-    if (success) {
+    if (get_3d_index(normal_position, viewed_size, index)) {
         if ((texelFetch(viewed, index).r & VIEW_STATE_VISIBLE) != 0u) {
             fragment_color = get_base_color();
         } else {
@@ -84,8 +83,6 @@ void main() {
             // This is for moveable blocks that get pushed into a visible square.
             fragment_color = get_bleed_color();
         } else {
-            fragment_color = mix(EXTERIOR_HIDDEN_COLOR, color, 0.5);
-
             // @TODO:
             // I'm trying to get a nice fade effect working here but I've run out of time to do it before
             // the exhibition.
@@ -182,7 +179,6 @@ void main() {
             if (get_3d_index(adjacent_0, viewed_size, adjacent_0_index)) {
                 if ((texelFetch(viewed, adjacent_0_index).r & (VIEW_STATE_VISIBLE | VIEW_STATE_SEEN)) != 0u) {
                     fragment_color = get_bleed_color();
-                    return;
                 } else {
                     ivec3 adjacent_1 = position;
                     adjacent_1[other_axis_index] += other_axis_increment;
@@ -203,6 +199,7 @@ void main() {
                         }
                     }
 
+                    fragment_color = EXTERIOR_HIDDEN_COLOR;
                 }
             } else {
                 ivec3 adjacent_1 = position;
@@ -215,10 +212,10 @@ void main() {
                         return;
                     }
                 }
+
+                fragment_color = EXTERIOR_HIDDEN_COLOR;
             }
         }
-
-        fragment_color = EXTERIOR_HIDDEN_COLOR;
     }
 #endif
 }

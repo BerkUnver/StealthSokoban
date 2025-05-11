@@ -156,6 +156,12 @@ CAMERA_LEFT_KEY  : Key : #char "J";
 CAMERA_RIGHT_KEY : Key : #char "L";
 
 
+UP_KEYS    :: Key.[UP_KEY, .UP_ARROW];
+DOWN_KEYS  :: Key.[DOWN_KEY, .DOWN_ARROW];
+LEFT_KEYS  :: Key.[LEFT_KEY, .LEFT_ARROW];
+RIGHT_KEYS :: Key.[RIGHT_KEY, .RIGHT_ARROW];
+
+
 // This does not take ownership of "name".
 push_sublevel :: (using gameplay: *Gameplay, name: string, skip_intro := false) {
     assert(!sublevel_exists);
@@ -184,7 +190,7 @@ pop_sublevel :: (using gameplay: *Gameplay, skip_intro := false) {
 set_state :: (using gameplay: *Gameplay, new_state: Gameplay_State) {
     if #complete new_state == {
         case .PLAYING;
-           state = new_state; 
+            state = new_state; 
         case .PAUSED;   
             paused = .{};
             state = new_state;
@@ -195,6 +201,7 @@ set_state :: (using gameplay: *Gameplay, new_state: Gameplay_State) {
 Paused_Sublevel_Selection :: enum {
     RESUME;
     LAST_CHECKPOINT;
+    RESTART_LEVEL;
     OVERWORLD;
     RESET_DEMO;
     COUNT;
@@ -203,6 +210,7 @@ Paused_Sublevel_Selection :: enum {
 
 Paused_Overworld_Selection :: enum {
     RESUME;
+    LAST_CHECKPOINT;
     RESET_DEMO;
     COUNT;
 }
@@ -560,9 +568,11 @@ game_update : Game_Update : (
 
 
                 load_next_level_gameplay :: (ascending: bool) #expand {
-                    if gameplay.sublevel_exists {
+                    using gameplay;
+
+                    if sublevel_exists {
                         scope_mark(frame_arena);
-                        closest_name := get_next_level_name(gameplay.sublevel.name, ascending);
+                        closest_name := get_next_level_name(sublevel.name, ascending);
                         if !closest_name return;
 
                         pop_sublevel(*gameplay, skip_intro=true);
@@ -570,8 +580,9 @@ game_update : Game_Update : (
                         if closest_name != OVERWORLD {
                             push_sublevel(*gameplay, closest_name, skip_intro=true);
                         }
+
                     } else {
-                        closest_name := get_next_level_name(gameplay.overworld.name, ascending);
+                        closest_name := get_next_level_name(overworld.name, ascending);
                         if !closest_name return;
                         assert(closest_name != OVERWORLD);
 
@@ -631,6 +642,7 @@ game_update : Game_Update : (
 
                         if it.key == #char "R" && it.state == .DOWN {
                             if sublevel_exists {
+                                scope_mark(frame_arena);
                                 name := copy_string(frame_arena, sublevel.name);
                                 free_level(sublevel, arena);
                                 sublevel = load_level_gameplay(name, arena, skip_intro=true);
@@ -645,7 +657,7 @@ game_update : Game_Update : (
                     if #complete state == {
                         case .PLAYING; 
 
-                            if (level.flags & .CHECKPOINT_EXISTS) && it.key == PAUSE_KEY && it.state == .DOWN {
+                            if it.key == PAUSE_KEY && it.state == .DOWN {
                                 set_state(*gameplay, .PAUSED);
                                 continue;
                             }
@@ -657,11 +669,8 @@ game_update : Game_Update : (
                                 continue;
                             }
 
-                            // Should we have an illustration or something that clarifies which inputs
-                            // are which in the pause menu?
-                            
                             // @Sfx
-                            if it.key == #char "W" && it.state == .DOWN {
+                            if contains(UP_KEYS, it.key) && it.state == .DOWN {
                                 if sublevel_exists {
                                     paused.sublevel.selected = (paused.sublevel.selected - 1 + .COUNT) % .COUNT;
                                 } else {
@@ -671,7 +680,7 @@ game_update : Game_Update : (
                             }
 
                             // @Sfx
-                            if it.key == #char "S" && it.state == .DOWN {
+                            if contains(DOWN_KEYS, it.key) && it.state == .DOWN {
                                 if sublevel_exists {
                                     paused.sublevel.selected = (paused.sublevel.selected + 1) % .COUNT;
                                 } else {
@@ -685,6 +694,11 @@ game_update : Game_Update : (
                                         case .RESUME;
                                         case .LAST_CHECKPOINT;
                                             restore_checkpoint(level);
+                                        case .RESTART_LEVEL;
+                                            scope_mark(frame_arena);
+                                            name := copy_string(frame_arena, sublevel.name);
+                                            free_level(sublevel, arena);
+                                            sublevel = load_level_gameplay(name, arena);
                                         case .OVERWORLD;
                                             pop_sublevel(*gameplay);
                                         case .RESET_DEMO;
@@ -697,6 +711,8 @@ game_update : Game_Update : (
                                 } else {
                                     if paused.overworld.selected == {
                                         case .RESUME;
+                                        case .LAST_CHECKPOINT;
+                                            restore_checkpoint(level);
                                         case .RESET_DEMO;
                                             free_level(overworld, arena);
                                             assert(arena.current == 0);
@@ -882,22 +898,14 @@ game_update : Game_Update : (
 
                         if sublevel.state == .FADE_OUT_EXIT {
                             if sublevel.fade_out_exit.interp >= 1 {
-
-                                // We need to copy this because the level is going to get freed
-                                // and this will be freed along with it.
-                                scope_mark(frame_arena);
-                                level_name := copy_string(frame_arena, sublevel.name);
-
-                                pop_sublevel(*gameplay);
-
                                 found := false;
+                                player := *overworld._Player[0];
 
                                 for * overworld._Overworld_Exit {
                                     entrance := get_entrance_for_overworld_exit(overworld, it);
-                                    if entrance && entrance.level_name == level_name {
+                                    if entrance && entrance.level_name == sublevel.name {
                                         entrance.activated = true;
 
-                                        player := *overworld._Player[0];
                                         player.position = it.position;
 
                                         // @Hack keep the camera focused on the player because otherwise it will fly
@@ -911,8 +919,11 @@ game_update : Game_Update : (
                                 }
 
                                 if !found {
-                                    log(.ERROR, "There is no Overworld_Exit that corresponds to the level \"%\".\n", level_name);
+                                    log(.ERROR, "There is no Overworld_Exit that corresponds to the level \"%\".\n", sublevel.name);
                                 }
+
+                                pop_sublevel(*gameplay);
+                                set_checkpoint(overworld);
                             }
                         }
                     } else {
@@ -966,19 +977,21 @@ game_update : Game_Update : (
                                 color = DULL_COLOR;
                             }
 
-
                             text: string;
+
                             #if T == Paused_Overworld_Selection {
                                 if it == {
-                                    case .RESUME;               text = "Resume Playing";
-                                    case .RESET_DEMO;           text = "Reset Demo";
+                                    case .RESUME;               text = "Resume playing";
+                                    case .LAST_CHECKPOINT;      text = "Go to last checkpoint";
+                                    case .RESET_DEMO;           text = "Reset demo";
                                 }
                             } else #if T == Paused_Sublevel_Selection {
                                 if it == {
-                                    case .RESUME;               text = "Resume Playing";
-                                    case .LAST_CHECKPOINT;      text = "Go to Last Checkpoint";
-                                    case .OVERWORLD;            text = "Return to Overworld";
-                                    case .RESET_DEMO;           text = "Reset Demo";
+                                    case .RESUME;               text = "Resume playing";
+                                    case .LAST_CHECKPOINT;      text = "Go to last checkpoint";
+                                    case .RESTART_LEVEL;          text = "Restart level";
+                                    case .OVERWORLD;            text = "Return to overworld";
+                                    case .RESET_DEMO;           text = "Reset demo";
                                 }
                             } else {
                                 #assert false;
@@ -1537,9 +1550,6 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
             }
 
             if #complete state == {
-                case .FADE_IN_START;
-                    using fade_in_start;
-                    draw_fade(1 - interp);
                 case .FADE_IN;
                     using fade_in;
                     draw_fade(1 - interp);
