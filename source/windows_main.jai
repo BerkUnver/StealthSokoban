@@ -197,8 +197,8 @@ main :: () {
     toggle_fullscreen :: () #expand {
         if fullscreen {
             // @TODO: Pick reasonable values based on the monitor size
-            WINDOW_W :: 2560;
-            WINDOW_H :: 1600;
+            WINDOW_W :: 1280;
+            WINDOW_H :: 720;
 
             outer_window_x := (GetSystemMetrics(SM_CXSCREEN) - WINDOW_W) / 2;
             outer_window_y := (GetSystemMetrics(SM_CYSCREEN) - WINDOW_H) / 2;

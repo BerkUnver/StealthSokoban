@@ -1104,13 +1104,16 @@ get_enemy_spawner_draw_info :: (enemy_spawner: *Enemy_Spawner) -> model_to_world
 
 
 play_sound :: (using level: *Level, wav: *Sound) {
+    /*
     if playing_sound_count == playing_sounds.count return;
     playing_sounds[playing_sound_count] = .{wav=wav};
     playing_sound_count += 1;
+    */
 }
 
 
 play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav: *Sound) {
+    /*
     // I am assuming we just want to issue all sounds from the center of 
     // each cell, so we will use the gameplay position of everything.
     // Maybe this will change once we have 3D movement.
@@ -1124,6 +1127,7 @@ play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav:
         positional = .{position = position}
     };
     playing_sound_count += 1;
+    */
 }
 
 
@@ -1345,7 +1349,8 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
     resolve_entity :: (e: *$T/Entity, index: int) #expand {
         eid := new_collision[index];
         if eid {
-             enemy := as(get_entity(level, eid), Enemy);
+             maybe_enemy := get_entity(level, eid);
+             enemy := as(maybe_enemy, Enemy);
              assert(enemy != null);
              // Anything else there (like a Block) is not good.
              // Technically a Player could also be there but we add the Player to the new collision map after this
@@ -1486,39 +1491,41 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     if state != .PLAYING return;
 
-    if event.key == #char "M" && event.state == .DOWN {
-        player := *_Player[0];
+    #if DEVELOPER {
+        if event.key == #char "M" && event.state == .DOWN {
+            player := *_Player[0];
 
-        if #complete player.state == {
-            case .ALIVE;
-                set_state(player, .DEBUG_MOVEMENT);
-                // All we need to do is remove the player eid from the collision array.
-                // However, I am calling this just for good form.
-                collision_resolution(level, true);
-            
-            case .SPAWNING; #through;
-            case .DEAD; #through;
-            case .STUCK_INSIDE_A_BLOCK;
-                set_state(player, .DEBUG_MOVEMENT);
+            if #complete player.state == {
+                case .ALIVE;
+                    set_state(player, .DEBUG_MOVEMENT);
+                    // All we need to do is remove the player eid from the collision array.
+                    // However, I am calling this just for good form.
+                    collision_resolution(level, true);
+                
+                case .SPAWNING; #through;
+                case .DEAD; #through;
+                case .STUCK_INSIDE_A_BLOCK;
+                    set_state(player, .DEBUG_MOVEMENT);
 
-            case .DEBUG_MOVEMENT;
-                in_bounds, index := get_3d_index(player.position, level_position, level_size);
-                assert(in_bounds);
-                eid := collision[index];
-                if eid {
-                    e := get_entity(level, eid);
-                    if e.type == .Block {
-                        set_state(player, .STUCK_INSIDE_A_BLOCK);
-                        return;
+                case .DEBUG_MOVEMENT;
+                    in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                    assert(in_bounds);
+                    eid := collision[index];
+                    if eid {
+                        e := get_entity(level, eid);
+                        if e.type == .Block {
+                            set_state(player, .STUCK_INSIDE_A_BLOCK);
+                            return;
+                        }
                     }
-                }
 
-                set_state(player, .ALIVE);
+                    set_state(player, .ALIVE);
 
-                collision_resolution(level, true);
+                    collision_resolution(level, true);
+            }
+
+            return;
         }
-
-        return;
     }
 
     if event.key == CAMERA_MODE_KEY && event.state == .DOWN {
@@ -1702,6 +1709,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             for block: moved_blocks {
                 offset := block.position - level_position;
+
+                block_moved_enemies: [..] *Enemy;
+
                 for :iterate_vector3i block.size {
                     if !block.filled[it_index] continue;
 
@@ -1714,7 +1724,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
                     if e.type == {
                         case .Enemy;
-                            append(*moved_enemies, frame_arena).* = as(e, Enemy);
+                            append(*block_moved_enemies, frame_arena).* = as(e, Enemy);
                             in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
                             if !in_bounds return;
                             eid := collision[index];
@@ -1750,6 +1760,8 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                             assert(false);
                     }
                 }
+
+                append(*moved_enemies, block_moved_enemies, frame_arena);
             }
             
 
@@ -1763,7 +1775,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 eid := collision[index];
                 if eid {
                     block := as(get_entity(level, eid), Block);
-                    if !contains(*moved_blocks, block) return;
+                    if block {
+                        if !contains(*moved_blocks, block) return;
+                    }
                 }
             }
             

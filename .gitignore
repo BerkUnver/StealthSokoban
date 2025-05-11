@@ -13,7 +13,9 @@
 .build
 screenshots
 
-assets/reaper/Backups
 # Reaper's backup folder
+reaper/Backups
+# This is a cache folder for reaper
+reaper/Media/peaks
 
 __pycache__

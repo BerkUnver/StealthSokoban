@@ -608,7 +608,7 @@ append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
         a.data = alloc_view(arena, a.allocated, T, zero_init=false).data;
     } else if a.count == a.allocated {
         a.allocated *= 2;
-        a.data = realloc_many(arena, a.data, a.count, a.allocated, zero_init = false);
+        a.data = realloc_many(arena, a.data, a.count, a.allocated, zero_init=false);
     }
 
     item := a.data + a.count;
@@ -620,4 +620,20 @@ append :: (a: *[..] $T, arena: *Memory_Arena) -> *T {
 
 append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
     append(a, arena).* = item;
+}
+
+
+append :: (a: *[..] $T, items: [] T, arena: *Memory_Arena) {
+    if a.allocated == 0 {
+        assert(a.count == 0);
+        a.allocated = max(items.count, 8);
+        a.data = alloc_view(arena, a.allocated, T, zero_init=false).data;
+    } else if a.count + items.count > a.allocated {
+        old_allocated := a.allocated;
+        a.allocated *= 2;
+        a.data = realloc_many(arena, a.data, old_allocated, a.allocated, zero_init=false);
+    }
+
+    memcpy(a.data + a.count, items.data, items.count * size_of(T));
+    a.count += items.count;
 }
