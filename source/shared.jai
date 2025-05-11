@@ -182,9 +182,7 @@ Console_Text_Color :: enum {
 
 print_string :: (using sb: *String_Builder, str: string) {
     // @Speed Fast path where we can memcpy this
-    for str {
-        append(*buf, arena).* = it;
-    }
+    append(*buf, .{str.count, str.data}, arena);
 }
 
 
@@ -626,7 +624,8 @@ append :: inline (a: *[..] $T, item: T, arena: *Memory_Arena) {
 append :: (a: *[..] $T, items: [] T, arena: *Memory_Arena) {
     if a.allocated == 0 {
         assert(a.count == 0);
-        a.allocated = max(items.count, 8);
+        if items.count > 8 a.allocated = items.count;
+        else               a.allocated = 8;
         a.data = alloc_view(arena, a.allocated, T, zero_init=false).data;
     } else if a.count + items.count > a.allocated {
         old_allocated := a.allocated;

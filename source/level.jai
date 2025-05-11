@@ -77,6 +77,7 @@ Level :: struct {
         
         doors: [] Entity_Id; // Only Door entities should be put in here.
         collision: [] Entity_Id;
+        input_hints: [] Entity_Id;
 
         viewed: [] View_State;
         
@@ -429,6 +430,8 @@ Input_Hint_Type :: enum u8 {
     MOVEMENT;
     PULL;
     PAUSE;
+    CAMERA;
+    CAMERA_MODE;
 }
 
 
@@ -442,11 +445,6 @@ Input_Hint :: struct {
 
 
 View_State :: enum_flags u8 { // @Volatile :ViewState
-    // The valid combinations of flags are:
-    // .BLEED | .SEEN | .VISIBLE    (.VISIBLE takes priority)
-    // .BLEED | .SEEN               (.SEEN takes priority)
-    // .BLEED                       (.BLEED takes priority)
-    BLEED;
     SEEN;
     VISIBLE;
     
@@ -854,29 +852,29 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
     view_texture = make_view_texture(level_size);
 
     viewed = alloc_view(arena, size_1d, View_State);
-    collision = alloc_view(arena, size_1d, Entity_Id);
-    doors = alloc_view(arena, size_1d, Entity_Id);
 
     mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
 
     // Should adding this stuff to the collision array be done with collision_resolution?
     
-    init_gridlike_array :: (gridlikes: [] $T/interface Gridlike_Entity, array: [] Entity_Id) #expand {
+    init_gridlike_array :: (gridlikes: [] $T/interface Gridlike_Entity, array: *[] Entity_Id) #expand {
+        array.* = alloc_view(arena, size_1d, Entity_Id);
+
         for * gridlike: gridlikes {
             offset := gridlike.position - level_position;
             for :iterate_vector3i gridlike.size {
                 if !gridlike.filled[it_index] continue;
                 in_bounds, index := get_3d_index(it + offset, level_size);
                 assert(in_bounds);
-                assert(!array[index]);
-                array[index] = gridlike.eid;
+                assert(!array.*[index]);
+                array.*[index] = gridlike.eid;
             }
         }
     }
 
-    init_gridlike_array(_Block, collision);
-    init_gridlike_array(_Door, doors);
-    
+    init_gridlike_array(_Block, *collision);
+    init_gridlike_array(_Door, *doors);
+    init_gridlike_array(_Input_Hint, *input_hints);
     
     for * _Enemy {
         in_bounds, index := get_3d_index(it.position, level_position, level_size);
@@ -1460,28 +1458,28 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
 gameplay_handle_input :: (using level: *Level, event: Input_Event) {
     using context.game_context;
 
-    if event.key == #char "K" && event.state == .DOWN {
+    if event.key == CAMERA_DOWN_KEY && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_index = max(camera_pitch_index - 1, 0);
         camera_pitch_interp = 0;
         return;
     }
 
-    if event.key == #char "I" && event.state == .DOWN {
+    if event.key == CAMERA_UP_KEY && event.state == .DOWN {
         camera_pitch_old = get_camera_pitch(level);
         camera_pitch_index = min(camera_pitch_index + 1, CAMERA_PITCH_VALUES.count-1);
         camera_pitch_interp = 0;
         return;
     } 
     
-    if event.key == #char "L" && event.state == .DOWN {
+    if event.key == CAMERA_RIGHT_KEY && event.state == .DOWN {
         camera_yaw_old = get_camera_yaw(level);
         camera_yaw_interp = 0;
         camera_yaw_target -= TAU / 12;
         return;
     }
    
-    if event.key == #char "J" && event.state == .DOWN {
+    if event.key == CAMERA_LEFT_KEY && event.state == .DOWN {
         camera_yaw_old = get_camera_yaw(level);
         camera_yaw_interp = 0;
         camera_yaw_target += TAU / 12;
@@ -2108,7 +2106,7 @@ gameplay_update :: (using level: *Level, dt: float) {
         positions := alloc_view(frame_arena, level_size.x * level_size.y * level_size.z, Vector3i, zero_init=false);
         position_count := 1;
         positions[0] = player.position;
-        viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
+        viewed[player_index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
 
 
         while position_count {
@@ -2120,10 +2118,8 @@ gameplay_update :: (using level: *Level, dt: float) {
                     success, index := get_3d_index(position, level_position, level_size);
                     if success && !(viewed[index] & .QUEUED_FOR_FLOODFILL) {
                         eid := collision[index];
-                        if (eid && get_entity(level, eid).type == .Block) || doors[index] {
-                            viewed[index] |= .BLEED;
-                        } else {
-                            viewed[index] |= (.QUEUED_FOR_FLOODFILL | .BLEED | .SEEN | .VISIBLE);
+                        if (!eid || get_entity(level, eid).type != .Block) && !doors[index] {
+                            viewed[index] |= (.QUEUED_FOR_FLOODFILL | .SEEN | .VISIBLE);
                             positions[position_count] = position;
                             position_count += 1;
                         }

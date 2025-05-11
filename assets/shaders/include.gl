@@ -14,9 +14,8 @@
 
 
 // @Volatile :ViewState
-#define VIEW_STATE_BLEED 1u
-#define VIEW_STATE_SEEN 2u
-#define VIEW_STATE_VISIBLE 4u
+#define VIEW_STATE_SEEN 1u
+#define VIEW_STATE_VISIBLE 2u
 #define SEEN_BRIGHTNESS 0.25
 
 

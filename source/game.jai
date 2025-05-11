@@ -141,15 +141,19 @@ Gameplay_State :: enum {
 }
 
 
-UP_KEY          : Key : #char "W";
-DOWN_KEY        : Key : #char "S";
-LEFT_KEY        : Key : #char "A";
-RIGHT_KEY       : Key : #char "D";
-PULL_KEY        : Key : #char " ";
-SELECT_KEY      : Key : #char "U";
-TELEPORT_KEY    : Key : #char "H";
-CAMERA_MODE_KEY : Key : #char "O";
-PAUSE_KEY       : Key : .ESCAPE;
+UP_KEY           : Key : #char "W";
+DOWN_KEY         : Key : #char "S";
+LEFT_KEY         : Key : #char "A";
+RIGHT_KEY        : Key : #char "D";
+PULL_KEY         : Key : #char " ";
+SELECT_KEY       : Key : #char "U";
+TELEPORT_KEY     : Key : #char "H";
+PAUSE_KEY        : Key : .ESCAPE;
+CAMERA_MODE_KEY  : Key : #char "O";
+CAMERA_UP_KEY    : Key : #char "I";
+CAMERA_DOWN_KEY  : Key : #char "K";
+CAMERA_LEFT_KEY  : Key : #char "J";
+CAMERA_RIGHT_KEY : Key : #char "L";
 
 
 // This does not take ownership of "name".
@@ -166,9 +170,12 @@ pop_sublevel :: (using gameplay: *Gameplay, skip_intro := false) {
     assert(arena.current == overworld.checkpoint_block.count + overworld.self_block.count);
     sublevel_exists = false;
     
-    if !skip_intro {
+    player := *overworld._Player[0];
+    if skip_intro {
+        set_state(overworld, .PLAYING);
+        set_state(player, .ALIVE);
+    } else {
         set_state(overworld, .FADE_IN);
-        player := *overworld._Player[0];
         set_state(player, .SPAWNING);
     }
 }
@@ -563,7 +570,7 @@ game_update : Game_Update : (
                         if closest_name != OVERWORLD {
                             push_sublevel(*gameplay, closest_name, skip_intro=true);
                         }
-                    } else {    
+                    } else {
                         closest_name := get_next_level_name(gameplay.overworld.name, ascending);
                         if !closest_name return;
                         assert(closest_name != OVERWORLD);
@@ -1372,19 +1379,18 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                 font := *consolas_large;
 
 
-                // Why don't we use a 3d array to store where the input hints are?
-                // Frankly, there's just not that many of them.
+                in_bounds, index := get_3d_index(player.position, level_position, level_size);
+                assert(in_bounds);
 
-                for * _Input_Hint { 
-                    position := player.position - it.position;
-                    in_bounds, index := get_3d_index(position, it.size);
-                    if !in_bounds continue;
-                    if !it.filled[index] continue;
-                    
+                eid := input_hints[index];
+                
+                if eid {
+                    input_hint := as(get_entity(level, eid), Input_Hint);
+
                     scope_mark(frame_arena);
                     sb := make_string_builder(frame_arena);
 
-                    if #complete it.input_hint_type == {
+                    if #complete input_hint.input_hint_type == {
                         case .MOVEMENT;
                             print(
                                 *sb,
@@ -1433,7 +1439,24 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                                 "Press the % key to pause the game.",
                                  key_to_string(PAUSE_KEY, frame_arena)
                             );
-                                
+                        
+                        case .CAMERA;
+                            print(
+                                *sb,
+                                "Press the %, %, %, and % keys to rotate the camera.",
+                                key_to_string(CAMERA_UP_KEY, frame_arena),
+                                key_to_string(CAMERA_LEFT_KEY, frame_arena),
+                                key_to_string(CAMERA_DOWN_KEY, frame_arena),
+                                key_to_string(CAMERA_RIGHT_KEY, frame_arena)
+                            );
+
+                        case .CAMERA_MODE;
+                            print(
+                                *sb,
+                                "Press the % key to toggle between camera modes.",
+                                key_to_string(CAMERA_MODE_KEY, frame_arena)
+                            );
+                               
                     }
 
                     draw_input_hint(get_string(*sb));
@@ -1542,6 +1565,8 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                     if gridlikes.count == 0 return;
                     scope_mark(frame_arena);
                     overlapping := alloc_view(frame_arena, size.x * size.y * size.z, s16);
+
+                    OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
                     
                     for * gridlike: gridlikes {
                         offset := gridlike.position - position;
@@ -1549,13 +1574,16 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                             filled := gridlike.filled[it_index];
                             if !filled continue;
 
-                            success, index := get_3d_index(it + offset, size);
-                            assert(success);
-                            
-                            overlapping[index] += 1;
+                            in_bounds, index := get_3d_index(it + offset, size);
+                            if in_bounds {
+                                overlapping[index] += 1;
+                            } else {
+                                start := gridlike.position + it;
+                                end := start + Vector3i.{1,1,1};
+                                imm_cuboid(to_vector3(start), to_vector3(end), OVERLAPPING_BLOCK_COLOR);
+                            }
                         }
                     }
-                    OVERLAPPING_BLOCK_COLOR :: Vector4.{1, 0, 0, 0.5};
 
                     for :iterate_vector3i size {
                         count := overlapping[it_index];
