@@ -641,6 +641,8 @@ game_update : Game_Update : (
                         }
 
                         if it.key == #char "R" && it.state == .DOWN {
+                            player_position := level._Player[0].position;
+
                             if sublevel_exists {
                                 scope_mark(frame_arena);
                                 name := copy_string(frame_arena, sublevel.name);
@@ -649,6 +651,28 @@ game_update : Game_Update : (
                             } else {
                                 free_level(overworld, arena);
                                 overworld = load_level_gameplay(OVERWORLD, arena, skip_intro=true);
+                            }
+                            
+                            // Do our best to restore the old player position when we reload the level so we don't
+                            // have to keep reloading the level every time.
+                            // @TODO: Also restore the camera state.
+                            
+                            // Technically we don't have to reassign this because the pointers should always point to the
+                            // same place but I want to clearly communicated that we loaded a new level.
+                            level = ifx sublevel_exists then sublevel else overworld;
+
+                            in_bounds, index := get_3d_index(player_position, level.level_position, level.level_size);
+
+                            if in_bounds {
+                                player := *level._Player[0];
+                                player.position = player_position;
+
+                                if level.collision[index] {
+                                    set_state(player, .DEBUG_MOVEMENT);
+                                }
+
+                                collision_resolution(level, true);
+                                reset_camera_focus(level);
                             }
                             continue;
                         }
@@ -663,6 +687,7 @@ game_update : Game_Update : (
                             }
 
                             gameplay_handle_input(level, it);
+                            continue;
                         case .PAUSED;
                             if it.key == PAUSE_KEY && it.state == .DOWN {
                                 set_state(*gameplay, .PLAYING);
@@ -721,6 +746,8 @@ game_update : Game_Update : (
                                     set_state(*gameplay, .PLAYING);
                                 }
                             }
+
+                            continue;
                     }
 
                 case .EDITOR;

@@ -407,6 +407,8 @@ Block :: struct {
     color: Vector4; @Color
     moveable: bool;
     mesh: Mesh; @NoSerialize
+
+    collision_resolution_resolved: bool; @NoSerialize
 }
 
 
@@ -1692,23 +1694,47 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 push_block(push_direction);
             }
 
-
             //
             // Figure out if the move is legal
             //
 
-            moved_enemies: [..] *Enemy;
+            resolve :: (using level: *Level, moved_blocks: *[..] *Block, moved_enemies: *[..] *Enemy, block: *Block, push_direction: Vector3i) -> bool {
+                using context.game_context;
 
-            for block: moved_blocks {
+                if block.collision_resolution_resolved return true;
+
+                moved_enemies_old_count := moved_enemies.count;
+
                 offset := block.position - level_position;
 
-                block_moved_enemies: [..] *Enemy;
-
                 for :iterate_vector3i block.size {
+
+                    clean_up_and_return :: () #expand {
+                        success, index := find(moved_blocks.*, block);
+                        assert(success);
+                        remove_at(moved_blocks, index);
+                        moved_enemies.count = moved_enemies_old_count;
+                        `return false;
+                    }
+
+                    resolve_adjacent_block :: (adjacent_block: *Block) #expand {
+                        if adjacent_block == block return;
+
+                        if !adjacent_block.moveable || !contains(moved_blocks, adjacent_block) {
+                            `clean_up_and_return();
+                        }
+
+                        if !adjacent_block.collision_resolution_resolved {
+                            success := resolve(level, moved_blocks, moved_enemies, adjacent_block, push_direction);
+                            if !success `clean_up_and_return();
+                        }
+                    }
+
+
                     if !block.filled[it_index] continue;
 
                     in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
-                    if !in_bounds return;
+                    if !in_bounds clean_up_and_return();
 
                     eid := collision[index];
                     if !eid continue;
@@ -1716,35 +1742,27 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
                     if e.type == {
                         case .Enemy;
-                            append(*block_moved_enemies, frame_arena).* = as(e, Enemy);
+                            append(moved_enemies, frame_arena).* = as(e, Enemy);
                             in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
-                            if !in_bounds return;
+                            if !in_bounds clean_up_and_return();
+
                             eid := collision[index];
                             if !eid continue;
-                            next_e := get_entity(level, eid);
-                            if next_e.type == {
+                            adjacent_e := get_entity(level, eid);
+                            if adjacent_e.type == {
                                 case .Player;
                                 case .Enemy;
                                     // An annihilation will happen
 
                                 case .Block;
-                                    if !contains(*moved_blocks, as(next_e, Block)) {
-                                        remove block;
-                                        continue block;
-                                    }
+                                    resolve_adjacent_block(as(adjacent_e, Block));
 
                                 case;
                                     assert(false);
                             }
 
                         case .Block;
-                            // If one of the blocks we were trying to pull/push does not move, that does not mean the
-                            // entire move is cancelled. Just get rid of that block from the move.
-                            // I hope there are not corner cases that I'm failing to account for.
-                            if !contains(*moved_blocks, as(e, Block)) {
-                                remove block;
-                                continue block;
-                            }
+                            resolve_adjacent_block(as(e, Block));
 
                         case .Player;
 
@@ -1753,9 +1771,38 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                     }
                 }
 
-                append(*moved_enemies, block_moved_enemies, frame_arena);
+                block.collision_resolution_resolved = true;
+                return true;
             }
+
+
+            for moved_blocks {
+                it.collision_resolution_resolved = false;
+            }
+
+            moved_enemies: [..] *Enemy;
+
             
+            // Why isn't this a for loop?
+
+            // Well, right now, the current will be removed from the array by "resolve" if it fails.
+            // The for loop won't account for that, and keep on going, and skip over whatever was 
+            // copied into the index that "resolve" occupied. So we need to account for that.
+
+            // Things before the current index will not be removed because those will all have already
+            // been resolved.
+
+            index := 0;
+            while index < moved_blocks.count {
+                block := moved_blocks[index];
+                if !block.collision_resolution_resolved {
+                    success := resolve(level, *moved_blocks, *moved_enemies, block, push_direction);
+                    if success index += 1;
+                } else {
+                    index += 1;
+                }
+            }
+
 
             {   
                 // We check if the player can move into the square they're trying to go in after we check if

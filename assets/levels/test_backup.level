@@ -1,5 +1,5 @@
 types
-	_Block 1[
+	_Block 3[
 		e
 			eid 1
 			position
@@ -13,7 +13,7 @@ types
 			y 3
 			z 8
 			;
-		filled 144[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 1 1 1 0 1 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+		filled 144[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 1 1 1 0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
 		color
 			x 0.639215707778930664
 			y 0.690196096897125244
@@ -21,22 +21,110 @@ types
 			w 1
 			;
 		;
+		e
+			eid 6
+			position
+				x -2
+				z 1
+				;
+			;
+		size
+			x 1
+			y 1
+			z 3
+			;
+		filled 3[ 1 1 1 ]
+		color
+			x 1
+			y 1
+			z 1
+			w 1
+			;
+		moveable 1
+		;
+		e
+			eid 2
+			position
+				x -1
+				z 2
+				;
+			;
+		size
+			x 2
+			y 1
+			z 3
+			;
+		filled 6[ 1 1 1 1 1 0 ]
+		color
+			x 1
+			y 1
+			z 1
+			w 1
+			;
+		moveable 1
+		;
 	]
-	_Enemy 1[
+	_Enemy_Spawner 6[
+		e
+			eid 4
+			position
+				x 2
+				z 5
+				;
+			;
+		facing 2
+		;
 		e
 			eid 5
+			position
+				x 2
+				z 4
+				;
+			;
+		facing 2
+		;
+		e
+			eid 3
+			position
+				x 2
+				z 3
+				;
+			;
+		facing 2
+		;
+		e
+			eid 9
 			position
 				x 2
 				z 2
 				;
 			;
+		facing 2
+		;
+		e
+			eid 10
+			position
+				x 2
+				z 1
+				;
+			;
+		facing 2
+		;
+		e
+			eid 11
+			position
+				x 2
+				;
+			;
+		facing 2
 		;
 	]
 	_Player 1[
 		e
 			eid 7
 			position
-				x -2
+				x -3
+				z 2
 				;
 			;
 		;
@@ -52,5 +140,4 @@ types
 		;
 	]
 	;
-enemy_pre_warm_ticks 2
 ;

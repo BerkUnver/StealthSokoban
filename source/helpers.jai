@@ -349,3 +349,22 @@ parse_number :: (str: string, start_index: int) -> success: bool, end_index: int
 }
 
 
+remove_at :: (a: *[..] $T, index: int) {
+    assert(0 <= index && index < a.count);
+    
+    new_count := a.count - 1;
+    if index < new_count {
+        a.*[index] = a.*[new_count];
+    }
+
+    a.count = new_count;
+}
+
+
+find :: (a: [] $T, item: T) -> bool, int {
+    for a {
+        if it == item return true, it_index;
+    }
+
+    return false, -1;
+}
