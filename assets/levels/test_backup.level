@@ -24,16 +24,15 @@ types
 		e
 			eid 6
 			position
-				x -2
-				z 1
+				x -3
 				;
 			;
 		size
-			x 1
+			x 4
 			y 1
-			z 3
+			z 5
 			;
-		filled 3[ 1 1 1 ]
+		filled 20[ 1 1 1 1 1 0 0 1 1 0 0 1 1 0 0 0 1 1 1 0 ]
 		color
 			x 1
 			y 1
@@ -45,8 +44,8 @@ types
 		e
 			eid 2
 			position
-				x -1
-				z 2
+				x -2
+				z 1
 				;
 			;
 		size
@@ -54,7 +53,7 @@ types
 			y 1
 			z 3
 			;
-		filled 6[ 1 1 1 1 1 0 ]
+		filled 6[ 1 1 1 0 1 1 ]
 		color
 			x 1
 			y 1
@@ -64,66 +63,11 @@ types
 		moveable 1
 		;
 	]
-	_Enemy_Spawner 6[
-		e
-			eid 4
-			position
-				x 2
-				z 5
-				;
-			;
-		facing 2
-		;
-		e
-			eid 5
-			position
-				x 2
-				z 4
-				;
-			;
-		facing 2
-		;
-		e
-			eid 3
-			position
-				x 2
-				z 3
-				;
-			;
-		facing 2
-		;
-		e
-			eid 9
-			position
-				x 2
-				z 2
-				;
-			;
-		facing 2
-		;
-		e
-			eid 10
-			position
-				x 2
-				z 1
-				;
-			;
-		facing 2
-		;
-		e
-			eid 11
-			position
-				x 2
-				;
-			;
-		facing 2
-		;
-	]
 	_Player 1[
 		e
 			eid 7
 			position
-				x -3
+				x -1
 				z 2
 				;
 			;

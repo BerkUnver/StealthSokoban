@@ -399,6 +399,14 @@ Gridlike_Entity :: struct {
 }
 
 
+Block_Resolve_State :: enum u8 {
+    UNRESOLVED;
+    RESOLVING;
+    RESOLVED;
+    FAILED;
+}
+
+
 Block :: struct {
     using #as e: Entity;
 
@@ -408,7 +416,7 @@ Block :: struct {
     moveable: bool;
     mesh: Mesh; @NoSerialize
 
-    collision_resolution_resolved: bool; @NoSerialize
+    resolve_state: Block_Resolve_State; @NoSerialize
 }
 
 
@@ -1698,10 +1706,27 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             // Figure out if the move is legal
             //
 
+
+            // This is the new, recursive version that should do a better job of accounting for bugs.
+            // I didn't have time to properly test it so I will instead use the old, flawed version.
+            // There are still some bugs here. Maybe a better approach would be to put everything in a
+            // new collision grid like we used to do before.
+
+            /*
+
             resolve :: (using level: *Level, moved_blocks: *[..] *Block, moved_enemies: *[..] *Enemy, block: *Block, push_direction: Vector3i) -> bool {
                 using context.game_context;
 
-                if block.collision_resolution_resolved return true;
+                if #complete block.resolve_state == {
+                    case .UNRESOLVED;
+                        block.resolve_state = .RESOLVING;
+                    case .RESOLVING;
+                        assert(false);
+                    case .RESOLVED;
+                        return true;
+                    case .FAILED;
+                        assert(false);
+                }
 
                 moved_enemies_old_count := moved_enemies.count;
 
@@ -1713,6 +1738,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                         success, index := find(moved_blocks.*, block);
                         assert(success);
                         remove_at(moved_blocks, index);
+                        block.resolve_state = .FAILED;
                         moved_enemies.count = moved_enemies_old_count;
                         `return false;
                     }
@@ -1724,9 +1750,14 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                             `clean_up_and_return();
                         }
 
-                        if !adjacent_block.collision_resolution_resolved {
-                            success := resolve(level, moved_blocks, moved_enemies, adjacent_block, push_direction);
-                            if !success `clean_up_and_return();
+                        if #complete adjacent_block.resolve_state == {
+                            case .UNRESOLVED;
+                                success := resolve(level, moved_blocks, moved_enemies, adjacent_block, push_direction);
+                                if !success `clean_up_and_return();
+                            case .RESOLVING;
+                            case .RESOLVED;
+                            case .FAILED;
+                                `clean_up_and_return();
                         }
                     }
 
@@ -1771,13 +1802,13 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                     }
                 }
 
-                block.collision_resolution_resolved = true;
+                block.resolve_state = .RESOLVED;
                 return true;
             }
 
 
             for moved_blocks {
-                it.collision_resolution_resolved = false;
+                it.resolve_state = .UNRESOLVED;
             }
 
             moved_enemies: [..] *Enemy;
@@ -1795,13 +1826,87 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             index := 0;
             while index < moved_blocks.count {
                 block := moved_blocks[index];
-                if !block.collision_resolution_resolved {
+                if block.resolve_state == .UNRESOLVED {
                     success := resolve(level, *moved_blocks, *moved_enemies, block, push_direction);
                     if success index += 1;
                 } else {
+                    assert(block.resolve_state == .RESOLVED);
                     index += 1;
                 }
             }
+            
+            // Make sure nothing goofy happened
+            for moved_blocks {
+                assert(it.resolve_state == .RESOLVED);
+            }
+            */
+
+            moved_enemies: [..] *Enemy;
+
+            for block: moved_blocks {
+                offset := block.position - level_position;
+
+                block_moved_enemies: [..] *Enemy;
+
+                for :iterate_vector3i block.size {
+                    if !block.filled[it_index] continue;
+
+                    in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
+                    if !in_bounds return;
+
+                    eid := collision[index];
+                    if !eid continue;
+
+                    e := get_entity(level, eid);
+
+                    if e.type == {
+                        case .Enemy;
+                            append(*block_moved_enemies, frame_arena).* = as(e, Enemy);
+
+                            in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
+                            if !in_bounds return;
+
+                            eid := collision[index];
+
+                            if !eid continue;
+
+                            next_e := get_entity(level, eid);
+                            if next_e.type == {
+                                case .Player;
+                                case .Enemy;
+                                    // An annihilation will happen
+
+                                case .Block;
+                                    if !contains(*moved_blocks, as(next_e, Block)) {
+                                        remove block;
+                                        continue block;
+                                    }
+
+                                case;
+                                    assert(false);
+
+                            }
+
+                        case .Block;
+                            // If one of the blocks we were trying to pull/push does not move, that does not mean the
+                            // entire move is cancelled. Just get rid of that block from the move.
+                            // I hope there are not corner cases that I'm failing to account for.
+
+                            if !contains(*moved_blocks, as(e, Block)) {
+                                remove block;
+                                continue block;
+                            }
+
+                        case .Player;
+
+                        case;
+                            assert(false);
+                    }
+                }
+
+                append(*moved_enemies, block_moved_enemies, frame_arena);
+            }
+
 
 
             {   
