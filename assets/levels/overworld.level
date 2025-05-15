@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277317073196172711
+			y 0.0277317017316818235
 			z 0.3953233957290649413
 			w 1
 			;
@@ -171,7 +171,7 @@ types
 			;
 		;
 	]
-	_Overworld_Entrance 12[
+	_Overworld_Entrance 10[
 		e
 			eid 18
 			position
@@ -261,17 +261,13 @@ types
 		level_name "levels/intro_2.level"
 		;
 		e
-			eid 5
+			eid 32
 			position
-				x -11
+				x 2
 				y 1
-				z 3
+				z 18
 				;
 			;
-		color
-			x 0.3707969784736633299
-			;
-		level_name "levels/enemies_3.level"
 		;
 		e
 			eid 25
@@ -311,31 +307,8 @@ types
 			;
 		level_name "levels/enemies_3.level"
 		;
-		e
-			eid 32
-			position
-				x 2
-				y 1
-				z 18
-				;
-			;
-		;
-		e
-			eid 34
-			position
-				x -4
-				y 1
-				z 10
-				;
-			;
-		color
-			x 0.2174217104911804197
-			z 0.2478206157684326171
-			;
-		level_name "levels/visibility_3.level"
-		;
 	]
-	_Overworld_Exit 12[
+	_Overworld_Exit 10[
 		e
 			eid 10
 			position
@@ -395,14 +368,13 @@ types
 		entrance 7
 		;
 		e
-			eid 19
+			eid 31
 			position
-				x -13
+				x -5
 				y 1
-				z 4
+				z 25
 				;
 			;
-		entrance 5
 		;
 		e
 			eid 23
@@ -432,27 +404,8 @@ types
 				;
 			;
 		;
-		e
-			eid 31
-			position
-				x -5
-				y 1
-				z 25
-				;
-			;
-		;
-		e
-			eid 35
-			position
-				x -7
-				y 1
-				z 15
-				;
-			;
-		entrance 34
-		;
 	]
-	_Input_Hint 3[
+	_Input_Hint 5[
 		e
 			eid 36
 			position
@@ -498,6 +451,38 @@ types
 			;
 		filled 12[ 0 1 0 0 1 0 1 1 1 0 0 1 ]
 		input_hint_type 3
+		;
+		e
+			eid 35
+			position
+				x -7
+				y 1
+				z 13
+				;
+			;
+		size
+			x 5
+			y 1
+			z 3
+			;
+		filled 15[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
+		input_hint_type 5
+		;
+		e
+			eid 19
+			position
+				x -11
+				y 1
+				z 3
+				;
+			;
+		size
+			x 1
+			y 1
+			z 2
+			;
+		filled 2[ 1 1 ]
+		input_hint_type 5
 		;
 	]
 	_Player 1[

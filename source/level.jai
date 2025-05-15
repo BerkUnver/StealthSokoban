@@ -431,12 +431,14 @@ Door :: struct {
 }
 
 
+// These are serialized. Do not change their order.
 Input_Hint_Type :: enum u8 {
     MOVEMENT;
     PULL;
     PAUSE;
     CAMERA;
     CAMERA_MODE;
+    DEMO_END;
 }
 
 
@@ -1108,16 +1110,13 @@ get_enemy_spawner_draw_info :: (enemy_spawner: *Enemy_Spawner) -> model_to_world
 
 
 play_sound :: (using level: *Level, wav: *Sound) {
-    /*
     if playing_sound_count == playing_sounds.count return;
-    playing_sounds[playing_sound_count] = .{wav=wav};
+    playing_sounds[playing_sound_count] = .{wav=wav, flags = .NEW};
     playing_sound_count += 1;
-    */
 }
 
 
 play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav: *Sound) {
-    /*
     // I am assuming we just want to issue all sounds from the center of 
     // each cell, so we will use the gameplay position of everything.
     // Maybe this will change once we have 3D movement.
@@ -1127,11 +1126,10 @@ play_positional_sound :: (using level: *Level, gameplay_position: Vector3i, wav:
     if playing_sound_count == playing_sounds.count return;
     playing_sounds[playing_sound_count] = .{
         wav = wav,
-        type = .POSITIONAL,
+        flags = .POSITIONAL | .NEW,
         positional = .{position = position}
     };
     playing_sound_count += 1;
-    */
 }
 
 
@@ -1943,7 +1941,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             collision_resolution(level, true);
 
-            play_positional_sound(level, player.position, footstep);
+            if moved_blocks.count > 0 play_positional_sound(level, player.position, push_sound);
+
+            play_positional_sound(level, player.position, footstep_sound);
         
         case .SPAWNING;
         case .DEAD;
@@ -1960,7 +1960,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
         case .DEBUG_MOVEMENT;
             if inside_bounding_box(player.position + push_direction, level_position, level_size) {
                 player.position = player.position + push_direction;
-                play_positional_sound(level, player.position, footstep);
+                play_positional_sound(level, player.position, footstep_sound);
             }
     } 
 }

@@ -467,23 +467,19 @@ main :: () {
 
         index := 0;
         last_path_index := -1;
-        second_to_last_path_index := -1;
+     
         while exe_path[index] != #char "\0" {
             if exe_path[index] == #char "\\" {
-                second_to_last_path_index = last_path_index;
                 last_path_index = index;
             
             }
             index += 1;
         }
 
-        assert(last_path_index >= 0 && second_to_last_path_index >= 0);
-        game_path := string.{second_to_last_path_index + 1, exe_path.data};
+        game_path := string.{last_path_index + 2, exe_path.data};
+        game_path[game_path.count-1] = #char "\0";
         
-        scope_mark(*frame_arena);
-        sb := make_string_builder(*frame_arena);
-        print(*sb, "%assets\0", game_path);
-        assert(SetCurrentDirectoryA(get_string(*sb).data) != 0);
+        assert(SetCurrentDirectoryA(game_path.data) != 0);
     }
 
 
@@ -578,10 +574,7 @@ main :: () {
             dir,
             file_notifications.data,
             xx file_notifications.count,
-            BOOL.FALSE,
-            // For some reason this was returning the wrong file names
-            // when I tried to do it recursively. Skipping for now.
-            // @Investigate
+            .TRUE,
             FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
             null,
             *overlapped,
@@ -695,7 +688,14 @@ main :: () {
 
             changed_file_names: [..] string;
 
-            BATCH_TIME :: 0.1;
+            BATCH_TIME :: 1;
+            // @Investigate Reaper appears to be locking audio files for a 
+            // really long time while generating them. We should figure out why.
+            // We should also see if ReadDirectoryChangesW emits an event for
+            // changes whether files are locked / unlocked. If so, we could add
+            // proper failure cases for asset reloading, and then go back and
+            // try again once the file is unlocked.
+
             for * changed_files {
                 it.batch_interp += dt / BATCH_TIME;
                 if it.batch_interp >= 1 {
@@ -708,6 +708,10 @@ main :: () {
             hotloaded := false;
 
             for changed_file_names {
+                for * it {
+                    // Account for Windows path changing
+                    if it.* == #char "\\" it.* = #char "/";
+                }
                 if it != GAME_DLL_NAME_FRESH continue;
 
                 hotloaded = true;
@@ -825,6 +829,10 @@ main :: () {
         
         samples_played := (write_sample - previous_write_sample + AUDIO_BUFFER_SIZE) % AUDIO_BUFFER_SIZE;
 
+        if samples_played > SAMPLES_TO_WRITE {
+            print("We played more samples than we wrote. This shouldn't happen.\n");
+        }
+
         buffer: [SAMPLES_TO_WRITE] Sample; // This has to be zero-initialized. That is the default audio value.
         // Things add to the value in the buffer if they want to add a sound.
 
@@ -869,10 +877,17 @@ utf16_to_ascii :: (utf16: [] u16, arena: *Memory_Arena) -> bool, string {
 
 
 // @Copypasta from windows_game.jai
-print :: (s: string) {
+print :: (s: string, args: ..Any) {
+    scope_mark(*frame_arena);
+    sb := make_string_builder(*frame_arena);
+
+    print(*sb, s, ..args);
+    
+    str := get_string(*sb);
+
     stdout := GetStdHandle(STD_OUTPUT_HANDLE);
     assert(stdout != INVALID_HANDLE_VALUE);
-    WriteConsoleA(stdout, s.data, cast(u32, s.count), null, null);
+    WriteConsoleA(stdout, str.data, cast(u32, str.count), null, null);
     FlushFileBuffers(stdout); 
     // This function is for debug output. We don't care about performance, so we flush every time we call this.
 }

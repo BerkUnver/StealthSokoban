@@ -10,18 +10,25 @@ Sound :: struct {
 Playing_Sound :: struct {
     wav: *Sound;
     current_sample: int;
-
-    type: enum u8 {
-        SIMPLE;
+    
+    flags: enum_flags u8 {
         POSITIONAL;
+        NEW;
     }
 
-    union {
-        positional: struct {
-            position: Vector3;
-        }
+    positional: struct {
+        position: Vector3;
     }
 }
+
+
+// I really don't know that much about audio engineering so I am doing my best
+// with what I know. We are aiming to mix sfx around -18 dbfs. I have decided to
+// export sfx with -1dbfs of headroom, and then do the volume reduction in the 
+// audio mixer. This seems like the accepted way to do it.
+
+//              -berk, 2025 - 5 - 14
+SFX_VOLUME_REDUCTION :: #run pow(10, -17.0 / 20.0);
 
 
 load_sound :: (path: string, arena: *Memory_Arena) -> Sound {

@@ -54,7 +54,8 @@ Game_Context :: struct {
     
     editor_imgui_disabled: bool;
   
-
+    consolas_small: Font;
+    consolas_large: Font;
 
     asset_table: Asset_Table;
 
@@ -71,30 +72,31 @@ Game_Context :: struct {
     item_and_bitmap_shader: *Shader;
     occlusion_shader: *Shader;
 
-    consolas_small: Font;
-    consolas_large: Font;
+    footstep_sound: *Sound;
+    overworld_entrance_sound: *Sound;
+    push_sound: *Sound;
 
-    footstep: *Sound;
     gridlike_outline_bitmap: *Bitmap;
-    enemy_mesh: *Mesh;
     enemy_left_bitmap: *Bitmap;
     enemy_right_bitmap: *Bitmap;
-    enemy_annihilation_mesh: Mesh;
-    enemy_spawner_mesh: *Mesh;
-    enemy_despawner_mesh: *Mesh;
     enemy_item_bitmap: *Bitmap;
-    player_mesh: *Mesh;
     player_bitmap: *Bitmap;
     player_item_bitmap: *Bitmap;
-    exit_mesh: *Mesh;
-    overworld_entrance_mesh: *Mesh;
-    overworld_entrance_sound: *Sound;
     chroma_key_bitmap: *Bitmap;
-    overworld_exit_mesh: *Mesh;
-    checkpoint_mesh: *Mesh;
     gridlike_bitmap: *Bitmap;
     input_hint_bitmap: *Bitmap;
+
+    enemy_annihilation_mesh: Mesh;
+    enemy_mesh: *Mesh;
+    enemy_spawner_mesh: *Mesh;
+    enemy_despawner_mesh: *Mesh;
+    player_mesh: *Mesh;
+    exit_mesh: *Mesh;
+    overworld_entrance_mesh: *Mesh;
+    overworld_exit_mesh: *Mesh;
+    checkpoint_mesh: *Mesh;
 }
+
 
 #add_context game_context: *Game_Context;
 
@@ -312,27 +314,29 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         item_and_bitmap_shader      = load_asset(Shader, *asset_table, "shaders/item_and_bitmap.gl");
         occlusion_shader            = load_asset(Shader, *asset_table, "shaders/occlusion.gl");
 
-        footstep                    = load_asset(Sound, *asset_table, "sounds/footstep.wav");
+        footstep_sound              = load_asset(Sound, *asset_table, "sounds/footstep.wav");
+        overworld_entrance_sound    = load_asset(Sound, *asset_table, "sounds/overworld_entrance.wav");
+        push_sound                  = load_asset(Sound, *asset_table, "sounds/push.wav");
+
         gridlike_outline_bitmap     = load_asset(Bitmap, *asset_table, "gridlike_outline.tga");
-        enemy_mesh                  = load_asset(Mesh, *asset_table, "enemy.my_mesh");
         enemy_left_bitmap           = load_asset(Bitmap, *asset_table, "enemy_left.tga");
         enemy_right_bitmap          = load_asset(Bitmap, *asset_table, "enemy_right.tga");
-        enemy_annihilation_mesh     = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
-        enemy_spawner_mesh          = load_asset(Mesh, *asset_table, "enemy_spawner.my_mesh");
         enemy_item_bitmap           = load_asset(Bitmap, *asset_table, "enemy_item.tga");
-        enemy_despawner_mesh        = load_asset(Mesh, *asset_table, "enemy_despawner.my_mesh");
-        overworld_entrance_mesh     = load_asset(Mesh, *asset_table, "overworld_entrance.my_mesh");
-        overworld_entrance_sound    = load_asset(Sound, *asset_table, "sounds/overworld_entrance.wav");
         chroma_key_bitmap           = load_asset(Bitmap, *asset_table, "chroma_key.tga");
-        overworld_exit_mesh         = load_asset(Mesh, *asset_table, "overworld_exit.my_mesh");
-        exit_mesh                   = load_asset(Mesh, *asset_table, "exit.my_mesh");
         player_item_bitmap          = load_asset(Bitmap, *asset_table, "player_item.tga");
-        checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
-        player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
         player_bitmap               = load_asset(Bitmap, *asset_table, "player.tga");
         gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
         input_hint_bitmap           = load_asset(Bitmap, *asset_table, "input_hint.tga");
 
+        enemy_annihilation_mesh     = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
+        enemy_mesh                  = load_asset(Mesh, *asset_table, "enemy.my_mesh");
+        enemy_spawner_mesh          = load_asset(Mesh, *asset_table, "enemy_spawner.my_mesh");
+        enemy_despawner_mesh        = load_asset(Mesh, *asset_table, "enemy_despawner.my_mesh");
+        overworld_entrance_mesh     = load_asset(Mesh, *asset_table, "overworld_entrance.my_mesh");
+        overworld_exit_mesh         = load_asset(Mesh, *asset_table, "overworld_exit.my_mesh");
+        exit_mesh                   = load_asset(Mesh, *asset_table, "exit.my_mesh");
+        checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
+        player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
 
 
         //
@@ -1496,7 +1500,13 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                                 "Press the % key to toggle between camera modes.",
                                 key_to_string(CAMERA_MODE_KEY, frame_arena)
                             );
-                               
+                        
+                        case .DEMO_END;
+                            print(
+                                *sb,
+                                "Thanks for playing the demo! Press % to reset.",
+                                key_to_string(PAUSE_KEY, frame_arena)
+                            );
                     }
 
                     draw_input_hint(get_string(*sb));
@@ -1925,7 +1935,7 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
         camera_position, camera_quat := get_gameplay_camera_info(level);
         
-        // @TODO: Accound for the player's current position when considering procedural animation
+        // @TODO: Account for the player's current position when considering procedural animation
         // once procedural animation is added to the player.
 
         player_to_camera := camera_position - player_position;
@@ -1977,13 +1987,19 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
 
         //          -berk, 2025 - 4 - 20
 
+        clipping_happened := false;
 
         i := 0;
         while true {
             if i == playing_sound_count break;
 
             sound := *playing_sounds[i];
-            sound.current_sample += samples_played;
+
+            if sound.flags & .NEW {
+                sound.flags &= ~.NEW;
+            } else {
+                sound.current_sample += samples_played;
+            }
             
             // This should catch when the sound is reloaded and the new one is shorter
             // than the old one.
@@ -1998,69 +2014,76 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
 
             end := min(sound.wav.data.count, sound.current_sample + buffer.count);
 
-            if sound.type == {
-                case .SIMPLE;
-                    for sound.current_sample..end-1 {
-                        sample := cast(s32, sound.wav.data[it]);
-                        output := *buffer[it - sound.current_sample];
+            if sound.flags & .POSITIONAL {
+                using sound.positional;
+                
+                MIN_RADIUS :: 2.0;
+                MAX_RADIUS :: 5.0;
 
-                        l_s32 := cast(s32, output.l) + sample;
-                        r_s32 := cast(s32, output.r) + sample;
-                        
-                        output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
-                        output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
-                    }
-                case .POSITIONAL;
-                    using sound.positional;
+                distance := length(position - listener_position);
+                volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
+                
+                if volume > 0 {
+                    volume *= SFX_VOLUME_REDUCTION;
+                    // This kind of panning is called "constant power panning",
+                    // where the pan is calculated as a sine curve that is
+                    // 1 when the sound is at the chosen ear and 0 when the
+                    // sound is at the opposite ear.
                     
-                    MIN_RADIUS :: 2.0;
-                    MAX_RADIUS :: 5.0;
+                    // Source:
+                    // https://www.cs.cmu.edu/~music/icm-online/readings/panlaws/
 
-                    distance := length(position - listener_position);
-                    distance_volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
-                    
-                    if distance_volume > 0 {
-                        // This kind of panning is called "constant power panning",
-                        // where the pan is calculated as a sine curve that is
-                        // 1 when the sound is at the chosen ear and 0 when the
-                        // sound is at the opposite ear.
-                        
-                        // Source:
-                        // https://www.cs.cmu.edu/~music/icm-online/readings/panlaws/
+                    offset := sound.positional.position - listener_position;
+                    rotate(*offset, camera_quat);
 
-                        offset := sound.positional.position - listener_position;
-                        rotate(*offset, camera_quat);
+                    angle := get_angle(.{0, 1}, .{offset.x, offset.z});
 
-                        angle := get_angle(.{0, 1}, .{offset.x, offset.z});
+                    // Zero means directly in front of the listener.
+                    // PI / 2 means to the left of the listener.
+                    // -PI / 2 means to the right of the listener.
 
-                        // Zero means directly in front of the listener.
-                        // PI / 2 means to the left of the listener.
-                        // -PI / 2 means to the right of the listener.
+                    l_volume := cos((angle - PI/2) / 2);
+                    r_volume := cos((angle + PI/2) / 2);
 
-                        l_volume := cos((angle - PI/2) / 2);
-                        r_volume := cos((angle + PI/2) / 2);
+                    l_volume *= volume;
+                    r_volume *= volume;
 
-                        l_volume *= distance_volume;
-                        r_volume *= distance_volume;
+                    if r_volume != 0 || l_volume != 0 {
+                        for sound.current_sample..end-1 {
+                            in := sound.wav.data[it];
+                            sample := cast(float, sound.wav.data[it]);
 
-                        if r_volume != 0 || l_volume != 0 {
-                            for sound.current_sample..end-1 {
-                                in := sound.wav.data[it];
-                                sample := cast(float, sound.wav.data[it]);
-                                l_sample := cast(s32, sample * l_volume);
-                                r_sample := cast(s32, sample * r_volume);
-                                
-                                output := *buffer[it - sound.current_sample];
+                            output := *buffer[it - sound.current_sample];
+                            
+                            l_s32 := cast(s32, output.l) + cast(s32, sample * l_volume);
+                            r_s32 := cast(s32, output.r) + cast(s32, sample * r_volume);
 
-                                l_s32 := cast(s32, output.l) + l_sample;
-                                r_s32 := cast(s32, output.r) + r_sample;
-                                
-                                output.l = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
-                                output.r = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                            if l_s32 < S16_MIN || S16_MAX < l_s32 || r_s32 < S16_MIN || S16_MAX < r_s32 {
+                                clipping_happened = true;
                             }
+
+                            output.l = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
+                            output.r = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
                         }
+                    }
+                }
+            } else {
+                for sound.current_sample..end-1 {
+                    volume := SFX_VOLUME_REDUCTION;
+
+                    sample := cast(s32, cast(float, sound.wav.data[it]) * SFX_VOLUME_REDUCTION);
+
+                    output := *buffer[it - sound.current_sample];
+
+                    l_s32 := cast(s32, output.l) + sample;
+                    r_s32 := cast(s32, output.r) + sample;
+                    
+                    output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                    output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
                 }
             }
         }
+
+        if clipping_happened print("Clipping happened!\n");
     }
 }
