@@ -376,9 +376,6 @@ Enemy_Spawner :: struct {
     alternating_direction: Favored_Direction; @NoSerialize
     facing: Facing;
     
-    desired_spawn: bool;
-    result_spawn: bool;
-
     COLOR :: Vector4.{0.5, 0, 0, 1};
 }
 

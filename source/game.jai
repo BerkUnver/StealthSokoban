@@ -1996,6 +1996,7 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
             sound := *playing_sounds[i];
 
             if sound.flags & .NEW {
+                assert(sound.current_sample == 0);
                 sound.flags &= ~.NEW;
             } else {
                 sound.current_sample += samples_played;
@@ -2003,14 +2004,6 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
             
             // This should catch when the sound is reloaded and the new one is shorter
             // than the old one.
-
-            if sound.current_sample >= sound.wav.data.count {
-                sound.* = playing_sounds[playing_sound_count-1];
-                playing_sound_count -= 1;
-                continue;
-            }
-
-            i += 1;
 
             end := min(sound.wav.data.count, sound.current_sample + buffer.count);
 
@@ -2082,6 +2075,14 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
                     output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
                 }
             }
+
+            if end == sound.wav.data.count {
+                sound.* = playing_sounds[playing_sound_count-1];
+                playing_sound_count -= 1;
+                continue;
+            }
+
+            i += 1;
         }
 
         if clipping_happened print("Clipping happened!\n");

@@ -829,18 +829,17 @@ main :: () {
         
         samples_played := (write_sample - previous_write_sample + AUDIO_BUFFER_SIZE) % AUDIO_BUFFER_SIZE;
 
-        if samples_played > SAMPLES_TO_WRITE {
-            print("We played more samples than we wrote. This shouldn't happen.\n");
-        }
+        // if samples_played > SAMPLES_TO_WRITE {
+        //     print("We played more samples than we wrote. This shouldn't happen.\n");
+        // }
 
         buffer: [SAMPLES_TO_WRITE] Sample; // This has to be zero-initialized. That is the default audio value.
         // Things add to the value in the buffer if they want to add a sound.
 
         game_get_audio_samples(game_memory, samples_played, buffer);
 
-        memcpy(region_1_data, buffer.data,                 region_1_size * size_of(Sample));
-        memcpy(region_2_data, buffer.data + region_1_size, region_2_size * size_of(Sample));
-
+        memcpy(region_1_data, buffer.data,                 region_1_size_bytes);
+        memcpy(region_2_data, buffer.data + region_1_size, region_2_size_bytes);
 
         secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size_bytes, region_2_data, region_2_size_bytes);
         previous_write_sample = write_sample;
