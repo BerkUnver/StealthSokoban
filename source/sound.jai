@@ -56,7 +56,8 @@ load_sound :: (path: string, arena: *Memory_Arena) -> Sound {
 
     has_format := false;
     has_samples := false;
-    samples: string;
+
+    samples: [] s16;
 
     while str.count != 0 {
         chunk_id:, str = get_chunk_id(str);
@@ -97,8 +98,7 @@ load_sound :: (path: string, arena: *Memory_Arena) -> Sound {
                 assert(!has_samples);
                 has_samples = true;
                 data_size:, str = get(str, u32);
-                samples.count = data_size;
-                samples.data = str.data;
+                samples = .{data_size / size_of(s16), xx str.data};
                 padded_data_size := data_size;
                 if padded_data_size % 2 == 1 padded_data_size += 1;
                 assert(str.count >= padded_data_size);
@@ -118,6 +118,6 @@ load_sound :: (path: string, arena: *Memory_Arena) -> Sound {
 
     return .{
         base = base.data,
-        data = .{samples.count / size_of(Sample), xx samples.data}
+        data = samples
     };
 }

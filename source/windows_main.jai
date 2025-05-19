@@ -399,6 +399,10 @@ main :: () {
     // Init audio
     //
 
+    AUDIO_BUFFER_SIZE :: AUDIO_SAMPLES_PER_SECOND / 2;
+    // 0.5 sec of audio data. This is what the Thekla Sound_Player uses.
+    // I don't know if this is a good value.
+
     dsound: *IDirectSound8;
     assert(DirectSoundCreate8(null, *dsound, null) == 0);
     
@@ -426,9 +430,6 @@ main :: () {
 
     assert(primary_buffer.SetFormat(primary_buffer, *wave_format) == 0);
 
-    AUDIO_BUFFER_SIZE :: AUDIO_SAMPLES_PER_SECOND / 2;
-    // 0.5 sec of audio data. This is what the Thekla Sound_Player uses. I don't know if this is a good value.
-
     secondary_buffer_descriptor := DSBUFFERDESC.{
         dwSize = size_of(DSBUFFERDESC),
         dwFlags = DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_CTRLVOLUME, // @Investigate do we actually need the DSBCAPS_CTRLVOLUME flag? The Jai Sound_Player had it.
@@ -443,8 +444,6 @@ main :: () {
     audio_started: bool; // We only can start the audio if we've got samples once.
     previous_write_sample: int;
 
-
-    
     //
     // Init QueryPerformanceCounter stuff
     //
@@ -789,6 +788,33 @@ main :: () {
         // Do audio update
         //
 
+        // I tested it, and the dsound latency is consistently (exactly) 30ms.
+        // This might be useful information to have.
+
+        play_byte, write_byte: s32;
+        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, *play_byte, *write_byte) == 0);
+
+        play_sample  := play_byte  / size_of(Sample);
+        write_sample := write_byte / size_of(Sample);
+
+        region_1_data: *Sample;
+        region_1_size_bytes: s32;
+        region_2_data: *Sample;
+        region_2_size_bytes: s32;
+
+        SAMPLES_TO_WRITE :: AUDIO_SAMPLES_PER_SECOND / 20;
+
+        assert(secondary_buffer.Lock(
+            secondary_buffer, write_byte, size_of(Sample) * SAMPLES_TO_WRITE,
+            xx *region_1_data, *region_1_size_bytes,
+            xx *region_2_data, *region_2_size_bytes,
+            0
+        ) == DS_OK);
+
+        region_1_size := region_1_size_bytes / size_of(Sample);
+        region_2_size := region_2_size_bytes / size_of(Sample);
+        
+        assert(region_1_size + region_2_size == SAMPLES_TO_WRITE);
 
         // 3 frames worth of audio data. This should be enough to prevent audio crackling.
 
@@ -802,46 +828,19 @@ main :: () {
         //          -berk, 2025 - 4 - 18
 
 
-        write_byte: s32;
-        assert(secondary_buffer.GetCurrentPosition(secondary_buffer, null, *write_byte) == 0);
-        write_sample := write_byte / size_of(Sample);
 
-        region_1_data: *Sample;
-        region_1_size_bytes: s32;
-        region_2_data: *Sample;
-        region_2_size_bytes: s32;
-
-        SAMPLES_TO_WRITE :: AUDIO_SAMPLES_PER_SECOND / 20;
-
-        secondary_buffer.Lock(
-            secondary_buffer, write_byte, size_of(Sample) * SAMPLES_TO_WRITE,
-            xx *region_1_data, *region_1_size_bytes,
-            xx *region_2_data, *region_2_size_bytes,
-            0
-        );
-
-        region_1_size := region_1_size_bytes / size_of(Sample);
-        region_2_size := region_2_size_bytes / size_of(Sample);
-        
-        // This should always be true.
-        assert(region_1_size + region_2_size == SAMPLES_TO_WRITE);
-
-        
         samples_played := (write_sample - previous_write_sample + AUDIO_BUFFER_SIZE) % AUDIO_BUFFER_SIZE;
 
         // if samples_played > SAMPLES_TO_WRITE {
         //     print("We played more samples than we wrote. This shouldn't happen.\n");
         // }
 
-        buffer: [SAMPLES_TO_WRITE] Sample; // This has to be zero-initialized. That is the default audio value.
-        // Things add to the value in the buffer if they want to add a sound.
+        region_1: [] Sample = .{region_1_size, region_1_data};
+        region_2: [] Sample = .{region_2_size, region_2_data};
 
-        game_get_audio_samples(game_memory, samples_played, buffer);
+        game_get_audio_samples(game_memory, samples_played, region_1, region_2);
 
-        memcpy(region_1_data, buffer.data,                 region_1_size_bytes);
-        memcpy(region_2_data, buffer.data + region_1_size, region_2_size_bytes);
-
-        secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size_bytes, region_2_data, region_2_size_bytes);
+        assert(secondary_buffer.Unlock(secondary_buffer, region_1_data, region_1_size_bytes, region_2_data, region_2_size_bytes) == DS_OK);
         previous_write_sample = write_sample;
 
         if !audio_started {

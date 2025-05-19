@@ -43,11 +43,18 @@ imm_flush :: () {
     using context.game_context.imm_state;
     using context.game_context;
     
+    // @Copypasta from bind_and_draw
+    mode: GLenum;
+    if #complete current_pipeline.mode == {
+        case .TRIANGLE; mode = GL_TRIANGLES;
+        case .LINE;     mode = GL_LINES;
+    }
+    
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferSubData(GL_ARRAY_BUFFER, 0, size_of(Imm_Vertex) * vertex_count, vertices.data);
 
     glBindVertexArray(vao);
-    glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+    glDrawArrays(mode, 0, vertex_count);
     vertex_count = 0;
 }
 

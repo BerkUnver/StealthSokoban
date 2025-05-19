@@ -889,7 +889,11 @@ Pipeline :: struct {
         CULL_FACE;
         STENCIL_TEST;
     }
-    polygon_mode: enum u8 {
+    mode: enum u8 { 
+        TRIANGLE;
+        LINE;
+    }
+    triangle_mode: enum u8 {    
         FILL;
         LINE;
     }
@@ -903,6 +907,10 @@ Pipeline :: struct {
 
 set_shader :: (shader: *Shader, using pipeline := Pipeline.{flags = .DEPTH_TEST | .CULL_FACE}) {
     using context.game_context;
+
+    current_shader = shader;
+    current_pipeline = pipeline;
+
     glUseProgram(shader.program);
 
     if flags & .BLEND glEnable(GL_BLEND);
@@ -916,10 +924,14 @@ set_shader :: (shader: *Shader, using pipeline := Pipeline.{flags = .DEPTH_TEST 
 
     if flags & .STENCIL_TEST glEnable(GL_STENCIL_TEST);
     else                     glDisable(GL_STENCIL_TEST);
-
-    if #complete polygon_mode == {
-        case .FILL; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        case .LINE; glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    
+    if #complete mode == {
+        case .TRIANGLE;
+            if #complete triangle_mode == {
+                case .FILL; glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                case .LINE; glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            }
+        case .LINE;
     }
 
     if #complete depth_func == {
@@ -932,12 +944,7 @@ set_shader :: (shader: *Shader, using pipeline := Pipeline.{flags = .DEPTH_TEST 
 set_uniform :: (name: *u8, val: $T) {
     using context.game_context;
     
-    shader_GLint: GLint;
-    glGetIntegerv(GL_CURRENT_PROGRAM, *shader_GLint);
-    assert(shader_GLint >= 0);
-    shader := cast(GLuint, shader_GLint);
-
-    loc := glGetUniformLocation(shader, name);
+    loc := glGetUniformLocation(current_shader.program, name);
     assert(loc >= 0);
 
     #if T == s32 {
@@ -975,9 +982,16 @@ set_uniform_view_texture :: (name: *u8, unit_index: int, texture: *View_Texture)
 bind_and_draw :: (mesh: *Mesh) {
     using context.game_context;
     glBindVertexArray(mesh.vao);
+
+    mode: GLenum;
+    if #complete current_pipeline.mode == {
+        case .TRIANGLE; mode = GL_TRIANGLES;
+        case .LINE;     mode = GL_LINES;
+    }
+
     if mesh.indices_exist {
-        glDrawElements(GL_TRIANGLES, mesh.index_count, GL_UNSIGNED_INT, null);
+        glDrawElements(mode, mesh.index_count, GL_UNSIGNED_INT, null);
     } else {
-        glDrawArrays(GL_TRIANGLES, 0, xx mesh.vertex_positions.count);
+        glDrawArrays(mode, 0, xx mesh.vertex_positions.count);
     }
 }

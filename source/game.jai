@@ -43,6 +43,21 @@ Game_Context :: struct {
 
     // The above has to be initialized before anything else is intialized.
 
+    current_shader: *Shader;
+    current_pipeline: Pipeline;
+
+    
+    // This is to do a debug visualization of audio.
+    audio_buffer_mode: enum u8 {
+        DISABLED;
+        ENABLED;
+        FREEZE;
+        COUNT;
+    }
+
+    audio_buffer: [AUDIO_SAMPLES_PER_SECOND] Sample;
+    audio_buffer_index: int;
+
     imm_state: Imm_State;
     imgui_state: Imgui_State;
 
@@ -616,6 +631,17 @@ game_update : Game_Update : (
                         case .GAMEPLAY; load_next_level_gameplay(true);
                         case .EDITOR;   load_next_level_editor(true);
                     }
+                    continue;
+                }
+
+                if it.key == #char "A" && it.state == .DOWN && keys_down[Key.SHIFT] {
+                    if audio_buffer_mode == .DISABLED {
+                        memset(audio_buffer.data, 0, byte_count(audio_buffer));
+                        audio_buffer_index = 0;
+                    }
+
+                    audio_buffer_mode += 1;
+                    audio_buffer_mode %= .COUNT;
                     continue;
                 }
             }
@@ -1661,7 +1687,7 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                 mesh := entity_mesh(e);
                 mesh_to_world := entity_mesh_to_world_matrix(level, e);
                 
-                set_shader(wireframe_shader, .{flags = .DEPTH_TEST | .CULL_FACE, polygon_mode = .LINE});
+                set_shader(wireframe_shader, .{flags = .DEPTH_TEST | .CULL_FACE, triangle_mode = .LINE});
                 set_uniform("projection", world_to_camera * mesh_to_world);
                 set_uniform("color", color);
 
@@ -1918,7 +1944,8 @@ gl_debug_callback :: (
 game_get_audio_samples : Game_Get_Audio_Samples : (
     game_memory_void_ptr: *void,
     samples_played: int,
-    buffer: [] Sample // This is set to zero in the OS layer.
+    buffer_1: [] Sample,
+    buffer_2: [] Sample
 ) #no_context {
     push_context {
         game_memory := cast(*Game_Memory, game_memory_void_ptr);
@@ -1927,164 +1954,223 @@ game_get_audio_samples : Game_Get_Audio_Samples : (
         using game_memory;
         using game_memory.game_context;
 
-        if mode != .GAMEPLAY return;
+        memset(buffer_1.data, 0, byte_count(buffer_1));
+        memset(buffer_2.data, 0, byte_count(buffer_2));
 
-        using level := ifx gameplay.sublevel_exists then gameplay.sublevel else gameplay.overworld;
+        if mode == .GAMEPLAY {
+            using level := ifx gameplay.sublevel_exists then gameplay.sublevel else gameplay.overworld;
 
-        player := *_Player[0];
-        player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
-        camera_position, camera_quat := get_gameplay_camera_info(level);
-        
-        // @TODO: Account for the player's current position when considering procedural animation
-        // once procedural animation is added to the player.
-
-        player_to_camera := camera_position - player_position;
-        player_to_camera_distance := length(player_to_camera);
-        
-
-        PLAYER_TO_CAMERA_RATIO :: 0.05;
-        listener_distance := player_to_camera_distance * PLAYER_TO_CAMERA_RATIO;
-
-        LISTENER_MIN_DISTANCE_FROM_PLAYER :: 1.5;
-        if listener_distance < LISTENER_MIN_DISTANCE_FROM_PLAYER listener_distance = LISTENER_MIN_DISTANCE_FROM_PLAYER;
-        if listener_distance > player_to_camera_distance listener_distance = player_to_camera_distance;
-
-        // The listener position is somewhere between the camera position and the player position.
-        listener_position := player_position + normalize(player_to_camera) * listener_distance;
-
-
-        // @TODO:
-        // I am moving on from this part of the audio as of now. However, there
-        // are some things I can do to improve audio.
-        
-        // - Audio attenuation curve: Make sounds fall off in a nicer fashion.
-        // In reality, volume decreases by half as distance doubles.
-        // I'm sensing that, like realistic graphics, realistic audio is a hole
-        // that I don't want to go down because that's not the joy of games
-        // for me. We can do a minimal amount of work to get it "good enough",
-        // however, any further is excessive.
-
-        // A much more artistically-valid thing to do is to change how sound
-        // works specifically to suit the game design I am going for. The original
-        // idea for this game was as a stealth game where one of the aspects was
-        // being able to hear enemies through walls, and using sound to better
-        // inform your decision-making.
-
-        // I do want to continue heading into the idea of having more realtime
-        // level elements in this game. As such, I should consider making audio
-        // better-suited for that.
-
-        // - Only activate sound effects in the same enclosed space as the
-        // player: Using pathfinding to figure out how loud to make the sound
-        // seems like overkill, we can just use distance. Perhaps there can be a
-        // little audio leakage from one enclosed space, so that if you are standing
-        // near a wall and there is something on the other side of the wall,
-        // you can hear it. However, this opens a whole can of worms. You start
-        // asking, "Hey, shouldn't we put a low-pass filter over the audio to 
-        // make it more realistic?". The way you do that on PCM audio is with
-        // Fast Fourier Transform, and that opens up a whole can of worms I don't
-        // ever want to touch. So we will avoid that.
-
-        //          -berk, 2025 - 4 - 20
-
-        clipping_happened := false;
-
-        i := 0;
-        while true {
-            if i == playing_sound_count break;
-
-            sound := *playing_sounds[i];
-
-            if sound.flags & .NEW {
-                assert(sound.current_sample == 0);
-                sound.flags &= ~.NEW;
-            } else {
-                sound.current_sample += samples_played;
-            }
+            player := *_Player[0];
+            player_position := to_vector3(player.position) + Vector3.{0.5, 0.5, 0.5};
+            camera_position, camera_quat := get_gameplay_camera_info(level);
             
-            // This should catch when the sound is reloaded and the new one is shorter
-            // than the old one.
+            // @TODO: Account for the player's current position when considering procedural animation
+            // once procedural animation is added to the player.
 
-            end := min(sound.wav.data.count, sound.current_sample + buffer.count);
+            player_to_camera := camera_position - player_position;
+            player_to_camera_distance := length(player_to_camera);
+            
 
-            if sound.flags & .POSITIONAL {
-                using sound.positional;
+            PLAYER_TO_CAMERA_RATIO :: 0.05;
+            listener_distance := player_to_camera_distance * PLAYER_TO_CAMERA_RATIO;
+
+            LISTENER_MIN_DISTANCE_FROM_PLAYER :: 1.5;
+            if listener_distance < LISTENER_MIN_DISTANCE_FROM_PLAYER listener_distance = LISTENER_MIN_DISTANCE_FROM_PLAYER;
+            if listener_distance > player_to_camera_distance listener_distance = player_to_camera_distance;
+
+            // The listener position is somewhere between the camera position and the player position.
+            listener_position := player_position + normalize(player_to_camera) * listener_distance;
+
+
+            // @TODO:
+            // I am moving on from this part of the audio as of now. However, there
+            // are some things I can do to improve audio.
+            
+            // - Audio attenuation curve: Make sounds fall off in a nicer fashion.
+            // In reality, volume decreases by half as distance doubles.
+            // I'm sensing that, like realistic graphics, realistic audio is a hole
+            // that I don't want to go down because that's not the joy of games
+            // for me. We can do a minimal amount of work to get it "good enough",
+            // however, any further is excessive.
+
+            // A much more artistically-valid thing to do is to change how sound
+            // works specifically to suit the game design I am going for. The original
+            // idea for this game was as a stealth game where one of the aspects was
+            // being able to hear enemies through walls, and using sound to better
+            // inform your decision-making.
+
+            // I do want to continue heading into the idea of having more realtime
+            // level elements in this game. As such, I should consider making audio
+            // better-suited for that.
+
+            // - Only activate sound effects in the same enclosed space as the
+            // player: Using pathfinding to figure out how loud to make the sound
+            // seems like overkill, we can just use distance. Perhaps there can be a
+            // little audio leakage from one enclosed space, so that if you are standing
+            // near a wall and there is something on the other side of the wall,
+            // you can hear it. However, this opens a whole can of worms. You start
+            // asking, "Hey, shouldn't we put a low-pass filter over the audio to 
+            // make it more realistic?". The way you do that on PCM audio is with
+            // Fast Fourier Transform, and that opens up a whole can of worms I don't
+            // ever want to touch. So we will avoid that.
+
+            //          -berk, 2025 - 4 - 20
+
+
+            i := 0;
+            while true {
+                if i == playing_sound_count break;
+
+                sound := *playing_sounds[i];
+
+                if sound.flags & .NEW {
+                    assert(sound.current_sample == 0);
+                    sound.flags &= ~.NEW;
+                } else {
+                    sound.current_sample += samples_played;
+                }
+
                 
-                MIN_RADIUS :: 2.0;
-                MAX_RADIUS :: 5.0;
-
-                distance := length(position - listener_position);
-                volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
-                
-                if volume > 0 {
-                    volume *= SFX_VOLUME_REDUCTION;
-                    // This kind of panning is called "constant power panning",
-                    // where the pan is calculated as a sine curve that is
-                    // 1 when the sound is at the chosen ear and 0 when the
-                    // sound is at the opposite ear.
+                if sound.flags & .POSITIONAL {
+                    using sound.positional;
                     
-                    // Source:
-                    // https://www.cs.cmu.edu/~music/icm-online/readings/panlaws/
+                    MIN_RADIUS :: 2.0;
+                    MAX_RADIUS :: 5.0;
 
-                    offset := sound.positional.position - listener_position;
-                    rotate(*offset, camera_quat);
+                    distance := length(position - listener_position);
+                    volume := 1 - clamp((distance - MIN_RADIUS) / (MAX_RADIUS - MIN_RADIUS), 0, 1);
+                    
+                    if volume > 0 {
+                        volume *= SFX_VOLUME_REDUCTION;
+                        // This kind of panning is called "constant power panning",
+                        // where the pan is calculated as a sine curve that is
+                        // 1 when the sound is at the chosen ear and 0 when the
+                        // sound is at the opposite ear.
+                        
+                        // Source:
+                        // https://www.cs.cmu.edu/~music/icm-online/readings/panlaws/
 
-                    angle := get_angle(.{0, 1}, .{offset.x, offset.z});
+                        offset := sound.positional.position - listener_position;
+                        rotate(*offset, camera_quat);
 
-                    // Zero means directly in front of the listener.
-                    // PI / 2 means to the left of the listener.
-                    // -PI / 2 means to the right of the listener.
+                        angle := get_angle(.{0, 1}, .{offset.x, offset.z});
 
-                    l_volume := cos((angle - PI/2) / 2);
-                    r_volume := cos((angle + PI/2) / 2);
+                        // Zero means directly in front of the listener.
+                        // PI / 2 means to the left of the listener.
+                        // -PI / 2 means to the right of the listener.
 
-                    l_volume *= volume;
-                    r_volume *= volume;
+                        l_volume := cos((angle - PI/2) / 2);
+                        r_volume := cos((angle + PI/2) / 2);
 
-                    if r_volume != 0 || l_volume != 0 {
-                        for sound.current_sample..end-1 {
-                            in := sound.wav.data[it];
-                            sample := cast(float, sound.wav.data[it]);
+                        l_volume *= volume;
+                        r_volume *= volume;
 
-                            output := *buffer[it - sound.current_sample];
-                            
-                            l_s32 := cast(s32, output.l) + cast(s32, sample * l_volume);
-                            r_s32 := cast(s32, output.r) + cast(s32, sample * r_volume);
+                        if r_volume != 0 || l_volume != 0 { 
+                            get_samples :: (sound: *Playing_Sound, l_volume: float, r_volume: float, start: int, buffer: [] Sample) {
+                                end := min(sound.wav.data.count, start + buffer.count);
 
-                            if l_s32 < S16_MIN || S16_MAX < l_s32 || r_s32 < S16_MIN || S16_MAX < r_s32 {
-                                clipping_happened = true;
+                                for start..end-1 {
+                                    sample := cast(float, sound.wav.data[it]);
+                                    output := *buffer[it - start];
+
+                                    l_s32 := cast(s32, output.l) + cast(s32, sample * l_volume);
+                                    r_s32 := cast(s32, output.r) + cast(s32, sample * r_volume);
+
+                                    output.l = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
+                                    output.r = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                                }
                             }
 
-                            output.l = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
-                            output.r = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                            get_samples(sound, l_volume, r_volume, sound.current_sample,                  buffer_1);
+                            get_samples(sound, l_volume, r_volume, sound.current_sample + buffer_1.count, buffer_2);
                         }
                     }
+                } else {    
+                    get_samples :: (sound: *Playing_Sound, start: int, buffer: [] Sample) {
+                        end := min(sound.wav.data.count, start + buffer.count);
+
+                        for start..end-1 {
+                            sample := cast(s32, cast(float, sound.wav.data[it]) * SFX_VOLUME_REDUCTION);
+
+                            output := *buffer[it - start];
+
+                            l_s32 := cast(s32, output.l) + sample;
+                            r_s32 := cast(s32, output.r) + sample;
+                            
+                            output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
+                            output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
+                        }
+                    }
+
+                    get_samples(sound, sound.current_sample,                  buffer_1);
+                    get_samples(sound, sound.current_sample + buffer_1.count, buffer_2);
                 }
-            } else {
-                for sound.current_sample..end-1 {
-                    volume := SFX_VOLUME_REDUCTION;
 
-                    sample := cast(s32, cast(float, sound.wav.data[it]) * SFX_VOLUME_REDUCTION);
-
-                    output := *buffer[it - sound.current_sample];
-
-                    l_s32 := cast(s32, output.l) + sample;
-                    r_s32 := cast(s32, output.r) + sample;
-                    
-                    output.l = cast(s16, clamp(r_s32, S16_MIN, S16_MAX));
-                    output.r = cast(s16, clamp(l_s32, S16_MIN, S16_MAX));
+                if sound.current_sample + buffer_1.count + buffer_2.count >= sound.wav.data.count {
+                    sound.* = playing_sounds[playing_sound_count-1];
+                    playing_sound_count -= 1;
+                    continue;
                 }
-            }
 
-            if end == sound.wav.data.count {
-                sound.* = playing_sounds[playing_sound_count-1];
-                playing_sound_count -= 1;
-                continue;
+                i += 1;
             }
-
-            i += 1;
         }
 
-        if clipping_happened print("Clipping happened!\n");
+        if audio_buffer_mode != .DISABLED {
+            if audio_buffer_mode != .FREEZE {
+                audio_buffer_index += samples_played;
+                audio_buffer_index %= audio_buffer.count;
+
+                copy_buffer :: (start: int, buffer: [] Sample) {
+                    using context.game_context;
+
+                    for buffer {
+                        index := (start + it_index) % audio_buffer.count;
+                        audio_buffer[index] = it;
+                    }
+                }
+
+                copy_buffer(audio_buffer_index, buffer_1);
+                copy_buffer(audio_buffer_index + buffer_1.count, buffer_2);
+            }
+
+
+
+            set_shader(imm_color_shader, .{mode = .LINE});
+            set_uniform("projection", Matrix4_Identity);
+
+            old_position := Vector3.{-1, cast(float, audio_buffer[0].l) / cast(float, S16_MAX) * 0.5, 0};
+
+            for 1..audio_buffer.count-1 {
+                sample := audio_buffer[it];
+                position := Vector3.{
+                    cast(float, it) / cast(float, audio_buffer.count) * 2 - 1,
+                    cast(float, sample.l) / cast(float, S16_MAX) * 0.5,
+                    0
+                };
+
+                imm_vertex(old_position, .{1, 0, 0, 1});
+                imm_vertex(position, .{1, 0, 0, 1});
+
+                old_position = position;
+            }
+            imm_flush();
+
+
+            set_shader(imm_color_shader, .{});
+            set_uniform("projection", Matrix4_Identity);
+
+            center := Vector2.{
+                cast(float, audio_buffer_index) / cast(float, audio_buffer.count) * 2 - 1,
+                0
+            };
+
+            position := center - Vector2.{0.005, 1};
+            size := Vector2.{0.01, 2};
+
+            imm_quad(position, size, .{0, 1, 0, 1});
+
+            imm_flush();
+        }
     }
 }

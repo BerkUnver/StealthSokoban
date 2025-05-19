@@ -1938,9 +1938,9 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
             collision_resolution(level, true);
 
-            if moved_blocks.count > 0 play_positional_sound(level, player.position, push_sound);
+            if moved_blocks.count > 0 play_sound(level, push_sound);
 
-            play_positional_sound(level, player.position, footstep_sound);
+            // play_positional_sound(level, player.position, footstep_sound);
         
         case .SPAWNING;
         case .DEAD;

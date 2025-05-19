@@ -66,7 +66,8 @@ Game_Update :: #type (
 Game_Get_Audio_Samples :: #type (
     game_memory_void_ptr: *void,
     samples_played: int, // How many samples we played since the previous update
-    buffer: [] Sample
+    buffer_1: [] Sample,
+    buffer_2: [] Sample
 ) #no_context;
 
 
