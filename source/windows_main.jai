@@ -417,7 +417,6 @@ main :: () {
     primary_buffer: *IDirectSoundBuffer8;
     assert(dsound.CreateSoundBuffer(dsound, *primary_buffer_descriptor, *primary_buffer, null) == 0);
 
-    
     wave_format := WAVEFORMATEX.{
         wFormatTag = WAVE_FORMAT_PCM,
         nChannels = 2,
@@ -790,6 +789,13 @@ main :: () {
 
         // I tested it, and the dsound latency is consistently (exactly) 30ms.
         // This might be useful information to have.
+
+        // There is weird audio crackling that sometimes shows up. When I analyzed the audio data with OBS,
+        // it just shows the pcm values dropping to zero and then cutting back in maybe 0.01sec later.
+        // I have absolutely no idea what is going on. I need to fix this, but I have alreadk sinkholed
+        // too much time on this. I am leaving it for now.
+
+        //          -berk, 2025 - 5 - 20
 
         play_byte, write_byte: s32;
         assert(secondary_buffer.GetCurrentPosition(secondary_buffer, *play_byte, *write_byte) == 0);
