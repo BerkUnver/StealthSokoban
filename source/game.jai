@@ -634,7 +634,7 @@ game_update : Game_Update : (
                     continue;
                 }
 
-                if it.key == #char "A" && it.state == .DOWN && keys_down[Key.SHIFT] {
+                if it.key == #char "A" && it.state == .DOWN && keys_down[Key.CTRL] {
                     if audio_buffer_mode == .DISABLED {
                         memset(audio_buffer.data, 0, byte_count(audio_buffer));
                         audio_buffer_index = 0;
@@ -908,7 +908,7 @@ game_update : Game_Update : (
                     entity_type: [STRING_ENTRY_MAX_COUNT] u8;
                     entity_type_count: int; 
 
-                    entity_name := ENTITIES[editor.entity_type].name;
+                    entity_name := ENTITY_TYPE_INFOS[editor.entity_type].name;
                     assert(entity_name.count <= entity_type.count);
                     memcpy(entity_type.data, entity_name.data, entity_name.count);
                     entity_type_count = entity_name.count;
@@ -916,7 +916,7 @@ game_update : Game_Update : (
                     label_length_2 := label("Entity Type", head, item_size);
                     if string_entry(.{head.x + label_length_2, head.y}, .{item_size.x - label_length_2, item_size.y}, *entity_type, *entity_type_count) {
                         str := string.{entity_type_count, entity_type.data};
-                        for ENTITIES {
+                        for ENTITY_TYPE_INFOS {
                             if it.name == str {
                                 editor.entity_type = xx it_index;
                                 break;
@@ -932,7 +932,7 @@ game_update : Game_Update : (
 
                     if editor.selected {
                         e := get_entity(editor_level, editor.selected);
-                        type := ENTITIES[e.type];
+                        type := ENTITY_TYPE_INFOS[e.type];
                         imgui_for_value(e, type, head, item_size, editor_arena);
                     } else {
                         imgui_for_value(editor_level, type_info(Level), head, item_size, editor_arena);

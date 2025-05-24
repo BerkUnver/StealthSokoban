@@ -293,6 +293,8 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
             if .ARROW_START <= event.key && event.key <= .ARROW_END && event.state == .DOWN {
                 if editor.selected == 0 return;
                 e := get_entity(level, editor.selected);
+                facing := entity_facing(e);
+                if !facing return;
 
                 dir: Vector3i;
                 if event.key == {
@@ -303,32 +305,18 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                     case; assert(false);
                 }
 
-                facing := vector3i_to_facing(dir);
-                
-                enemy := as(e, Enemy);
-                if enemy {
-                    enemy.facing = facing;
-                    return;
-                }
-
-                enemy_spawner := as(e, Enemy_Spawner);
-                if enemy_spawner {
-                    enemy_spawner.facing = facing;
-                    return;
-                }
-
+                facing.* = vector3i_to_facing(dir);
                 return;
             }
 
             
-            if event.key == Key.F_BASE + 2 && event.state == .DOWN {
-                editor.entity_type = (editor.entity_type - 1 + ENTITIES.count) % ENTITIES.count;
+            if event.key == Key.F_BASE + 2 && event.state != .UP {
+                editor.entity_type = (editor.entity_type - 1 + ENTITY_TYPE_COUNT) % ENTITY_TYPE_COUNT;
                 return;
             }
 
-            if event.key == Key.F_BASE + 3 && event.state == .DOWN {
-                editor.entity_type = (editor.entity_type + 1) % ENTITIES.count;
-                return;
+            if event.key == Key.F_BASE + 3 && event.state != .UP {
+                editor.entity_type = (editor.entity_type + 1) % ENTITY_TYPE_COUNT; return;
             }
 
             if event.key == Key.F_BASE + 1 && event.state == .DOWN {

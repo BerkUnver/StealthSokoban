@@ -66,13 +66,12 @@ Level :: struct {
         camera_yaw_interp := 1.0;
             
     
-        // @TODO @Memory: I think we can make a "static collision" array with
-        // doors, non-moving blocks, and possibly level hints, and a
-        // "dynamic collision" array that we update when we call 
-        // collision_resolution.
-        
-        doors: [] Entity_Id; // Only Door entities should be put in here.
+
         collision: [] Entity_Id;
+        collision_faces: [Cube_Face.COUNT] [] Entity_Id;
+        
+        // These are stationary, and don't change over the course of the level.
+        doors: [] Entity_Id;
         input_hints: [] Entity_Id;
 
         viewed: [] View_State;
@@ -196,12 +195,6 @@ Player :: struct {
         }
     } @NoSerialize
     COLOR :: Vector4.{1, 1, 1, 1};
-}
-
-
-Collision_Cell :: struct {
-    here: Entity_Id;
-    y_positive: Entity_Id;
 }
 
 
@@ -782,7 +775,7 @@ load_level_base :: (level_name: string, arena: *Memory_Arena, make_if_not_exists
     // Restore the type of each entity
     #insert -> string {
         sb := make_local_string_builder();
-        for ENTITIES {
+        for ENTITY_TYPE_INFOS {
             print(*sb, "for * _% {\n", it.name);
             print(*sb, "    it.type = .%;\n", it.name);
             print(*sb, "}\n");
@@ -835,7 +828,7 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
     count := 1;
     #insert -> string {
         sb := make_local_string_builder();
-        for ENTITIES {
+        for ENTITY_TYPE_INFOS {
             print(*sb, "reserved += _%.allocated;\n", it.name);
             print(*sb, "count += _%.count;\n", it.name);
         }
@@ -857,16 +850,26 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
         if !get(*entities, it) append_no_resize(*unused_eids, it);
     }
 
-    // @TODO: Make sure none of the other entities are outside of the level
+
+
+    player := *_Player[0];
+
+    if skip_intro {
+        set_state(level, .PLAYING);
+    } else {
+        set_state(player, .SPAWNING);
+        set_state(level, .FADE_IN);
+    }
+    reset_camera_focus(level);
 
     view_texture = make_view_texture(level_size);
 
     viewed = alloc_view(arena, size_1d, View_State);
 
     mutual_annihilations = reserve_array(arena, size_1d, Mutual_Annihilation);
+   
 
-    // Should adding this stuff to the collision array be done with collision_resolution?
-    
+
     init_gridlike_array :: (gridlikes: [] $T/interface Gridlike_Entity, array: *[] Entity_Id) #expand {
         array.* = alloc_view(arena, size_1d, Entity_Id);
 
@@ -882,37 +885,17 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
         }
     }
 
-    init_gridlike_array(_Block, *collision);
     init_gridlike_array(_Door, *doors);
     init_gridlike_array(_Input_Hint, *input_hints);
-    
-    for * _Enemy {
-        in_bounds, index := get_3d_index(it.position, level_position, level_size);
 
-        if !in_bounds {
-            log(.ERROR, "There was a Enemy entity outside of the level's bounding box.\n");
-            return null;
-        }
-        
-        if collision[index] != 0 {
-            log(.ERROR, "There is an overlap between an Enemy entity and something else at (%, %, %)\n", it.position.x, it.position.y, it.position.z);
-            return null;
-        }
 
-        collision[index] = it.eid;
+    collision = alloc_view(arena, size_1d, Entity_Id);
+    for * collision_faces {
+        it.* = alloc_view(arena, size_1d, Entity_Id);
     }
 
-    if _Player.count != 1 {
-        log(.ERROR, "There was no player entity in the serialized level \"%\".\n", level.name);
-        return null;
-    }
-    
-    reset_camera_focus(level);
+    collision_resolution(level, make_mutual_annihilations=false);
 
-    // :Checkpoint
-    self_block = .{arena.current - arena_mark, xx level};
-    checkpoint_block = alloc_view(arena, self_block.count, u8, zero_init = false); 
-    assert(self_block.data + self_block.count == checkpoint_block.data);
 
     for 0..enemy_pre_warm_ticks-1 {
         gameplay_move_tick(level, just_do_falls=false, do_vfx=false);
@@ -922,14 +905,11 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
         // @TODO: Detect when enemies walk into the player, issue an error!
     }
 
-    player := *_Player[0];
 
-    if skip_intro {
-        set_state(level, .PLAYING);
-    } else {
-        set_state(player, .SPAWNING);
-        set_state(level, .FADE_IN);
-    }
+    // :Checkpoint
+    self_block = .{arena.current - arena_mark, xx level};
+    checkpoint_block = alloc_view(arena, self_block.count, u8, zero_init = false); 
+    assert(self_block.data + self_block.count == checkpoint_block.data);
 
     set_checkpoint(level);
 

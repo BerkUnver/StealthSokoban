@@ -13,7 +13,22 @@ Entity_Type :: enum {
 }
 
 
-ENTITIES :: #insert -> string {
+ENTITY_TYPE_COUNT :: #run -> s64 {
+    values := type_info(Entity_Type).values;
+    assert(values.count != 0);
+
+    max := values[0];
+
+    for 1..values.count-1 {
+        value := values[it];
+        if value > max max = value;
+    }
+    
+    return max + 1;
+}
+
+
+ENTITY_TYPE_INFOS :: #insert -> string {
     sb := make_local_string_builder();
     print(*sb, "*Type_Info_Struct.[\n");
     for type_info(Entity_Type).names {
@@ -38,11 +53,11 @@ Entity :: struct {
 Entity_Types :: struct {
     #insert -> string {
         sb := make_local_string_builder();
-        for ENTITIES {
+        for ENTITY_TYPE_INFOS {
             print(*sb, "    _%: [..] %;\n", it.name, it.name);
         }
-        print(*sb, "    #place _%;\n", ENTITIES[0].name);
-        print(*sb, "    components: [%] Resizable_Array;\n", ENTITIES.count);
+        print(*sb, "    #place _%;\n", ENTITY_TYPE_INFOS[0].name);
+        print(*sb, "    components: [%] Resizable_Array;\n", ENTITY_TYPE_INFOS.count);
         str := get_string(*sb);
         return str;
     }
@@ -53,7 +68,7 @@ Entity_Types :: struct {
 // Should we assert on this or something?
 make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) -> *Entity {
     array := *types.components[index];
-    type := ENTITIES[index];
+    type := ENTITY_TYPE_INFOS[index];
     
     // Note that because "array" is an alias for whatever the actual underlying
     // type is, the count and allocated will NOT CORRESPOND to how big the array
@@ -91,7 +106,7 @@ make_entity :: (using level: *Level, index: int, arena: *Memory_Arena = null) ->
 
 make_entity :: (using level: *Level, $T: Type, arena: *Memory_Arena = null) -> *T {
     INDEX :: #run -> int {
-        for ENTITIES {
+        for ENTITY_TYPE_INFOS {
             if it == type_info(T) {
                 return it_index;
             }
@@ -123,7 +138,7 @@ delete_entity :: (using level: *Level, eid: Entity_Id, arena: *Memory_Arena = nu
 
     // @Speed @Hack
     for * types.components {
-        entity_size = ENTITIES[it_index].runtime_size;
+        entity_size = ENTITY_TYPE_INFOS[it_index].runtime_size;
         if it.data <= e && e < it.data + it.count * entity_size {
             type_index = it_index;
             break;
@@ -179,7 +194,7 @@ iterate_entities :: (types: *Entity_Types, body: Code, flags: For_Flags) #expand
     // is invoked! This might kill compile times!
     #insert -> string {
         sb := make_local_string_builder();
-        for ENTITIES {
+        for ENTITY_TYPE_INFOS {
             print(*sb, "for * e: types._% {\n", it.name);
             print(*sb, "    it = e;\n");
             print(*sb, "    #insert body;\n");
@@ -242,4 +257,32 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
     if player return get_player_draw_info(player);
 
     return make_translation_matrix4(to_vector3(e.position));
+}
+
+
+entity_facing :: (e: *Entity) -> *Facing {
+    #insert -> string {
+        sb := make_local_string_builder();
+        print(*sb, "if #complete e.type == {\n");
+        for info: ENTITY_TYPE_INFOS {
+            print(*sb, "    case .%;\n", info.name);
+
+            found := false;
+
+            for member: info.members {
+                if member.name == "facing" && member.type == type_info(Facing) {
+                    print(*sb, "        return *cast(*%, e).facing;\n", info.name);
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                print(*sb, "        return null;\n");
+            }
+        }
+        print(*sb, "}\n");
+
+        return get_string(*sb);
+    }
 }
