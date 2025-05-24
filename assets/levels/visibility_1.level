@@ -171,17 +171,6 @@ types
 		moveable 1
 		;
 	]
-	_Player 1[
-		e
-			eid 2
-			position
-				x -1
-				y 1
-				z -1
-				;
-			;
-		;
-	]
 	_Exit 1[
 		e
 			eid 5
@@ -189,6 +178,17 @@ types
 				x -6
 				y 1
 				z -2
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 2
+			position
+				x -1
+				y 1
+				z -1
 				;
 			;
 		;

@@ -237,6 +237,26 @@ types
 		moveable 1
 		;
 	]
+	_Checkpoint 2[
+		e
+			eid 36
+			position
+				x 10
+				y 1
+				z -5
+				;
+			;
+		;
+		e
+			eid 37
+			position
+				x 2
+				y 1
+				z 1
+				;
+			;
+		;
+	]
 	_Door 7[
 		e
 			eid 12
@@ -343,48 +363,6 @@ types
 		filled 1[ 1 ]
 		;
 	]
-	_Enemy_Spawner 4[
-		e
-			eid 19
-			position
-				x 2
-				y 1
-				z -9
-				;
-			;
-		enemy_spawner_type 2
-		;
-		e
-			eid 20
-			position
-				x -3
-				y 1
-				z 4
-				;
-			;
-		facing 1
-		;
-		e
-			eid 21
-			position
-				x 9
-				y 1
-				z -1
-				;
-			;
-		;
-		e
-			eid 22
-			position
-				x 6
-				y 1
-				z -2
-				;
-			;
-		enemy_spawner_type 1
-		facing 3
-		;
-	]
 	_Enemy_Despawner 11[
 		e
 			eid 25
@@ -485,22 +463,55 @@ types
 			;
 		;
 	]
-	_Checkpoint 2[
+	_Enemy_Spawner 4[
 		e
-			eid 36
+			eid 19
 			position
-				x 10
+				x 2
 				y 1
-				z -5
+				z -9
+				;
+			;
+		enemy_spawner_type 2
+		;
+		e
+			eid 20
+			position
+				x -3
+				y 1
+				z 4
+				;
+			;
+		facing 1
+		;
+		e
+			eid 21
+			position
+				x 9
+				y 1
+				z -1
 				;
 			;
 		;
 		e
-			eid 37
+			eid 22
 			position
-				x 2
+				x 6
 				y 1
-				z 1
+				z -2
+				;
+			;
+		enemy_spawner_type 1
+		facing 3
+		;
+	]
+	_Exit 1[
+		e
+			eid 35
+			position
+				x -4
+				y 1
+				z 5
 				;
 			;
 		;
@@ -512,17 +523,6 @@ types
 				x -4
 				y 1
 				z -9
-				;
-			;
-		;
-	]
-	_Exit 1[
-		e
-			eid 35
-			position
-				x -4
-				y 1
-				z 5
 				;
 			;
 		;

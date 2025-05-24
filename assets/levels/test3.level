@@ -171,18 +171,18 @@ types
 		facing 1
 		;
 	]
-	_Player 1[
-		e
-			eid 11
-			;
-		;
-	]
 	_Exit 1[
 		e
 			eid 12
 			position
 				z 10
 				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 11
 			;
 		;
 	]

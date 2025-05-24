@@ -235,22 +235,6 @@ types
 			;
 		;
 	]
-	_Door 1[
-		e
-			eid 13
-			position
-				x 11
-				z -9
-				;
-			;
-		size
-			x 7
-			y 3
-			z 1
-			;
-		filled 21[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
-		;
-	]
 	_Checkpoint 3[
 		e
 			eid 16
@@ -280,15 +264,20 @@ types
 			;
 		;
 	]
-	_Player 1[
+	_Door 1[
 		e
-			eid 14
+			eid 13
 			position
-				x 2
-				y 1
-				z -3
+				x 11
+				z -9
 				;
 			;
+		size
+			x 7
+			y 3
+			z 1
+			;
+		filled 21[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
 		;
 	]
 	_Exit 1[
@@ -298,6 +287,17 @@ types
 				x -9
 				y 1
 				z 9
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 14
+			position
+				x 2
+				y 1
+				z -3
 				;
 			;
 		;

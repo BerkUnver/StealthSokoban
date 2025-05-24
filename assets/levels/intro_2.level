@@ -57,7 +57,7 @@ types
 		filled 15[ 1 1 0 1 1 1 1 1 1 1 1 0 0 0 1 ]
 		color
 			x 0.5423411130905151365
-			y 0.0290418788790702817
+			y 0.0290418770164251324
 			z 0.4049073159694671629
 			w 1
 			;
@@ -171,6 +171,17 @@ types
 		moveable 1
 		;
 	]
+	_Exit 1[
+		e
+			eid 6
+			position
+				x -13
+				y 1
+				z -2
+				;
+			;
+		;
+	]
 	_Input_Hint 1[
 		e
 			eid 11
@@ -194,17 +205,6 @@ types
 			eid 2
 			position
 				x 22
-				y 1
-				z -2
-				;
-			;
-		;
-	]
-	_Exit 1[
-		e
-			eid 6
-			position
-				x -13
 				y 1
 				z -2
 				;

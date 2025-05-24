@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277317017316818235
+			y 0.027731698006391525
 			z 0.3953233957290649413
 			w 1
 			;
@@ -148,6 +148,17 @@ types
 		moveable 1
 		;
 	]
+	_Enemy_Despawner 1[
+		e
+			eid 22
+			position
+				x -11
+				y 1
+				z 5
+				;
+			;
+		;
+	]
 	_Enemy_Spawner 1[
 		e
 			eid 21
@@ -160,15 +171,95 @@ types
 		facing 1
 		;
 	]
-	_Enemy_Despawner 1[
+	_Exit 1[
 		e
-			eid 22
+			eid 28
+			position
+				x -4
+				y 2
+				z 27
+				;
+			;
+		;
+	]
+	_Input_Hint 5[
+		e
+			eid 36
+			position
+				x 1
+				y 1
+				;
+			;
+		size
+			x 3
+			y 1
+			z 4
+			;
+		filled 12[ 1 1 1 1 1 1 1 1 1 1 1 1 ]
+		;
+		e
+			eid 37
+			position
+				x -2
+				y 1
+				z 10
+				;
+			;
+		size
+			x 4
+			y 1
+			z 5
+			;
+		filled 20[ 0 0 1 0 0 0 1 0 0 1 1 1 1 1 0 0 1 0 0 0 ]
+		input_hint_type 4
+		;
+		e
+			eid 38
+			position
+				x 3
+				y 1
+				z 10
+				;
+			;
+		size
+			x 3
+			y 1
+			z 4
+			;
+		filled 12[ 0 1 0 0 1 0 1 1 1 0 0 1 ]
+		input_hint_type 3
+		;
+		e
+			eid 35
+			position
+				x -7
+				y 1
+				z 13
+				;
+			;
+		size
+			x 5
+			y 1
+			z 3
+			;
+		filled 15[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
+		input_hint_type 5
+		;
+		e
+			eid 19
 			position
 				x -11
 				y 1
-				z 5
+				z 3
 				;
 			;
+		size
+			x 1
+			y 1
+			z 2
+			;
+		filled 2[ 1 1 ]
+		input_hint_type 5
 		;
 	]
 	_Overworld_Entrance 10[
@@ -405,86 +496,6 @@ types
 			;
 		;
 	]
-	_Input_Hint 5[
-		e
-			eid 36
-			position
-				x 1
-				y 1
-				;
-			;
-		size
-			x 3
-			y 1
-			z 4
-			;
-		filled 12[ 1 1 1 1 1 1 1 1 1 1 1 1 ]
-		;
-		e
-			eid 37
-			position
-				x -2
-				y 1
-				z 10
-				;
-			;
-		size
-			x 4
-			y 1
-			z 5
-			;
-		filled 20[ 0 0 1 0 0 0 1 0 0 1 1 1 1 1 0 0 1 0 0 0 ]
-		input_hint_type 4
-		;
-		e
-			eid 38
-			position
-				x 3
-				y 1
-				z 10
-				;
-			;
-		size
-			x 3
-			y 1
-			z 4
-			;
-		filled 12[ 0 1 0 0 1 0 1 1 1 0 0 1 ]
-		input_hint_type 3
-		;
-		e
-			eid 35
-			position
-				x -7
-				y 1
-				z 13
-				;
-			;
-		size
-			x 5
-			y 1
-			z 3
-			;
-		filled 15[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
-		input_hint_type 5
-		;
-		e
-			eid 19
-			position
-				x -11
-				y 1
-				z 3
-				;
-			;
-		size
-			x 1
-			y 1
-			z 2
-			;
-		filled 2[ 1 1 ]
-		input_hint_type 5
-		;
-	]
 	_Player 1[
 		e
 			eid 17
@@ -492,17 +503,6 @@ types
 				x 2
 				y 1
 				z 2
-				;
-			;
-		;
-	]
-	_Exit 1[
-		e
-			eid 28
-			position
-				x -4
-				y 2
-				z 27
 				;
 			;
 		;

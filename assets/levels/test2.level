@@ -60,20 +60,20 @@ types
 		moveable 1
 		;
 	]
-	_Player 1[
-		e
-			eid 4
-			position
-				z -3
-				;
-			;
-		;
-	]
 	_Exit 1[
 		e
 			eid 5
 			position
 				z 11
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 4
+			position
+				z -3
 				;
 			;
 		;

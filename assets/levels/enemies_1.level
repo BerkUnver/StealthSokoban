@@ -152,6 +152,53 @@ types
 		moveable 1
 		;
 	]
+	_Checkpoint 5[
+		e
+			eid 58
+			position
+				x 1
+				y 1
+				z -5
+				;
+			;
+		;
+		e
+			eid 59
+			position
+				x -1
+				y 1
+				z 4
+				;
+			;
+		;
+		e
+			eid 60
+			position
+				x 11
+				y 1
+				z 7
+				;
+			;
+		;
+		e
+			eid 61
+			position
+				x 13
+				y 1
+				z -5
+				;
+			;
+		;
+		e
+			eid 62
+			position
+				x 15
+				y 1
+				z -13
+				;
+			;
+		;
+	]
 	_Enemy 1[
 		e
 			eid 15
@@ -159,6 +206,53 @@ types
 				x -2
 				y 1
 				z -10
+				;
+			;
+		;
+	]
+	_Enemy_Despawner 5[
+		e
+			eid 51
+			position
+				x 2
+				y 1
+				z -1
+				;
+			;
+		;
+		e
+			eid 52
+			position
+				x 5
+				y 1
+				z 8
+				;
+			;
+		;
+		e
+			eid 53
+			position
+				x 3
+				y 1
+				z 8
+				;
+			;
+		;
+		e
+			eid 54
+			position
+				x 15
+				y 1
+				z 1
+				;
+			;
+		;
+		e
+			eid 55
+			position
+				x 15
+				y 1
+				z 3
 				;
 			;
 		;
@@ -261,96 +355,13 @@ types
 		facing 1
 		;
 	]
-	_Enemy_Despawner 5[
+	_Exit 1[
 		e
-			eid 51
+			eid 57
 			position
-				x 2
+				x 6
 				y 1
-				z -1
-				;
-			;
-		;
-		e
-			eid 52
-			position
-				x 5
-				y 1
-				z 8
-				;
-			;
-		;
-		e
-			eid 53
-			position
-				x 3
-				y 1
-				z 8
-				;
-			;
-		;
-		e
-			eid 54
-			position
-				x 15
-				y 1
-				z 1
-				;
-			;
-		;
-		e
-			eid 55
-			position
-				x 15
-				y 1
-				z 3
-				;
-			;
-		;
-	]
-	_Checkpoint 5[
-		e
-			eid 58
-			position
-				x 1
-				y 1
-				z -5
-				;
-			;
-		;
-		e
-			eid 59
-			position
-				x -1
-				y 1
-				z 4
-				;
-			;
-		;
-		e
-			eid 60
-			position
-				x 11
-				y 1
-				z 7
-				;
-			;
-		;
-		e
-			eid 61
-			position
-				x 13
-				y 1
-				z -5
-				;
-			;
-		;
-		e
-			eid 62
-			position
-				x 15
-				y 1
-				z -13
+				z -3
 				;
 			;
 		;
@@ -361,17 +372,6 @@ types
 			position
 				y 1
 				z -14
-				;
-			;
-		;
-	]
-	_Exit 1[
-		e
-			eid 57
-			position
-				x 6
-				y 1
-				z -3
 				;
 			;
 		;

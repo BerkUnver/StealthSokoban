@@ -160,17 +160,6 @@ types
 		filled 2[ 1 1 ]
 		;
 	]
-	_Player 1[
-		e
-			eid 9
-			position
-				x 17
-				y 1
-				z -6
-				;
-			;
-		;
-	]
 	_Exit 1[
 		e
 			eid 10
@@ -178,6 +167,17 @@ types
 				x 1
 				y 1
 				z 10
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 9
+			position
+				x 17
+				y 1
+				z -6
 				;
 			;
 		;

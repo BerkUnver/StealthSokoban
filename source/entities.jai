@@ -1,15 +1,16 @@
+// Put these in alphabetical order, please.
 Entity_Type :: enum {
     Block;
+    Checkpoint;
     Door;
     Enemy;
-    Enemy_Spawner;
     Enemy_Despawner;
+    Enemy_Spawner;
+    Exit;
+    Input_Hint;
     Overworld_Entrance;
     Overworld_Exit;
-    Checkpoint;
-    Input_Hint;
     Player;
-    Exit;
 }
 
 

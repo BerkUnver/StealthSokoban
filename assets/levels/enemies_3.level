@@ -221,39 +221,6 @@ types
 		filled 1[ 1 ]
 		;
 	]
-	_Enemy_Spawner 3[
-		e
-			eid 2
-			position
-				x -14
-				y 3
-				z 5
-				;
-			;
-		enemy_spawner_type 1
-		;
-		e
-			eid 40
-			position
-				x -15
-				y 3
-				z 5
-				;
-			;
-		enemy_spawner_type 1
-		facing 2
-		;
-		e
-			eid 38
-			position
-				x -13
-				y 1
-				z 4
-				;
-			;
-		enemy_spawner_type 1
-		;
-	]
 	_Enemy_Despawner 15[
 		e
 			eid 26
@@ -391,14 +358,37 @@ types
 			;
 		;
 	]
-	_Player 1[
+	_Enemy_Spawner 3[
 		e
-			eid 4
+			eid 2
 			position
-				x -5
-				y 1
+				x -14
+				y 3
+				z 5
 				;
 			;
+		enemy_spawner_type 1
+		;
+		e
+			eid 40
+			position
+				x -15
+				y 3
+				z 5
+				;
+			;
+		enemy_spawner_type 1
+		facing 2
+		;
+		e
+			eid 38
+			position
+				x -13
+				y 1
+				z 4
+				;
+			;
+		enemy_spawner_type 1
 		;
 	]
 	_Exit 1[
@@ -408,6 +398,16 @@ types
 				x -19
 				y 1
 				z 5
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 4
+			position
+				x -5
+				y 1
 				;
 			;
 		;

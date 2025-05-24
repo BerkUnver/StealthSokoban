@@ -208,17 +208,6 @@ types
 		moveable 1
 		;
 	]
-	_Player 1[
-		e
-			eid 11
-			position
-				x -6
-				y 1
-				z -9
-				;
-			;
-		;
-	]
 	_Exit 1[
 		e
 			eid 12
@@ -226,6 +215,17 @@ types
 				x 8
 				y 1
 				z 21
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 11
+			position
+				x -6
+				y 1
+				z -9
 				;
 			;
 		;

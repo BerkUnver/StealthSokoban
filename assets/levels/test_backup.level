@@ -63,22 +63,22 @@ types
 		moveable 1
 		;
 	]
-	_Player 1[
-		e
-			eid 7
-			position
-				x -1
-				z 2
-				;
-			;
-		;
-	]
 	_Exit 1[
 		e
 			eid 8
 			position
 				x 2
 				z -1
+				;
+			;
+		;
+	]
+	_Player 1[
+		e
+			eid 7
+			position
+				x -1
+				z 2
 				;
 			;
 		;

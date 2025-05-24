@@ -321,7 +321,7 @@ deserialize_next :: (lexer: *Lexer, info: *Type_Info, ptr: *void, arena: *Memory
                 }
 
                 if token.type != .IDENTIFIER return .{false, "Expected an identifier before a member of a struct.", token.loc};
-                
+
                 while true {
                     member := *struct_info.members[member_index];
                     if can_serialize_member(member, greatest_offset) {

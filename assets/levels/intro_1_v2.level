@@ -105,6 +105,16 @@ types
 		moveable 1
 		;
 	]
+	_Exit 1[
+		e
+			eid 7
+			position
+				y 1
+				z 32
+				;
+			;
+		;
+	]
 	_Input_Hint 1[
 		e
 			eid 8
@@ -128,16 +138,6 @@ types
 			position
 				y 1
 				z 2
-				;
-			;
-		;
-	]
-	_Exit 1[
-		e
-			eid 7
-			position
-				y 1
-				z 32
 				;
 			;
 		;

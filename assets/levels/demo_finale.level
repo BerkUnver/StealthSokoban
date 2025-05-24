@@ -21,6 +21,25 @@ types
 			;
 		;
 	]
+	_Enemy_Despawner 2[
+		e
+			eid 7
+			position
+				x -4
+				y 1
+				z 1
+				;
+			;
+		;
+		e
+			eid 5
+			position
+				x 4
+				y 1
+				;
+			;
+		;
+	]
 	_Enemy_Spawner 2[
 		e
 			eid 3
@@ -41,25 +60,6 @@ types
 				;
 			;
 		enemy_spawner_type 1
-		;
-	]
-	_Enemy_Despawner 2[
-		e
-			eid 7
-			position
-				x -4
-				y 1
-				z 1
-				;
-			;
-		;
-		e
-			eid 5
-			position
-				x 4
-				y 1
-				;
-			;
 		;
 	]
 	_Player 1[
