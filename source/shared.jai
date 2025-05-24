@@ -533,7 +533,7 @@ realloc_many :: (arena: *Memory_Arena, old: *$T, old_count: s64, new_count: s64,
 }
 
 
-alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T #must {
+alloc_view :: (arena: *Memory_Arena, count: s64, $T: Type, zero_init := true) -> [] T {
     byte_count := size_of(T) * count; 
     ret := alloc(arena, byte_count, zero_init);
     return .{data=xx ret, count=count};

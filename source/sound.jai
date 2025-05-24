@@ -99,10 +99,7 @@ load_sound :: (path: string, arena: *Memory_Arena) -> Sound {
                 has_samples = true;
                 data_size:, str = get(str, u32);
                 samples = .{data_size / size_of(s16), xx str.data};
-                padded_data_size := data_size;
-                if padded_data_size % 2 == 1 padded_data_size += 1;
-                assert(str.count >= padded_data_size);
-                str = advance(str, padded_data_size);
+                str = advance(str, data_size);
             case "junk";
                 // Used for byte alignment
                 size:, str = get(str, u32);

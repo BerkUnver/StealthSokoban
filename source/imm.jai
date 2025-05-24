@@ -128,16 +128,23 @@ imm_quad :: (position: Vector2, size: Vector2) {
 
 imm_cuboid :: (begin: Vector3, end: Vector3, color: Vector4) {
     size := end - begin;
-    for 0..35 {
-        imm_vertex(begin + CUBE_VERTICES[it] * size, color);
+    for face: CUBE_VERTICES {
+        for face {
+            imm_vertex(begin + it * size, color);
+        }
     }
 }
 
 
 imm_cuboid_with_uvs :: (begin: Vector3, end: Vector3, color: Vector4) {
     size := end - begin;
-    for 0..35 {
-        imm_vertex(begin + CUBE_VERTICES[it] * size, CUBE_UVS[it], color);
+    #assert CUBE_VERTICES.count == CUBE_UVS.count;
+    for 0..CUBE_VERTICES.count-1 {
+        face_vertices: [] Vector3 = CUBE_VERTICES[it];
+        face_uvs:      [] Vector2 = CUBE_UVS[it];
+        for 0..face_vertices.count-1 {
+            imm_vertex(begin + face_vertices[it] * size, face_uvs[it], color);
+        }
     }
 }
 

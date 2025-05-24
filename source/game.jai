@@ -1363,20 +1363,22 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
 
                 // @Volatile :GridlikeExteriorHiddenColor
                 COLOR :: Vector4.{14.0/255.0, 21.0/255.0, 63.0/255.0, 1};
-                check_cube_face :: (position: Vector3i, face: Cube_Vertex) #expand {
+                check_cube_face :: (position: Vector3i, face: Cube_Face) #expand {
                     in_bounds, index := get_3d_index(position, level_size);
+
+
+                    face_vertices: [] Vector3 = CUBE_VERTICES[face];
                     
                     if in_bounds {
                         if !(view_state & (.VISIBLE | .SEEN)) && (viewed[index] & .SEEN) {
                             if !is_a_gridlike_at(level, index) {
-                                for 0..5 imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                                for 0..5 imm_vertex(origin + face_vertices[it], COLOR);
                             }
                         }
                     } else {
                         if !(view_state & (.VISIBLE | .SEEN)) {
                             for 0..5 {
-                                vertex := CUBE_VERTICES[xx face + it];
-                                imm_vertex(origin + CUBE_VERTICES[xx face + it], COLOR);
+                                imm_vertex(origin + face_vertices[it], COLOR);
                             }
                         }
                     }

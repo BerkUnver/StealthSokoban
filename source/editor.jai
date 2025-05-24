@@ -44,7 +44,8 @@ get_editor_camera_to_world_rotation_matrix :: (using level: *Level) -> Matrix3 {
 editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector2, event: Input_Event) {
     using context.game_context;
 
-    camera_to_world := inverse(get_editor_camera_matrix(level));
+    success, camera_to_world := inverse(get_editor_camera_matrix(level));
+    assert(success);
 
     if editor.mode == {
         case .IDLE;
@@ -530,7 +531,8 @@ get_intersection_with_selectable_meshes :: (using level: *Level, line_start: Vec
         // on the CPU.
 
         mesh := entity_mesh(e);
-        matrix := inverse(entity_mesh_to_world_matrix(level, e));
+        success, matrix := inverse(entity_mesh_to_world_matrix(level, e));
+        assert(success);
 
         local_line_start := multiply_homogeneous(matrix, line_start);
         local_line_end   := multiply_homogeneous(matrix, line_end);
@@ -614,7 +616,8 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
         case .EXTRUDE;
             using editor.extrude;
             world_to_camera := get_editor_camera_matrix(level);
-            camera_to_world := inverse(world_to_camera);
+            success, camera_to_world := inverse(world_to_camera);
+            assert(success);
             mouse_direction := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0}) - editor.camera_position;
 
             parallel, intersection := get_intersection_between_line_and_plane(
@@ -633,7 +636,9 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
         case .DRAG_AXIS;
             using editor.drag_axis;
             camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(level);
-            camera_to_world := inverse(get_editor_camera_matrix(level));
+            success, camera_to_world := inverse(get_editor_camera_matrix(level));
+            assert(success);
+
             initial_mouse_position := multiply_homogeneous(camera_to_world, .{mouse_start.x, mouse_start.y, 0});
             mouse_position := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
             
@@ -683,7 +688,9 @@ editor_update :: (using level: *Level,  mouse: Vector2, dt: float) {
         case .DRAG;
             using editor.drag;
             camera_to_world_rotation_matrix := get_editor_camera_to_world_rotation_matrix(level);
-            camera_to_world := inverse(get_editor_camera_matrix(level));
+            success, camera_to_world := inverse(get_editor_camera_matrix(level));
+            assert(success);
+
             mouse_start := multiply_homogeneous(camera_to_world, .{mouse.x, mouse.y, 0});
             mouse_direction := mouse_start - editor.camera_position;
 

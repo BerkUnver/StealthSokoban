@@ -9,14 +9,14 @@ Mesh :: struct {
 }
 
 
-Cube_Vertex :: enum {
-    Z_NEGATIVE :: 0;
-    X_POSITIVE :: 6;
-    Y_POSITIVE :: 12;
-    Y_NEGATIVE :: 18;
-    X_NEGATIVE :: 24;
-    Z_POSITIVE :: 30;
-    COUNT :: 36;
+Cube_Face :: enum u8 {
+    Z_NEGATIVE;
+    X_POSITIVE;
+    Y_POSITIVE;
+    Y_NEGATIVE;
+    X_NEGATIVE;
+    Z_POSITIVE;
+    COUNT;
 }
 
 
@@ -57,115 +57,120 @@ Layout_Location :: enum {
     OUTLINE_UV;
 }
 
-
-CUBE_VERTICES : [Cube_Vertex.COUNT] Vector3 : .[
-    // Front face
-    .{0, 0, 0},
-    .{1, 0, 0},
-    .{1, 1, 0},
-    .{0, 0, 0},
-    .{1, 1, 0},
-    .{0, 1, 0},
-    
-    // Right face
-    .{1, 0, 0},
-    .{1, 0, 1},
-    .{1, 1, 1},
-    .{1, 0, 0},
-    .{1, 1, 1},
-    .{1, 1, 0},
-    
-    // Top face
-    .{0, 1, 0},
-    .{1, 1, 0},
-    .{1, 1, 1},
-    .{0, 1, 0},
-    .{1, 1, 1},
-    .{0, 1, 1},
-    
-    // Bottom face
-    .{1, 0, 0},
-    .{0, 0, 0},
-    .{0, 0, 1},
-    .{1, 0, 0},
-    .{0, 0, 1},
-    .{1, 0, 1},
-
-    // Left face
-    .{0, 0, 1},
-    .{0, 0, 0},
-    .{0, 1, 0},
-    .{0, 0, 1},
-    .{0, 1, 0},
-    .{0, 1, 1},
-
-    // Back face
-    .{1, 0, 1},
-    .{0, 0, 1},
-    .{0, 1, 1},
-    .{1, 0, 1},
-    .{0, 1, 1},
-    .{1, 1, 1},
+CUBE_VERTICES : [Cube_Face.COUNT][6] Vector3 : .[
+    .[ 
+        // Front face
+        .{0, 0, 0},
+        .{1, 0, 0},
+        .{1, 1, 0},
+        .{0, 0, 0},
+        .{1, 1, 0},
+        .{0, 1, 0},
+    ],
+    .[
+        // Right face
+        .{1, 0, 0},
+        .{1, 0, 1},
+        .{1, 1, 1},
+        .{1, 0, 0},
+        .{1, 1, 1},
+        .{1, 1, 0},
+    ],
+    .[
+        // Top face
+        .{0, 1, 0},
+        .{1, 1, 0},
+        .{1, 1, 1},
+        .{0, 1, 0},
+        .{1, 1, 1},
+        .{0, 1, 1},
+    ],
+    .[
+        // Bottom face
+        .{1, 0, 0},
+        .{0, 0, 0},
+        .{0, 0, 1},
+        .{1, 0, 0},
+        .{0, 0, 1},
+        .{1, 0, 1},
+    ],
+    .[
+        // Left face
+        .{0, 0, 1},
+        .{0, 0, 0},
+        .{0, 1, 0},
+        .{0, 0, 1},
+        .{0, 1, 0},
+        .{0, 1, 1},
+    ],
+    .[
+        // Back face
+        .{1, 0, 1},
+        .{0, 0, 1},
+        .{0, 1, 1},
+        .{1, 0, 1},
+        .{0, 1, 1},
+        .{1, 1, 1},
+    ],
 ];
 
 
-CUBE_UVS : [Cube_Vertex.COUNT] Vector2 : .[
-    .{0, 0},
-    .{1, 0},
-    .{1, 1},
-    .{0, 0},
-    .{1, 1},
-    .{0, 1},
-    
-    // Right face
-    .{0, 0},
-    .{1, 0},
-    .{1, 1},
-    .{0, 0},
-    .{1, 1},
-    .{0, 1},
-    
-    // Top face
-    .{0, 0},
-    .{1, 0},
-    .{1, 1},
-    .{0, 0},
-    .{1, 1},
-    .{0, 1},
-    
-    // Bottom face
-    .{0, 0},
-    .{1, 0},
-    .{1, 1},
-    .{0, 0},
-    .{1, 1},
-    .{0, 1},
-
-    // Left face
-    .{0, 0},
-    .{1, 0},
-    .{1, 1},
-    .{0, 0},
-    .{1, 1},
-    .{0, 1},
-
-    // Back face
-    .{0, 0},
-    .{1, 0},
-    .{1, 1},
-    .{0, 0},
-    .{1, 1},
-    .{0, 1},
+CUBE_UVS : [Cube_Face.COUNT][6] Vector2 : .[
+    .[
+         // Front face
+        .{0, 0},
+        .{1, 0},
+        .{1, 1},
+        .{0, 0},
+        .{1, 1},
+        .{0, 1},
+    ],
+    .[
+        // Right face
+        .{0, 0},
+        .{1, 0},
+        .{1, 1},
+        .{0, 0},
+        .{1, 1},
+        .{0, 1},
+    ],
+    .[
+        // Top face
+        .{0, 0},
+        .{1, 0},
+        .{1, 1},
+        .{0, 0},
+        .{1, 1},
+        .{0, 1},
+    ],
+    .[
+        // Bottom face
+        .{0, 0},
+        .{1, 0},
+        .{1, 1},
+        .{0, 0},
+        .{1, 1},
+        .{0, 1},
+    ],
+    .[ 
+        // Left face
+        .{0, 0},
+        .{1, 0},
+        .{1, 1},
+        .{0, 0},
+        .{1, 1},
+        .{0, 1},
+    ],
+    .[
+        // Back face
+        .{0, 0},
+        .{1, 0},
+        .{1, 1},
+        .{0, 0},
+        .{1, 1},
+        .{0, 1},
+    ],
 ];
-
-
-make_cuboid :: (vertices: [] Vector3, begin: Vector3, end: Vector3) -> [] Vector3 { 
-    size := end - begin;
-    for 0..35 {
-        vertices[it] = begin + CUBE_VERTICES[it] * size;
-    }
-    return slice(vertices, 36);
-}
 
 
 Imm_Vertex :: struct {
@@ -267,7 +272,13 @@ make_cuboid_vertex_mesh :: (b: Vector3, e: Vector3, arena: *Memory_Arena) -> Mes
     using context.game_context;
 
     vertex_positions := alloc_view(arena, 36, Vector3);
-    make_cuboid(vertex_positions, b, e);
+    for face: CUBE_VERTICES {
+        offset := it_index * face.count;
+        for face {
+            index := offset + it_index;
+            vertex_positions[index] = it;
+        }
+    }
 
     vao, vbo: GLuint;
     
@@ -354,7 +365,7 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
 
 
         // Hopefully the optimizer takes the hint from all these constants.
-        check :: ($face: Cube_Vertex) #expand {
+        check :: ($face: Cube_Face) #expand {
             #if face == {
                 case .X_POSITIVE;
                     NORMAL :: Vector3i.{1, 0, 0};
@@ -511,11 +522,13 @@ make_gridlike_mesh_data :: (size: Vector3i, filled: [] bool, vbo: GLuint, arena:
                 .{p3_x, p3_y}
             ];
 
+            face_vertices: [] Vector3 = CUBE_VERTICES[face];
+            face_uvs:      [] Vector2 = CUBE_UVS[face];
+
             for i: 0..5 {
-                index := xx face + i;
                 append(*vertices, frame_arena).* = .{
-                    position = origin + CUBE_VERTICES[index],
-                    uv = CUBE_UVS[index],
+                    position = origin + face_vertices[i],
+                    uv = face_uvs[i],
                     filled_position = it,
                     filled_normal = NORMAL,
                     outline_uv = outline_uvs[i]

@@ -199,6 +199,12 @@ Player :: struct {
 }
 
 
+Collision_Cell :: struct {
+    here: Entity_Id;
+    y_positive: Entity_Id;
+}
+
+
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
         case .ALIVE;
