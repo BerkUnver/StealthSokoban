@@ -228,6 +228,12 @@ Exit :: struct {
 }
 
 
+Ladder :: struct {
+    using #as e: Entity;
+    facing: Facing;
+}
+
+
 Overworld_Entrance :: struct {
     using #as e: Entity;
     color: Vector4; @Color
@@ -1089,6 +1095,13 @@ get_enemy_spawner_draw_info :: (enemy_spawner: *Enemy_Spawner) -> model_to_world
     matrix := facing_to_matrix4(enemy_spawner.facing);
     matrix = make_translation_matrix4(to_vector3(enemy_spawner.position) + Vector3.{0.5, 0, 0.5}) * matrix;
     return matrix, color;
+}
+
+
+get_ladder_draw_info :: (ladder: *Ladder) -> Matrix4 {
+    matrix := facing_to_matrix4(ladder.facing);
+    matrix = make_translation_matrix4(to_vector3(ladder.position) + Vector3.{0.5, 0.5, 0.5}) * matrix;
+    return matrix;
 }
 
 

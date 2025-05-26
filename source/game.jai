@@ -100,6 +100,7 @@ Game_Context :: struct {
     chroma_key_bitmap: *Bitmap;
     gridlike_bitmap: *Bitmap;
     input_hint_bitmap: *Bitmap;
+    ladder_bitmap: *Bitmap;
 
     enemy_annihilation_mesh: Mesh;
     enemy_mesh: *Mesh;
@@ -110,6 +111,7 @@ Game_Context :: struct {
     overworld_entrance_mesh: *Mesh;
     overworld_exit_mesh: *Mesh;
     checkpoint_mesh: *Mesh;
+    ladder_mesh: *Mesh;
 }
 
 
@@ -342,6 +344,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         player_bitmap               = load_asset(Bitmap, *asset_table, "player.tga");
         gridlike_bitmap             = load_asset(Bitmap, *asset_table, "gridlike.tga");
         input_hint_bitmap           = load_asset(Bitmap, *asset_table, "input_hint.tga");
+        ladder_bitmap               = load_asset(Bitmap, *asset_table, "ladder.tga");
 
         enemy_annihilation_mesh     = make_cuboid_vertex_mesh(.{0.01, 0.01, 0.01}, .{0.99, 0.99, 0.99}, permanent_arena);
         enemy_mesh                  = load_asset(Mesh, *asset_table, "enemy.my_mesh");
@@ -352,6 +355,7 @@ game_init : Game_Init_Proc : (context_base: *Context_Base, data: *Game_Init_Data
         exit_mesh                   = load_asset(Mesh, *asset_table, "exit.my_mesh");
         checkpoint_mesh             = load_asset(Mesh, *asset_table, "checkpoint.my_mesh");
         player_mesh                 = load_asset(Mesh, *asset_table, "player.my_mesh");
+        ladder_mesh                 = load_asset(Mesh, *asset_table, "ladder.my_mesh");
 
 
         //
@@ -1255,14 +1259,19 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
         bind_and_draw(enemy_mesh);
     }
 
+    set_uniform_bitmap("bitmap", 1, enemy_item_bitmap);
     for * _Enemy_Despawner {
         matrix := make_translation_matrix4(to_vector3(it.position));
         set_uniform("model_to_world", matrix);
-        set_uniform_bitmap("bitmap", 1, enemy_item_bitmap);
         bind_and_draw(enemy_despawner_mesh);
     }
 
-         
+    set_uniform_bitmap("bitmap", 1, ladder_bitmap);
+    for * _Ladder {
+        matrix := get_ladder_draw_info(it);
+        set_uniform("model_to_world", matrix);
+        bind_and_draw(ladder_mesh);
+    }
 
     
     OVERWORLD_ENTRANCE_DEFAULT_COLOR :: Vector4.{0, 0, 0, 1};

@@ -8,6 +8,7 @@ Entity_Type :: enum {
     Enemy_Spawner;
     Exit;
     Input_Hint;
+    Ladder;
     Overworld_Entrance;
     Overworld_Exit;
     Player;
@@ -241,6 +242,8 @@ entity_mesh :: (e: *Entity) -> *Mesh {
             return overworld_exit_mesh;
         case .Input_Hint;
             return *as(e, Input_Hint).mesh;
+        case .Ladder;
+            return ladder_mesh;
     }
 
     return null;
@@ -248,16 +251,18 @@ entity_mesh :: (e: *Entity) -> *Mesh {
 
 
 entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
-    enemy := as(e, Enemy);
-    if enemy return get_enemy_draw_info(level, enemy);
-
-    enemy_spawner := as(e, Enemy_Spawner);
-    if enemy_spawner return get_enemy_spawner_draw_info(enemy_spawner);
-
-    player := as(e, Player);
-    if player return get_player_draw_info(player);
-
-    return make_translation_matrix4(to_vector3(e.position));
+    if e.type == {
+        case .Enemy;
+            return get_enemy_draw_info(level, as(e, Enemy));
+        case .Enemy_Spawner;
+            return get_enemy_spawner_draw_info(as(e, Enemy_Spawner));
+        case .Player;
+            return get_player_draw_info(as(e, Player));
+        case .Ladder;
+            return get_ladder_draw_info(as(e, Ladder));
+        case;
+            return make_translation_matrix4(to_vector3(e.position));;
+    }
 }
 
 
