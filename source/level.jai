@@ -68,7 +68,6 @@ Level :: struct {
     
 
         collision: [] Entity_Id;
-        collision_faces: [Cube_Face.COUNT] [] Entity_Id;
         
         // These are stationary, and don't change over the course of the level.
         doors: [] Entity_Id;
@@ -231,6 +230,10 @@ Exit :: struct {
 Ladder :: struct {
     using #as e: Entity;
     facing: Facing;
+    
+    // These are guaranteed to be valid in .GAMEPLAY mode.
+    mount_eid: Entity_Id; @NoSerialize
+    mount_offset: Vector3i; @NoSerialize
 }
 
 
@@ -418,7 +421,7 @@ Block :: struct {
     moveable: bool;
     mesh: Mesh; @NoSerialize
 
-    resolve_state: Block_Resolve_State; @NoSerialize
+    // resolve_state: Block_Resolve_State; @NoSerialize
 }
 
 
@@ -857,7 +860,7 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
     }
 
 
-
+    assert(_Player.count == 1);
     player := *_Player[0];
 
     if skip_intro {
@@ -893,14 +896,42 @@ load_level_gameplay :: (level_name: string, arena: *Memory_Arena, skip_intro := 
 
     init_gridlike_array(_Door, *doors);
     init_gridlike_array(_Input_Hint, *input_hints);
+    init_gridlike_array(_Block, *collision);
 
 
-    collision = alloc_view(arena, size_1d, Entity_Id);
-    for * collision_faces {
-        it.* = alloc_view(arena, size_1d, Entity_Id);
+    for * _Enemy {
+        in_bounds, index := get_3d_index(it.position, level_position, level_size);
+        assert(in_bounds);
+        assert(collision[index] == 0);
+        collision[index] = it.eid;
     }
 
-    collision_resolution(level, make_mutual_annihilations=false);
+
+    { // Do the player
+        in_bounds, index := get_3d_index(player.position, level_position, level_size);
+        assert(in_bounds);
+        assert(collision[index] == 0);
+        collision[index] = player.eid;
+    }
+
+
+    for * _Ladder {
+        mount_position := it.position + facing_to_vector3i(it.facing);
+        in_bounds, index := get_3d_index(mount_position, level_position, level_size);
+        assert(in_bounds);
+        eid := collision[index];
+        assert(eid != 0);
+        e := get_entity(level, eid);
+        assert(e.type == .Block);
+        block := as(e, Block);
+
+
+        // if block.moveable... We could say that Ladder entities only get mounted to Block entities with
+        // moveable set but to reduce the number of codepaths I am not doing that.
+        
+        it.mount_eid = block.eid;
+        it.mount_offset = it.position - block.position;
+    }
 
 
     for 0..enemy_pre_warm_ticks-1 {
@@ -1443,6 +1474,12 @@ collision_resolution :: (using level: *Level, make_mutual_annihilations: bool) {
         if player.position == it.position {
             set_state(level, .FADE_OUT_EXIT);
         }
+    }
+
+    for * _Ladder {
+        e := get_entity(level, it.mount_eid);
+        assert(e.type == .Block);
+        it.position = e.position + it.mount_offset;
     }
 }
 

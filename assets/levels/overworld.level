@@ -1,5 +1,5 @@
 types
-	_Block 7[
+	_Block 8[
 		e
 			eid 1
 			position
@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277316961437463758
+			y 0.0277316924184560773
 			z 0.3953233957290649413
 			w 1
 			;
@@ -143,6 +143,26 @@ types
 			x 0.1902241110801696775
 			y 0.0204911492764949797
 			z 0.1603147536516189573
+			w 1
+			;
+		moveable 1
+		;
+		e
+			eid 39
+			position
+				x -4
+				y 1
+				z 4
+				;
+			;
+		size
+			x 1
+			y 2
+			z 1
+			;
+		filled 2[ 1 1 ]
+		color
+			x 0.4118589162826538084
 			w 1
 			;
 		moveable 1
@@ -260,6 +280,28 @@ types
 			;
 		filled 2[ 1 1 ]
 		input_hint_type 5
+		;
+	]
+	_Ladder 2[
+		e
+			eid 34
+			position
+				x -4
+				y 1
+				z 3
+				;
+			;
+		facing 1
+		;
+		e
+			eid 5
+			position
+				x -4
+				y 2
+				z 3
+				;
+			;
+		facing 1
 		;
 	]
 	_Overworld_Entrance 10[

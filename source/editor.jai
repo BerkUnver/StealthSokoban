@@ -343,7 +343,6 @@ editor_handle_input :: (using level: *Level, arena: *Memory_Arena, mouse: Vector
                 e := make_entity(level, xx editor.entity_type, arena);
                 e.position = position;
 
-
                 init_gridlike_entity :: (e: *$T/interface Gridlike_Entity) #expand {
                     filled := alloc_view(arena, 1, bool);
                     filled[0] = true;
