@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277316924184560773
+			y 0.0277316905558109281
 			z 0.3953233957290649413
 			w 1
 			;
@@ -157,10 +157,10 @@ types
 			;
 		size
 			x 1
-			y 2
+			y 1
 			z 1
 			;
-		filled 2[ 1 1 ]
+		filled 1[ 1 ]
 		color
 			x 0.4118589162826538084
 			w 1
@@ -282,22 +282,12 @@ types
 		input_hint_type 5
 		;
 	]
-	_Ladder 2[
+	_Ladder 1[
 		e
 			eid 34
 			position
 				x -4
 				y 1
-				z 3
-				;
-			;
-		facing 1
-		;
-		e
-			eid 5
-			position
-				x -4
-				y 2
 				z 3
 				;
 			;

@@ -166,6 +166,7 @@ LEFT_KEY         : Key : #char "A";
 RIGHT_KEY        : Key : #char "D";
 PULL_KEY         : Key : #char " ";
 SELECT_KEY       : Key : #char "U";
+LADDER_KEY       : Key : #char "Y";
 TELEPORT_KEY     : Key : #char "H";
 PAUSE_KEY        : Key : .ESCAPE;
 CAMERA_MODE_KEY  : Key : #char "O";
@@ -1413,7 +1414,7 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
 
     set_uniform("color", Vector4.{Player.COLOR.x, Player.COLOR.y, Player.COLOR.z, 0.5});
     for * _Player {
-        matrix := world_to_camera * get_player_draw_info(it);
+        matrix := world_to_camera * get_player_draw_info(level, it);
         set_uniform("projection", matrix);
         bind_and_draw(player_mesh);
     }
@@ -1446,7 +1447,7 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
     set_shader(bitmap_shader);
     set_uniform_bitmap("bitmap", 0, player_bitmap);
     for * _Player {
-        matrix := world_to_camera * get_player_draw_info(it);
+        matrix := world_to_camera * get_player_draw_info(level, it);
         set_uniform("projection", matrix);
         bind_and_draw(player_mesh);
     }

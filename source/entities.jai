@@ -257,7 +257,7 @@ entity_mesh_to_world_matrix :: (level: *Level, e: *Entity) -> Matrix4 {
         case .Enemy_Spawner;
             return get_enemy_spawner_draw_info(as(e, Enemy_Spawner));
         case .Player;
-            return get_player_draw_info(as(e, Player));
+            return get_player_draw_info(level, as(e, Player));
         case .Ladder;
             return get_ladder_draw_info(as(e, Ladder));
         case;

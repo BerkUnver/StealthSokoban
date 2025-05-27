@@ -186,6 +186,9 @@ Player :: struct {
     collision_resolution: Collision_Resolution; @NoSerialize
 
     using vars: union {
+        alive: struct {
+            ladder_eid: Entity_Id;
+        }
         spawning: struct {
             interp: float;
         }
@@ -200,6 +203,7 @@ Player :: struct {
 set_state :: (player: *Player, state: Player_State) {
     if #complete state == {
         case .ALIVE;
+            player.alive.ladder_eid = 0;
         case .SPAWNING; 
             player.spawning.interp = 0;
         case .DEAD;
@@ -1082,12 +1086,9 @@ get_enemy_draw_info :: (level: *Level, enemy: *Enemy) -> model_to_world: Matrix4
 }
 
 
-get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
-    scale: Matrix4;
-    position: Vector3;
-
-    scale = Matrix4_Identity;
-    position = to_vector3(player.position);
+get_player_draw_info :: (level: *Level, player: *Player) -> model_to_world: Matrix4 {
+    scale := Matrix4_Identity;
+    position := to_vector3(player.position);
     
     if #complete player.state == {
         case .SPAWNING;
@@ -1097,6 +1098,16 @@ get_player_draw_info :: (player: *Player) -> model_to_world: Matrix4 {
         case .DEBUG_MOVEMENT;
         case .STUCK_INSIDE_A_BLOCK;
         case .ALIVE;
+            /*
+            if player.alive.ladder_eid {
+                ladder := get_entity(level, player.alive.ladder_eid);
+                facing_direction := facing_to_vector3i(ladder.facing);
+            } else {
+                scale = Matrix4_Identity;
+                position = to_vector3(player.position);
+            }
+            */
+
             scale = Matrix4_Identity;
             position = to_vector3(player.position);
         case .DEAD;
@@ -1341,7 +1352,7 @@ gameplay_move_tick :: (using level: *Level, just_do_falls: bool, do_vfx: bool) {
     }
 
     player := *_Player[0];
-    if player.state == .ALIVE && !is_colliding_below(level, player.position) {
+    if player.state == .ALIVE && !player.alive.ladder_eid && !is_colliding_below(level, player.position) {
         player.position.y -= 1;
     }
 
@@ -1663,6 +1674,28 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
                 return;
             }
         }
+
+        return;
+    }
+
+   
+    if event.key == LADDER_KEY && event.state == .DOWN {
+        player := *_Player[0];
+        if player.state != .ALIVE return;
+
+        if player.alive.ladder_eid == 0 {
+            facing := vector3i_to_facing(local_to_global_direction(0, 1, camera_yaw_target));
+            // @Speed Should we put the ladders in an optimized lookup structure?
+            for * _Ladder {
+                if it.position == player.position && it.facing == facing {
+                    player.alive.ladder_eid = it.eid;
+                    return;
+                }
+            }
+        } else {
+            player.alive.ladder_eid = 0;
+        }
+        return;
     }
 
 
@@ -1674,309 +1707,423 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
     player := *_Player[0];
 
-    push_direction: Vector3i;
+    get_move_direction :: (using level: *Level, event: Input_Event) -> bool, Vector3i {
+        if event.state != .DOWN return false, .{};
 
-    if contains(UP_KEYS, event.key) {
-        push_direction = local_to_global_direction( 0,  1, camera_yaw_target);
-    } else if contains(LEFT_KEYS, event.key) {
-        push_direction = local_to_global_direction(-1,  0, camera_yaw_target);
-    } else if contains(DOWN_KEYS, event.key) {
-        push_direction = local_to_global_direction( 0, -1, camera_yaw_target);
-    } else if contains(RIGHT_KEYS, event.key) {
-        push_direction = local_to_global_direction( 1,  0, camera_yaw_target);
-    } else if event.key == #char "Q" && player.state == .DEBUG_MOVEMENT {
-        push_direction.y += 1;
-    } else if event.key == #char "E" && player.state == .DEBUG_MOVEMENT {
-        push_direction.y -= 1;
-    } else {
-        return;
+        player := *_Player[0];
+
+        move_direction: Vector3i;
+        if contains(UP_KEYS, event.key) {
+            move_direction = local_to_global_direction( 0,  1, camera_yaw_target);
+        } else if contains(LEFT_KEYS, event.key) {
+            move_direction = local_to_global_direction(-1,  0, camera_yaw_target);
+        } else if contains(DOWN_KEYS, event.key) {
+            move_direction = local_to_global_direction( 0, -1, camera_yaw_target);
+        } else if contains(RIGHT_KEYS, event.key) {
+            move_direction = local_to_global_direction( 1,  0, camera_yaw_target);
+        } else if event.key == #char "Q" && player.state == .DEBUG_MOVEMENT {
+            move_direction.y += 1;
+        } else if event.key == #char "E" && player.state == .DEBUG_MOVEMENT {
+            move_direction.y -= 1;
+        } else {
+            return false, .{};
+        }
+
+        return true, move_direction;
     }
+
     
     // @TODO Add pulling blocks next to you, not just in the opposite direction of where
     // you are moving (I'm pretty sure we want this)
 
     if #complete player.state == {
         case .ALIVE;
-            if !is_colliding_below(level, player.position) return;
+            if player.alive.ladder_eid {
+                if event.state != .DOWN return;
 
-            //
-            // Gather the blocks we are pushing
-            //
+                move_y: s32;
+                if      contains(UP_KEYS,   event.key) move_y += 1;
+                else if contains(DOWN_KEYS, event.key) move_y -= 1;
+                else return;
 
-            scope_mark(frame_arena);
 
-            moved_blocks: [..] *Block;
-            
-            push_block :: (dir: Vector3i) #expand {
-                in_bounds, index := get_3d_index(player.position + dir, level_position, level_size);
-                if in_bounds {
-                    eid := collision[index];
-                    if eid {
-                        e := get_entity(level, eid);
-                        block := as(e, Block);
-                        if block && block.moveable {
-                            if !contains(*moved_blocks, block) append(*moved_blocks, frame_arena).* = block;
-                        }
-                    }
-                }
-            }
+                e := get_entity(level, player.alive.ladder_eid);
+                assert(e.type == .Ladder);
+                ladder := as(e, Ladder);
                 
-            // Are we pulling a moveable block?
-            if keys_down[PULL_KEY] {
-                push_block(.{ 1,  0,  0});
-                push_block(.{-1,  0,  0});
-                push_block(.{ 0,  1,  0});
-                push_block(.{ 0, -1,  0});
-                push_block(.{ 0,  0,  1});
-                push_block(.{ 0,  0, -1});
-            } else {
-                push_block(push_direction);
-            }
+                next_ladder_position := player.position;
+                next_ladder_position.y += move_y;
 
-            //
-            // Figure out if the move is legal
-            //
+                for * _Ladder {
+                    if it.position == next_ladder_position && it.facing == ladder.facing {
+                        assert(it.eid != ladder.eid);
 
-
-            // This is the new, recursive version that should do a better job of accounting for bugs.
-            // I didn't have time to properly test it so I will instead use the old, flawed version.
-            // There are still some bugs here. Maybe a better approach would be to put everything in a
-            // new collision grid like we used to do before.
-
-            /*
-
-            resolve :: (using level: *Level, moved_blocks: *[..] *Block, moved_enemies: *[..] *Enemy, block: *Block, push_direction: Vector3i) -> bool {
-                using context.game_context;
-
-                if #complete block.resolve_state == {
-                    case .UNRESOLVED;
-                        block.resolve_state = .RESOLVING;
-                    case .RESOLVING;
-                        assert(false);
-                    case .RESOLVED;
-                        return true;
-                    case .FAILED;
-                        assert(false);
-                }
-
-                moved_enemies_old_count := moved_enemies.count;
-
-                offset := block.position - level_position;
-
-                for :iterate_vector3i block.size {
-
-                    clean_up_and_return :: () #expand {
-                        success, index := find(moved_blocks.*, block);
-                        assert(success);
-                        remove_at(moved_blocks, index);
-                        block.resolve_state = .FAILED;
-                        moved_enemies.count = moved_enemies_old_count;
-                        `return false;
-                    }
-
-                    resolve_adjacent_block :: (adjacent_block: *Block) #expand {
-                        if adjacent_block == block return;
-
-                        if !adjacent_block.moveable || !contains(moved_blocks, adjacent_block) {
-                            `clean_up_and_return();
-                        }
-
-                        if #complete adjacent_block.resolve_state == {
-                            case .UNRESOLVED;
-                                success := resolve(level, moved_blocks, moved_enemies, adjacent_block, push_direction);
-                                if !success `clean_up_and_return();
-                            case .RESOLVING;
-                            case .RESOLVED;
-                            case .FAILED;
-                                `clean_up_and_return();
-                        }
-                    }
-
-
-                    if !block.filled[it_index] continue;
-
-                    in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
-                    if !in_bounds clean_up_and_return();
-
-                    eid := collision[index];
-                    if !eid continue;
-                    e := get_entity(level, eid);
-
-                    if e.type == {
-                        case .Enemy;
-                            append(moved_enemies, frame_arena).* = as(e, Enemy);
-                            in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
-                            if !in_bounds clean_up_and_return();
-
-                            eid := collision[index];
-                            if !eid continue;
-                            adjacent_e := get_entity(level, eid);
-                            if adjacent_e.type == {
-                                case .Player;
-                                case .Enemy;
-                                    // An annihilation will happen
-
+                        in_bounds, index := get_3d_index(next_ladder_position, level_position, level_size);
+                        assert(in_bounds);
+                        
+                        eid := collision[index];
+                        if eid {
+                            e := get_entity(level, eid);
+                            if e.type == {
                                 case .Block;
-                                    resolve_adjacent_block(as(adjacent_e, Block));
-
-                                case;
                                     assert(false);
+                                    // Why is there a ladder in the middle of a Block? This is a mistake in the editor!
+                                case .Enemy;
+                                case .Player;
+                                    assert(false);
+                                case;
                             }
-
-                        case .Block;
-                            resolve_adjacent_block(as(e, Block));
-
-                        case .Player;
-
-                        case;
-                            assert(false);
+                        }
+                        player.alive.ladder_eid = it.eid;
+                        player.position = next_ladder_position;
+                        return;
                     }
                 }
+                
+                if move_y == 1 {
+                    // We are at the top of a ladder.
+                    // Is there a place above it for us to go?
+                    facing_direction := facing_to_vector3i(ladder.facing);
+                    
+                    ladder_top_position := next_ladder_position + facing_direction;
 
-                block.resolve_state = .RESOLVED;
-                return true;
-            }
-
-
-            for moved_blocks {
-                it.resolve_state = .UNRESOLVED;
-            }
-
-            moved_enemies: [..] *Enemy;
-
-            
-            // Why isn't this a for loop?
-
-            // Well, right now, the current will be removed from the array by "resolve" if it fails.
-            // The for loop won't account for that, and keep on going, and skip over whatever was 
-            // copied into the index that "resolve" occupied. So we need to account for that.
-
-            // Things before the current index will not be removed because those will all have already
-            // been resolved.
-
-            index := 0;
-            while index < moved_blocks.count {
-                block := moved_blocks[index];
-                if block.resolve_state == .UNRESOLVED {
-                    success := resolve(level, *moved_blocks, *moved_enemies, block, push_direction);
-                    if success index += 1;
-                } else {
-                    assert(block.resolve_state == .RESOLVED);
-                    index += 1;
-                }
-            }
-            
-            // Make sure nothing goofy happened
-            for moved_blocks {
-                assert(it.resolve_state == .RESOLVED);
-            }
-            */
-
-            moved_enemies: [..] *Enemy;
-
-            for block: moved_blocks {
-                offset := block.position - level_position;
-
-                block_moved_enemies: [..] *Enemy;
-
-                for :iterate_vector3i block.size {
-                    if !block.filled[it_index] continue;
-
-                    in_bounds, index := get_3d_index(it + push_direction + offset, level_size);
+                    in_bounds, index := get_3d_index(ladder_top_position, level_position, level_size);
                     if !in_bounds return;
 
                     eid := collision[index];
-                    if !eid continue;
+                    if eid {
+                        e := get_entity(level, eid);
+                        if e.type == {
+                            case .Block;
+                                return;
+                            case .Enemy;
+                            case .Player;
+                                assert(false);
+                            case;
+                                assert(false);
+                        }
+                    }
 
-                    e := get_entity(level, eid);
+                    player.position = ladder_top_position;
+                    player.alive.ladder_eid = 0;
+                    collision_resolution(level, true);
 
-                    if e.type == {
-                        case .Enemy;
-                            append(*block_moved_enemies, frame_arena).* = as(e, Enemy);
+                } else {
+                    // We are falling off of the bottom of the ladder.
 
-                            in_bounds, index := get_3d_index(e.position + push_direction, level_position, level_size);
-                            if !in_bounds return;
-
-                            eid := collision[index];
-
-                            if !eid continue;
-
-                            next_e := get_entity(level, eid);
-                            if next_e.type == {
-                                case .Player;
-                                case .Enemy;
-                                    // An annihilation will happen
-
+                    in_bounds, index := get_3d_index(next_ladder_position, level_position, level_size);
+                    if !in_bounds {
+                        player.position = next_ladder_position;
+                        // Player is out of bounds. They will die when we call collision_resolution.
+                    } else {
+                        eid := collision[index];
+                        if eid {
+                            e := get_entity(level, eid);
+                            if e.type == {
                                 case .Block;
-                                    if !contains(*moved_blocks, as(next_e, Block)) {
-                                        remove block;
-                                        continue block;
-                                    }
-
+                                    player.alive.ladder_eid = 0; // Get off the ladder
+                                    return;
+                                case .Enemy;
+                                    player.position = next_ladder_position;
+                                    // Allow the player to fall off the ladder into the enemy
+                                case .Player;
+                                    assert(false);
                                 case;
                                     assert(false);
-
                             }
+                        }
+                    }
 
-                        case .Block;
-                            // If one of the blocks we were trying to pull/push does not move, that does not mean the
-                            // entire move is cancelled. Just get rid of that block from the move.
-                            // I hope there are not corner cases that I'm failing to account for.
+                    collision_resolution(level, true);
+                }
 
-                            if !contains(*moved_blocks, as(e, Block)) {
-                                remove block;
-                                continue block;
+               
+
+            } else {
+                if !is_colliding_below(level, player.position) return;
+
+                success, move_direction := get_move_direction(level, event);
+                if !success return;
+
+                //
+                // Gather the blocks we are pushing
+                //
+
+                scope_mark(frame_arena);
+
+                moved_blocks: [..] *Block;
+                
+                push_block :: (dir: Vector3i) #expand {
+                    in_bounds, index := get_3d_index(player.position + dir, level_position, level_size);
+                    if in_bounds {
+                        eid := collision[index];
+                        if eid {
+                            e := get_entity(level, eid);
+                            block := as(e, Block);
+                            if block && block.moveable {
+                                if !contains(*moved_blocks, block) append(*moved_blocks, frame_arena).* = block;
                             }
+                        }
+                    }
+                }
+                    
+                // Are we pulling a moveable block?
+                if keys_down[PULL_KEY] {
+                    push_block(.{ 1,  0,  0});
+                    push_block(.{-1,  0,  0});
+                    push_block(.{ 0,  1,  0});
+                    push_block(.{ 0, -1,  0});
+                    push_block(.{ 0,  0,  1});
+                    push_block(.{ 0,  0, -1});
+                } else {
+                    push_block(move_direction);
+                }
 
-                        case .Player;
+                //
+                // Figure out if the move is legal
+                //
 
-                        case;
+
+                // This is the new, recursive version that should do a better job of accounting for bugs.
+                // I didn't have time to properly test it so I will instead use the old, flawed version.
+                // There are still some bugs here. Maybe a better approach would be to put everything in a
+                // new collision grid like we used to do before.
+
+                /*
+
+                resolve :: (using level: *Level, moved_blocks: *[..] *Block, moved_enemies: *[..] *Enemy, block: *Block, move_direction: Vector3i) -> bool {
+                    using context.game_context;
+
+                    if #complete block.resolve_state == {
+                        case .UNRESOLVED;
+                            block.resolve_state = .RESOLVING;
+                        case .RESOLVING;
+                            assert(false);
+                        case .RESOLVED;
+                            return true;
+                        case .FAILED;
                             assert(false);
                     }
+
+                    moved_enemies_old_count := moved_enemies.count;
+
+                    offset := block.position - level_position;
+
+                    for :iterate_vector3i block.size {
+
+                        clean_up_and_return :: () #expand {
+                            success, index := find(moved_blocks.*, block);
+                            assert(success);
+                            remove_at(moved_blocks, index);
+                            block.resolve_state = .FAILED;
+                            moved_enemies.count = moved_enemies_old_count;
+                            `return false;
+                        }
+
+                        resolve_adjacent_block :: (adjacent_block: *Block) #expand {
+                            if adjacent_block == block return;
+
+                            if !adjacent_block.moveable || !contains(moved_blocks, adjacent_block) {
+                                `clean_up_and_return();
+                            }
+
+                            if #complete adjacent_block.resolve_state == {
+                                case .UNRESOLVED;
+                                    success := resolve(level, moved_blocks, moved_enemies, adjacent_block, move_direction);
+                                    if !success `clean_up_and_return();
+                                case .RESOLVING;
+                                case .RESOLVED;
+                                case .FAILED;
+                                    `clean_up_and_return();
+                            }
+                        }
+
+
+                        if !block.filled[it_index] continue;
+
+                        in_bounds, index := get_3d_index(it + move_direction + offset, level_size);
+                        if !in_bounds clean_up_and_return();
+
+                        eid := collision[index];
+                        if !eid continue;
+                        e := get_entity(level, eid);
+
+                        if e.type == {
+                            case .Enemy;
+                                append(moved_enemies, frame_arena).* = as(e, Enemy);
+                                in_bounds, index := get_3d_index(e.position + move_direction, level_position, level_size);
+                                if !in_bounds clean_up_and_return();
+
+                                eid := collision[index];
+                                if !eid continue;
+                                adjacent_e := get_entity(level, eid);
+                                if adjacent_e.type == {
+                                    case .Player;
+                                    case .Enemy;
+                                        // An annihilation will happen
+
+                                    case .Block;
+                                        resolve_adjacent_block(as(adjacent_e, Block));
+
+                                    case;
+                                        assert(false);
+                                }
+
+                            case .Block;
+                                resolve_adjacent_block(as(e, Block));
+
+                            case .Player;
+
+                            case;
+                                assert(false);
+                        }
+                    }
+
+                    block.resolve_state = .RESOLVED;
+                    return true;
                 }
 
-                append(*moved_enemies, block_moved_enemies, frame_arena);
-            }
 
+                for moved_blocks {
+                    it.resolve_state = .UNRESOLVED;
+                }
 
+                moved_enemies: [..] *Enemy;
 
-            {   
-                // We check if the player can move into the square they're trying to go in after we check if
-                // the move is valid in case the player was going to push what was in front of them, but the 
-                // move is valid code detected that that block shouldn't be able to move.
+                
+                // Why isn't this a for loop?
 
-                in_bounds, index := get_3d_index(player.position + push_direction, level_position, level_size);
-                if !in_bounds return;
-                eid := collision[index];
-                if eid {
-                    block := as(get_entity(level, eid), Block);
-                    if block {
-                        if !contains(*moved_blocks, block) return;
+                // Well, right now, the current will be removed from the array by "resolve" if it fails.
+                // The for loop won't account for that, and keep on going, and skip over whatever was 
+                // copied into the index that "resolve" occupied. So we need to account for that.
+
+                // Things before the current index will not be removed because those will all have already
+                // been resolved.
+
+                index := 0;
+                while index < moved_blocks.count {
+                    block := moved_blocks[index];
+                    if block.resolve_state == .UNRESOLVED {
+                        success := resolve(level, *moved_blocks, *moved_enemies, block, move_direction);
+                        if success index += 1;
+                    } else {
+                        assert(block.resolve_state == .RESOLVED);
+                        index += 1;
                     }
                 }
+                
+                // Make sure nothing goofy happened
+                for moved_blocks {
+                    assert(it.resolve_state == .RESOLVED);
+                }
+                */
+
+                moved_enemies: [..] *Enemy;
+
+                for block: moved_blocks {
+                    offset := block.position - level_position;
+
+                    block_moved_enemies: [..] *Enemy;
+
+                    for :iterate_vector3i block.size {
+                        if !block.filled[it_index] continue;
+
+                        in_bounds, index := get_3d_index(it + move_direction + offset, level_size);
+                        if !in_bounds return;
+
+                        eid := collision[index];
+                        if !eid continue;
+
+                        e := get_entity(level, eid);
+
+                        if e.type == {
+                            case .Enemy;
+                                append(*block_moved_enemies, frame_arena).* = as(e, Enemy);
+
+                                in_bounds, index := get_3d_index(e.position + move_direction, level_position, level_size);
+                                if !in_bounds return;
+
+                                eid := collision[index];
+
+                                if !eid continue;
+
+                                next_e := get_entity(level, eid);
+                                if next_e.type == {
+                                    case .Player;
+                                    case .Enemy;
+                                        // An annihilation will happen
+
+                                    case .Block;
+                                        if !contains(*moved_blocks, as(next_e, Block)) {
+                                            remove block;
+                                            continue block;
+                                        }
+
+                                    case;
+                                        assert(false);
+
+                                }
+
+                            case .Block;
+                                // If one of the blocks we were trying to pull/push does not move, that does not mean the
+                                // entire move is cancelled. Just get rid of that block from the move.
+                                // I hope there are not corner cases that I'm failing to account for.
+
+                                if !contains(*moved_blocks, as(e, Block)) {
+                                    remove block;
+                                    continue block;
+                                }
+
+                            case .Player;
+
+                            case;
+                                assert(false);
+                        }
+                    }
+
+                    append(*moved_enemies, block_moved_enemies, frame_arena);
+                }
+
+
+
+                {   
+                    // We check if the player can move into the square they're trying to go in after we check if
+                    // the move is valid in case the player was going to push what was in front of them, but the 
+                    // move is valid code detected that that block shouldn't be able to move.
+
+                    in_bounds, index := get_3d_index(player.position + move_direction, level_position, level_size);
+                    if !in_bounds return;
+                    eid := collision[index];
+                    if eid {
+                        block := as(get_entity(level, eid), Block);
+                        if block {
+                            if !contains(*moved_blocks, block) return;
+                        }
+                    }
+                }
+                
+                //
+                // We know the move is valid. Update everything.
+                //
+
+
+                for moved_blocks {
+                    assert(it.moveable);
+                    it.position += move_direction;
+                }
+
+                for moved_enemies {
+                    it.position += move_direction;
+                }
+
+                player.position = player.position + move_direction;
+
+                collision_resolution(level, true);
+
+                if moved_blocks.count > 0 play_sound(level, push_sound);
+
+                // play_positional_sound(level, player.position, footstep_sound);
             }
-            
-            //
-            // We know the move is valid. Update everything.
-            //
-
-
-            for moved_blocks {
-                assert(it.moveable);
-                it.position += push_direction;
-            }
-
-            for moved_enemies {
-                it.position += push_direction;
-            }
-
-            player.position = player.position + push_direction;
-
-            collision_resolution(level, true);
-
-            if moved_blocks.count > 0 play_sound(level, push_sound);
-
-            // play_positional_sound(level, player.position, footstep_sound);
         
         case .SPAWNING;
         case .DEAD;
@@ -1991,8 +2138,11 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
             assert(e.type == .Block);
 
         case .DEBUG_MOVEMENT;
-            if inside_bounding_box(player.position + push_direction, level_position, level_size) {
-                player.position = player.position + push_direction;
+            success, move_direction := get_move_direction(level, event);
+            if !success return;
+
+            if inside_bounding_box(player.position + move_direction, level_position, level_size) {
+                player.position = player.position + move_direction;
                 play_positional_sound(level, player.position, footstep_sound);
             }
     } 
@@ -2001,6 +2151,7 @@ gameplay_handle_input :: (using level: *Level, event: Input_Event) {
 
 gameplay_update :: (using level: *Level, dt: float) {
     using context.game_context;
+
 
     player := *_Player[0];
 
