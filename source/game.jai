@@ -1538,13 +1538,6 @@ draw :: (using level: *Level, mode: Game_Mode, draw_gameplay_input_hints := fals
                                 "Press the % key to toggle between camera modes.",
                                 key_to_string(CAMERA_MODE_KEY, frame_arena)
                             );
-                        
-                        case .DEMO_END;
-                            print(
-                                *sb,
-                                "Thanks for playing the demo! Press % to reset.",
-                                key_to_string(PAUSE_KEY, frame_arena)
-                            );
                     }
 
                     draw_input_hint(get_string(*sb));

@@ -79,7 +79,7 @@ types
 		filled 3[ 1 1 1 ]
 		color
 			x 0.3330662548542022703
-			y 0.0277316905558109281
+			y 0.0277316886931657789
 			z 0.3953233957290649413
 			w 1
 			;
@@ -202,7 +202,7 @@ types
 			;
 		;
 	]
-	_Input_Hint 5[
+	_Input_Hint 3[
 		e
 			eid 36
 			position
@@ -248,38 +248,6 @@ types
 			;
 		filled 12[ 0 1 0 0 1 0 1 1 1 0 0 1 ]
 		input_hint_type 3
-		;
-		e
-			eid 35
-			position
-				x -7
-				y 1
-				z 13
-				;
-			;
-		size
-			x 5
-			y 1
-			z 3
-			;
-		filled 15[ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ]
-		input_hint_type 5
-		;
-		e
-			eid 19
-			position
-				x -11
-				y 1
-				z 3
-				;
-			;
-		size
-			x 1
-			y 1
-			z 2
-			;
-		filled 2[ 1 1 ]
-		input_hint_type 5
 		;
 	]
 	_Ladder 1[

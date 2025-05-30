@@ -447,7 +447,6 @@ Input_Hint_Type :: enum u8 {
     PAUSE;
     CAMERA;
     CAMERA_MODE;
-    DEMO_END;
 }
 
 
